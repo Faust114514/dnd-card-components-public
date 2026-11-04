@@ -1,0 +1,136 @@
+// Offline core tests and a real Edge DOM with synthetic Tavern/GitHub APIs.
+// The production reload call alone is replaced with a counter in the browser fixture.
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
+const http=require('node:http'),os=require('node:os'),{execFile}=require('node:child_process'),{promisify}=require('node:util');
+const root=path.resolve(__dirname,'..');
+const source=fs.readFileSync(path.join(root,'src/scripts/私有组件更新.js'),'utf8');
+const pure=source.split('// Runtime entry.')[0],context={structuredClone,Set,Error};vm.createContext(context);vm.runInContext(pure,context);
+const merge=context.buildDndComponentUpdate,config=JSON.parse(fs.readFileSync(path.join(root,'components.json'))),latest=JSON.parse(fs.readFileSync(path.join(root,'latest.json')));
+const sources=Object.fromEntries(latest.components.map(c=>[c.path,fs.readFileSync(path.join(root,c.path),'utf8')]));
+const items=(group,field)=>config[group].map(c=>{const {source,...meta}=c;return{...meta,[field]:sources[source]};});
+const original={avatar:'fixture.png',data:{character_version:'vf.0.3.0',description:'keep description',first_mes:'keep opening',character_book:{entries:[{content:'keep worldbook'}]},extensions:{world:'D&D 2024 vf.0.3.0',other:{keep:true},regex_scripts:items('regexes','replaceString'),tavern_helper:{scripts:items('scripts','content'),variables:{keep:9}}}}};
+original.data.extensions.regex_scripts[0].substituteRegex=7;original.data.extensions.regex_scripts[0].disabled=true;original.data.extensions.regex_scripts[0].unknown={keep:1};
+original.data.extensions.tavern_helper.scripts[0].enabled=false;original.data.extensions.tavern_helper.scripts[0].data.userConfig='keep';
+original.data.extensions.tavern_helper.scripts[0].content='old source';
+original.data.extensions.tavern_helper.scripts.push({id:'user-added',type:'script',content:'personal',enabled:true,data:{keep:true}});
+const before=JSON.stringify(original),result=merge(original,latest,sources),checks=[];
+const check=(value,label)=>{assert.ok(value,label);checks.push(label);};
+check(JSON.stringify(original)===before,'core does not mutate its input');
+check(result.changed.length===1,'only changed source counted');
+check(Object.keys(result.extensions).sort().join(',')==='dnd_component_updates,regex_scripts,tavern_helper','write payload contains only the three owned extension fields');
+check(result.extensions.tavern_helper.scripts[0].enabled===false&&result.extensions.tavern_helper.scripts[0].data.userConfig==='keep','script switch and user configuration preserved');
+check(result.extensions.tavern_helper.scripts.at(-1).id==='user-added'&&result.extensions.tavern_helper.variables.keep===9,'personal script and helper variables preserved');
+assert.deepEqual(result.extensions.regex_scripts,original.data.extensions.regex_scripts);checks.push('all raw regex settings and unknown fields preserved');
+const nested=structuredClone(original);nested.data.extensions.tavern_helper.scripts=[{type:'folder',id:'folder',name:'personal grouping',enabled:false,scripts:nested.data.extensions.tavern_helper.scripts}];
+check(merge(nested,latest,sources).extensions.tavern_helper.scripts[0].enabled===false,'script folders and order preserved');
+for(const [label,modify] of [
+ ['unknown component',m=>m.components[0].id='user-added'],
+ ['duplicate component',m=>m.components.push(m.components[0])],
+ ['path traversal',m=>m.components[0].path='src/scripts/../../private'],
+ ['external URL',m=>m.components[0].path='https://example.org/steal'],
+ ['unsupported version',m=>m.version='vf.0.4.0'],
+ ['unsupported format',m=>m.format=2],
+]){const bad=structuredClone(latest);modify(bad);assert.throws(()=>merge(original,bad,sources));checks.push('reject '+label);}
+const missing={...sources};delete missing[latest.components[0].path];assert.throws(()=>merge(original,latest,missing));checks.push('missing download prevents write preparation');
+const old=structuredClone(original);old.data.character_version='vf.0.2.20';assert.throws(()=>merge(old,latest,sources));checks.push('older card requires an explicit migration');
+const orbId='480d6777-f90d-4eba-a811-64cb2f1ffb00';
+const legacy=structuredClone(original);legacy.data.character_version='vf.0.2.21';legacy.data.extensions.world='D&D 2024 vf.0.2.21';legacy.data.extensions.tavern_helper.scripts=legacy.data.extensions.tavern_helper.scripts.filter(s=>s.id!==orbId);
+const connected=merge(legacy,latest,sources);
+check(connected.extensions.tavern_helper.scripts.filter(s=>s.id===orbId).length===1,'vf.0.2.21 receives exactly one missing orb');
+const connectedCard=structuredClone(legacy);Object.assign(connectedCard.data.extensions,connected.extensions);
+check(merge(connectedCard,latest,sources).changed.length===0,'reapplying legacy update does not duplicate the orb');
+const broken=structuredClone(legacy);broken.data.extensions.tavern_helper.scripts.shift();assert.throws(()=>merge(broken,latest,sources));checks.push('legacy exception does not invent other missing scripts');
+const unsupported=structuredClone(latest);delete unsupported.legacy_card_versions;assert.throws(()=>merge(legacy,unsupported,sources));checks.push('legacy card requires explicit release support');
+check(context.dndVersionIsNewer(latest.version,'vf.0.2.21')&&!context.dndVersionIsNewer(latest.version,latest.version)&&!context.dndVersionIsNewer('vf.0.3.2','vf.0.3.10'),'version comparison handles minor and multi-digit patch numbers');
+const baselinePath=process.argv.slice(2).find(arg=>!arg.startsWith('--'));
+if(baselinePath){
+ const actual=JSON.parse(fs.readFileSync(baselinePath,'utf8'));assert.equal(actual.data.character_version,'vf.0.2.21');
+ const updater=items('scripts','content').find(s=>s.id==='736c0e4e-67b4-4113-a021-b3890714ba28');
+ actual.data.extensions.tavern_helper.scripts.push(updater);const expected=structuredClone(actual);
+ const patch=merge(actual,latest,sources);const applied=structuredClone(actual);Object.assign(applied.data.extensions,patch.extensions);
+ check(patch.changed.length===2&&patch.changed.includes('DM人设选择')&&patch.changed.includes('新增叙事悬浮开关'),'real vf.0.2.21 needs only DM source update and orb insertion after updater import');
+ const restored=structuredClone(applied);delete restored.data.extensions.dnd_component_updates;
+ restored.data.extensions.tavern_helper.scripts=restored.data.extensions.tavern_helper.scripts.filter(s=>s.id!==orbId).map(s=>s.id==='c3c9ad44-9e9b-4c6e-ae93-f2b098a20125'?expected.data.extensions.tavern_helper.scripts.find(x=>x.id===s.id):s);
+ assert.deepEqual(restored,expected);checks.push('real legacy card preserves every other field, worldbook and regex');
+}
+
+const selected=latest.components.filter(c=>['c3c9ad44-9e9b-4c6e-ae93-f2b098a20125','480d6777-f90d-4eba-a811-64cb2f1ffb00','736c0e4e-67b4-4113-a021-b3890714ba28','01c632e5-1071-4a08-aebd-6a0e5424ea99'].includes(c.id));
+const fixtureManifest={...latest,components:selected};
+const fixtureSources=Object.fromEntries(selected.map(c=>[c.path,sources[c.path]]));
+const fixture=structuredClone(original);fixture.data.extensions.tavern_helper.scripts=fixture.data.extensions.tavern_helper.scripts.filter(s=>selected.some(c=>c.id===s.id)||s.id==='user-added');
+fixture.data.extensions.tavern_helper.scripts[0].content='old DM';fixture.data.extensions.regex_scripts=fixture.data.extensions.regex_scripts.slice(0,1);
+if(process.argv.includes('--legacy')){fixture.data.character_version='vf.0.2.21';fixture.data.extensions.world='D&D 2024 vf.0.2.21';fixture.data.extensions.tavern_helper.scripts=fixture.data.extensions.tavern_helper.scripts.filter(s=>s.id!==orbId);}
+const jsJSON=value=>JSON.stringify(value).replaceAll('<','\\u003c');
+const setup=`
+window.fixtureCard=${jsJSON(fixture)};window.initialCard=structuredClone(fixtureCard);window.remoteManifest=${jsJSON(fixtureManifest)};window.remoteSources=${jsJSON(fixtureSources)};
+window.errors=[];window.calls=[];window.saves=0;window.reloads=0;window.failure=null;window.delayNext=null;window.frozenCalls=[];
+addEventListener('error',e=>errors.push(e.message));addEventListener('unhandledrejection',e=>errors.push(String(e.reason)));
+const listeners=new Map();window.events={on:(e,f)=>{if(!listeners.has(e))listeners.set(e,new Set());listeners.get(e).add(f);},removeListener:(e,f)=>listeners.get(e)?.delete(f)};
+window.emit=(e,...args)=>{for(const f of [...(listeners.get(e)||[])])f(...args);};
+window.context={characterId:0,groupId:null,chatId:'a',characters:[fixtureCard],getCurrentChatId:()=>context.chatId,getRequestHeaders:()=>({'Content-Type':'application/json','X-CSRF-Token':'fixture-local'}),eventSource:events,event_types:{CHAT_CHANGED:'chat',GENERATION_STARTED:'start',GENERATION_ENDED:'end',GENERATION_STOPPED:'stop'}};
+window.SillyTavern={getContext:()=>context};window.__fixtureReload=()=>{reloads++;};
+window.TavernHelper={getButtonEvent:()=> 'update-button',eventOn:(name,fn)=>{events.on(name,fn);return{stop:()=>events.removeListener(name,fn)};}};
+window.fetch=async(url,options={})=>{
+ calls.push({url,method:options.method,body:options.body});
+ if(url.startsWith('https://raw.githubusercontent.com/')){
+  if(options.headers?.Authorization)throw Error('public download must not send authorization');
+  if(options.credentials!=='omit'||options.redirect!=='error')throw Error('credential boundary');
+  const u=new URL(url),parts=u.pathname.split('/'),ref=parts[3],file=decodeURIComponent(parts.slice(4).join('/'));
+  if(parts[1]!=='Faust114514'||parts[2]!=='dnd-card-components-public')throw Error('wrong public repository');
+  if(file==='latest.json'){if(ref!=='main')throw Error('wrong manifest ref');if(failure==='manifest'){failure=null;return new Response('not found',{status:404});}return new Response(JSON.stringify(remoteManifest));}
+  if(ref!==remoteManifest.version)throw Error('unversioned source request');
+  if(delayNext){const pending=delayNext;delayNext=null;await pending;}
+  if(failure==='download'){failure=null;return new Response('failure',{status:500});}
+  return new Response(remoteSources[file]);
+ }
+ const payload=JSON.parse(options.body);
+ if(JSON.stringify(payload).includes('test-session-read-only'))throw Error('credential leaked into local save');
+ if(url==='/api/characters/get'){if(payload.avatar_url!=='fixture.png')throw Error('wrong avatar');return new Response(JSON.stringify(fixtureCard));}
+ if(url==='/api/characters/merge-attributes'){
+  if(failure==='save'){failure=null;return new Response('failure',{status:500});}
+  if(Object.keys(payload).join(',')!=='avatar,data'||Object.keys(payload.data).join(',')!=='extensions')throw Error('wide update');
+  fixtureCard={...fixtureCard,data:{...fixtureCard.data,extensions:{...fixtureCard.data.extensions,...payload.data.extensions}}};context.characters[0]=fixtureCard;saves++;return new Response('OK');
+ }
+ throw Error('unexpected request '+url);
+};`;
+const test=`
+addEventListener('DOMContentLoaded',async()=>{
+ const checks=[],tick=()=>new Promise(r=>setTimeout(r,20)),q=s=>document.querySelector(s);
+ const assert=(v,label)=>{if(!v)throw Error(label);checks.push(label);};
+ const wait=async(f,label)=>{for(let i=0;i<300;i++){if(f())return;await tick();}throw Error(label+' / '+q('.dpu-status')?.textContent);};
+ async function check(){q('.dpu-check').click();await wait(()=>!q('.dpu-check').disabled,'check complete');}
+ async function install(){q('.dpu-install').click();await wait(()=>!q('.dpu-check').disabled,'install complete');}
+ try{
+  await wait(()=>window.__dndPrivateUpdates,'mounted');assert(calls.length===0&&saves===0,'mount performs no download or mutation');
+  emit('update-button');assert(q('#dnd-private-update').open,'helper button opens dialog');
+  assert(!q('.dpu-token')&&!q('.dpu-disconnect'),'public update UI has no token or connection controls');
+  failure='manifest';await check();assert(q('.dpu-install').disabled&&q('.dpu-status').textContent.includes('404'),'manifest download failure prevents installation');
+  await check();assert(!q('.dpu-install').disabled,'anonymous version check enables installation');
+  const initial=JSON.stringify(fixtureCard);failure='download';await install();assert(saves===0&&JSON.stringify(fixtureCard)===initial,'failed component download makes no local write');
+  let release;delayNext=new Promise(r=>release=r);q('.dpu-install').click();await tick();context.chatId='b';emit('chat');release();await wait(()=>!q('.dpu-check').disabled,'cancel switched chat');assert(saves===0,'chat switch during download cancels before save');context.chatId='a';emit('chat');
+  emit('start','normal',{},false);assert(q('.dpu-install').disabled&&q('.dpu-check').disabled,'generation disables update actions');emit('end');
+  failure='save';await install();assert(saves===0&&JSON.stringify(fixtureCard)===initial&&reloads===0,'save failure does not claim success or reload');
+  await check();await install();assert(saves===1&&reloads===1,'all sources saved in one native merge then verified before reload');
+  assert(fixtureCard.data.extensions.dnd_component_updates.version===remoteManifest.version&&fixtureCard.data.character_version===initialCard.data.character_version,'component version updated without pretending whole card upgraded');
+  assert(fixtureCard.data.extensions.tavern_helper.scripts.filter(s=>s.id==='480d6777-f90d-4eba-a811-64cb2f1ffb00').length===1,'one orb present after UI install');
+  assert(fixtureCard.data.extensions.world===initialCard.data.extensions.world&&JSON.stringify(fixtureCard.data.character_book)===JSON.stringify(initialCard.data.character_book)&&fixtureCard.data.first_mes===initialCard.data.first_mes,'worldbook binding, content and opening preserved');
+  assert(fixtureCard.data.extensions.regex_scripts[0].substituteRegex===7&&fixtureCard.data.extensions.regex_scripts[0].disabled,'raw regex settings preserved by actual UI operation');
+  assert(!JSON.stringify(fixtureCard).includes('test-session-read-only')&&!localStorage.length&&!sessionStorage.length,'no credential or browser storage written');
+  assert(errors.length===0,'no browser errors');
+  assert(calls.filter(c=>c.url.startsWith('https://')).every(c=>c.method==='GET'&&!c.body),'remote server receives only GET requests without card data');
+  document.getElementById('fixture-result').textContent=JSON.stringify({passed:true,checks});
+ }catch(e){document.getElementById('fixture-result').textContent=JSON.stringify({passed:false,error:e.stack,checks,errors});}
+});`;
+const runtime=source.replace('host.location.reload();','host.__fixtureReload();');assert.notEqual(runtime,source);
+const html=`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Public updater isolated check</title><style>body{background:#111a18}</style><pre id="fixture-result" hidden>pending</pre><script>${setup.replaceAll('</script','<\/script')}${test}</script><iframe src="/helper" hidden></iframe>`;
+const helper=`<!doctype html><script>window.TavernHelper=parent.TavernHelper;${runtime.replaceAll('</script','<\/script')}</script>`;
+(async()=>{
+ const server=http.createServer((req,res)=>{res.setHeader('Content-Type','text/html; charset=utf-8');res.end(req.url==='/helper'?helper:html);});await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ try{
+  const profile=fs.mkdtempSync(path.join(os.tmpdir(),'dnd-private-update-'));
+  const {stdout}=await promisify(execFile)('C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',['--headless=new','--disable-gpu','--no-first-run','--disable-extensions','--user-data-dir='+profile,'--dump-dom','--window-size=1000,900','--virtual-time-budget=15000','http://127.0.0.1:'+server.address().port],{windowsHide:true,timeout:60000,maxBuffer:5e6});
+  const match=stdout.match(/<pre id="fixture-result" hidden="">([\s\S]*?)<\/pre>/);if(!match)throw Error('Browser result missing');
+  const browser=JSON.parse(match[1].replaceAll('&quot;','"').replaceAll('&gt;','>').replaceAll('&lt;','<').replaceAll('&amp;','&'));if(!browser.passed)throw Error(JSON.stringify(browser));
+  console.log(JSON.stringify({passed:true,core:checks,browser:browser.checks,untested:['Real Tavern persistence and actual page reload/script startup']},null,2));
+ }finally{server.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});

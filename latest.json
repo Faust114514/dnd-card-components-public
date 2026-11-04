@@ -1,0 +1,177 @@
+{
+  "format": 1,
+  "version": "vf.0.3.3",
+  "minimum_card_version": "vf.0.3.0",
+  "notes": [
+    "改为公开下载，无需登录GitHub或填写令牌。",
+    "支持 vf.0.2.21 与 vf.0.3.x；保留当前世界书、人物、聊天和组件配置。",
+    "首次从私库切换需导入公开版更新器；以后可直接检查并安装。"
+  ],
+  "components": [
+    {
+      "kind": "script",
+      "id": "998cb3fe-cd53-44dd-a118-1437232659b6",
+      "name": "升级按钮",
+      "path": "src/scripts/升级按钮.js"
+    },
+    {
+      "kind": "script",
+      "id": "fa7510ec-d99f-4d86-9ad5-18c6d625887b",
+      "name": "MUV",
+      "path": "src/scripts/MUV.js"
+    },
+    {
+      "kind": "script",
+      "id": "785d4054-38d8-4f15-9edc-9954cbedea78",
+      "name": "变量结构",
+      "path": "src/scripts/变量结构.js"
+    },
+    {
+      "kind": "script",
+      "id": "e2a5bb3c-baa2-47dd-a306-494339a4b5fb",
+      "name": "创建角色按钮",
+      "path": "src/scripts/创建角色按钮.js"
+    },
+    {
+      "kind": "script",
+      "id": "fbf175a5-3276-443f-9765-f16e3e843ada",
+      "name": "战斗副脑",
+      "path": "src/scripts/战斗副脑.js"
+    },
+    {
+      "kind": "script",
+      "id": "28c1bd41-a967-4869-99d1-e8d935f62b3a",
+      "name": "法术资料补全",
+      "path": "src/scripts/法术资料补全.js"
+    },
+    {
+      "kind": "script",
+      "id": "c3c9ad44-9e9b-4c6e-ae93-f2b098a20125",
+      "name": "DM人设选择",
+      "path": "src/scripts/DM人设选择.js"
+    },
+    {
+      "kind": "script",
+      "id": "87d2112d-e610-48c7-bae1-57f3c743be81",
+      "name": "变量维护",
+      "path": "src/scripts/变量维护.js"
+    },
+    {
+      "kind": "script",
+      "id": "a39757e2-61fd-4aa0-8fd2-9ca4c264955a",
+      "name": "状态栏渲染恢复",
+      "path": "src/scripts/状态栏渲染恢复.js"
+    },
+    {
+      "kind": "script",
+      "id": "480d6777-f90d-4eba-a811-64cb2f1ffb00",
+      "name": "叙事悬浮开关",
+      "path": "src/scripts/叙事悬浮开关.js"
+    },
+    {
+      "kind": "script",
+      "id": "736c0e4e-67b4-4113-a021-b3890714ba28",
+      "name": "私有组件更新",
+      "path": "src/scripts/私有组件更新.js"
+    },
+    {
+      "kind": "regex",
+      "id": "01c632e5-1071-4a08-aebd-6a0e5424ea99",
+      "name": "DND生图独立显示",
+      "path": "src/regexes/DND生图独立显示.html"
+    },
+    {
+      "kind": "regex",
+      "id": "07f940a4-9b91-450f-99d9-0eecfb0b6175",
+      "name": "开场·命运之门",
+      "path": "src/regexes/开场·命运之门.html"
+    },
+    {
+      "kind": "regex",
+      "id": "d4e1e18e-63e6-4a94-b63b-a140798d0b3b",
+      "name": "[美化]完整变量更新",
+      "path": "src/regexes/[美化]完整变量更新.txt"
+    },
+    {
+      "kind": "regex",
+      "id": "afa5df56-5392-4e15-b8a6-157791fe56a7",
+      "name": "[美化]变量更新中",
+      "path": "src/regexes/[美化]变量更新中.txt"
+    },
+    {
+      "kind": "regex",
+      "id": "4b31a3fe-d7df-4f51-ac2d-5e4efda6fbe5",
+      "name": "[不发送]去除变量更新",
+      "path": "src/regexes/[不发送]去除变量更新.txt"
+    },
+    {
+      "kind": "regex",
+      "id": "869d4177-a5a3-47b5-9b53-26ecd557d6f3",
+      "name": "骰子不发送",
+      "path": "src/regexes/骰子不发送.txt"
+    },
+    {
+      "kind": "regex",
+      "id": "36bab6c1-2a4d-44de-b9a7-256c8a68c50d",
+      "name": "dnnd-battle-panel",
+      "path": "src/regexes/dnnd-battle-panel.html"
+    },
+    {
+      "kind": "regex",
+      "id": "c150cf94-b876-499f-a9e3-80ccc0e96ff0",
+      "name": "隐藏旧骰子",
+      "path": "src/regexes/隐藏旧骰子.txt"
+    },
+    {
+      "kind": "regex",
+      "id": "958c00c8-f1e0-4470-b81c-09de4601f71f",
+      "name": "状态栏",
+      "path": "src/regexes/状态栏.html"
+    },
+    {
+      "kind": "regex",
+      "id": "0d8967e6-d2e8-4afb-9770-d22e332c301c",
+      "name": "dnd-levelup-panel",
+      "path": "src/regexes/dnd-levelup-panel.html"
+    },
+    {
+      "kind": "regex",
+      "id": "918ecc02-7af0-4700-89c5-cbf05735c7e9",
+      "name": "隐藏",
+      "path": "src/regexes/隐藏.txt"
+    },
+    {
+      "kind": "regex",
+      "id": "dice-structured-1774751424197",
+      "name": "骰子（预制菜）",
+      "path": "src/regexes/骰子（预制菜）.txt"
+    },
+    {
+      "kind": "regex",
+      "id": "battle-check-1774752962048",
+      "name": "战斗检定（预制菜）",
+      "path": "src/regexes/战斗检定（预制菜）.txt"
+    },
+    {
+      "kind": "regex",
+      "id": "d7a9c17d-960e-4a56-9e17-0c77e86c71a8",
+      "name": "角色生成美化 (性能)",
+      "path": "src/regexes/角色生成美化 (性能).html"
+    },
+    {
+      "kind": "regex",
+      "id": "1c6924c3-1308-430b-b62c-e2ce7e0d1814",
+      "name": "角色生成隐藏@晚鸢尾",
+      "path": "src/regexes/角色生成隐藏@晚鸢尾.txt"
+    },
+    {
+      "kind": "regex",
+      "id": "b179c655-147d-4572-a6ea-1c0326363009",
+      "name": "创建页面",
+      "path": "src/regexes/创建页面.html"
+    }
+  ],
+  "legacy_card_versions": [
+    "vf.0.2.21"
+  ]
+}

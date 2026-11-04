@@ -1,0 +1,603 @@
+{
+  "version": "vf.0.3.3",
+  "scripts": [
+    {
+      "type": "script",
+      "enabled": true,
+      "name": "升级按钮",
+      "id": "998cb3fe-cd53-44dd-a118-1437232659b6",
+      "info": "外层升级按钮，发送 /send levelup|/trigger，含去重锁",
+      "button": {
+        "enabled": true,
+        "buttons": [
+          {
+            "name": "升级",
+            "visible": true
+          }
+        ]
+      },
+      "data": {},
+      "export_with": {
+        "data": true,
+        "button": true
+      },
+      "source": "src/scripts/升级按钮.js"
+    },
+    {
+      "type": "script",
+      "enabled": true,
+      "name": "MUV",
+      "id": "fa7510ec-d99f-4d86-9ad5-18c6d625887b",
+      "info": "",
+      "button": {
+        "enabled": true,
+        "buttons": [
+          {
+            "name": "重新处理变量",
+            "visible": true
+          },
+          {
+            "name": "重新读取初始变量",
+            "visible": true
+          },
+          {
+            "name": "快照楼层",
+            "visible": false
+          },
+          {
+            "name": "重演楼层",
+            "visible": false
+          },
+          {
+            "name": "重试额外模型解析",
+            "visible": false
+          },
+          {
+            "name": "清除旧楼层变量",
+            "visible": false
+          },
+          {
+            "name": "增量校正额外模型解析",
+            "visible": false
+          }
+        ]
+      },
+      "data": {},
+      "export_with": {
+        "data": true,
+        "button": true
+      },
+      "source": "src/scripts/MUV.js"
+    },
+    {
+      "type": "script",
+      "enabled": true,
+      "name": "变量结构",
+      "id": "785d4054-38d8-4f15-9edc-9954cbedea78",
+      "info": "修复",
+      "button": {
+        "enabled": true,
+        "buttons": []
+      },
+      "data": {},
+      "export_with": {
+        "data": true,
+        "button": true
+      },
+      "source": "src/scripts/变量结构.js"
+    },
+    {
+      "type": "script",
+      "enabled": true,
+      "name": "创建角色按钮",
+      "id": "e2a5bb3c-baa2-47dd-a306-494339a4b5fb",
+      "info": "打开当前角色的创建面板；不会仅因打开而发送消息或修改变量。",
+      "button": {
+        "enabled": true,
+        "buttons": [
+          {
+            "name": "创建角色",
+            "visible": true
+          }
+        ]
+      },
+      "data": {},
+      "export_with": {
+        "data": true,
+        "button": true
+      },
+      "source": "src/scripts/创建角色按钮.js"
+    },
+    {
+      "type": "script",
+      "enabled": true,
+      "name": "战斗副脑",
+      "id": "fbf175a5-3276-443f-9765-f16e3e843ada",
+      "info": "v0.3：普通聊天自动辅助战斗，无需单独输入。宽松/严查，原生正文接续。按钮仅用于设置和排错，密钥不持久化。",
+      "button": {
+        "enabled": true,
+        "buttons": [
+          {
+            "name": "战斗副脑",
+            "visible": true
+          }
+        ]
+      },
+      "data": {},
+      "export_with": {
+        "data": false,
+        "button": true
+      },
+      "source": "src/scripts/战斗副脑.js"
+    },
+    {
+      "type": "script",
+      "enabled": true,
+      "name": "法术资料补全",
+      "id": "28c1bd41-a967-4869-99d1-e8d935f62b3a",
+      "info": "按卡内法术库补全成分与学派，不覆盖已有值。加载时补全当前聊天，也可手动点击按钮。",
+      "button": {
+        "enabled": true,
+        "buttons": [
+          {
+            "name": "补全法术资料",
+            "visible": false
+          }
+        ]
+      },
+      "data": {},
+      "export_with": {
+        "data": true,
+        "button": true
+      },
+      "source": "src/scripts/法术资料补全.js"
+    },
+    {
+      "type": "script",
+      "enabled": true,
+      "name": "DM人设选择",
+      "id": "c3c9ad44-9e9b-4c6e-ae93-f2b098a20125",
+      "info": "选择DM后同步首楼正文，直接切换 当前角色绑定世界书 的五个人设条目；不创建或绑定聊天世界书。",
+      "button": {
+        "enabled": false,
+        "buttons": []
+      },
+      "data": {
+        "models": [
+          {
+            "id": "lily",
+            "name": "莉音",
+            "title": "知性 · 专业 · 温柔",
+            "summary": "红茶与规则书。礼貌亲切的主持人，公正写实地陪伴你的冒险。",
+            "quote": "请用茶，这是刚刚泡好的大吉岭。",
+            "greeting": []
+          },
+          {
+            "id": "brat",
+            "name": "雌小鬼 DM · 莉莉丝",
+            "title": "恶魔 · 毒舌 · 公平裁决",
+            "summary": "淡紫长发、恶魔角与心形细尾。嘴上轻蔑挑衅，桌上遵守骰子与规则。",
+            "quote": "噗……库库库。",
+            "greeting": [
+              "头顶暖黄色的吊灯微微晃动，在泛着冷光的黑胡桃木跑团长桌上投下一片浓稠的暗影。空气里弥漫着羊皮纸特有的干燥气味与铅笔碎屑的清香。坐在主持席高背皮椅上的少女微微前倾上身，蕾丝紧身胸衣勒出饱满挺拔的优美弧线，纤细的双臂随意撑在桌面边缘，黑曜石般蜷曲的小巧恶魔角在灯火下泛着莹润的光泽。那条细长灵活、末端生着暗紫色心形肉刺的细尾，正伴随着某种轻快的节拍，在半空中恶质地左右晃动着。",
+              "“噗……库库库。”带着黑色半透明蕾丝手套的纤细手掌轻轻掩在唇边，少女鲜红若玛瑙的眸子弯成两弯戏谑的新月，喉咙里溢出一串毫无掩饰的嗤笑声。她微微歪着脑袋，将散落在雪白锁骨上的淡紫色发丝甩到脑后，以一种审视残次品的居高临下姿态，慢悠悠地打量着端坐在对面的青年。",
+              "“真的假的啊？推开这扇门走进来的时候，我还以为会来什么像模像样的史诗英雄呢。结果居然就只是你这种眼神呆滞、看起来连哥布林的棒槌都扛不住一下的凡人杂鱼？”莉莉丝将身子压得更低，胸口深陷的白皙沟壑毫无防备地撞入视野，带着某种恶作剧得逞的促狭笑意。她抬起右腿优雅地叠在左腿膝盖上，紧绷的薄透黑丝在灯光下反射出细腻诱人的哑光，鞋尖漫不经心地隔空轻点着，“喂，听得懂通用语吗，呆头呆脑的冒险者先生？可别怪本小姐没有提前警告你，今晚你要踏入的，可是货真价实的《龙与地下城》世界哦。”",
+              "摆在长桌正中央的四折地下城主屏风宛如不可逾越的叹息之墙，外侧绘制着咆哮的红龙与身披重甲的圣武士，内侧却被各种复杂的法术位列表、豁免难度查见表以及密密麻麻的手绘地下城平面图塞得满满当当。莉莉丝伸出被蕾丝包裹的指尖，从天鹅绒托盘中挑出一枚通体晶莹、如同紫水晶雕琢而成的二十面骰子。骰子在她柔嫩的指间灵活翻飞，最后伴随着啪嗒一声脆响，被她稳稳压在桌面中央。",
+              "“看清楚了吗，这枚叫做D20的小玩具，就是今晚决定你究竟是成为传唱百世的勇者，还是变成阴暗地牢里一滩散发恶臭烂泥的唯一真理。”少女单肘支在软垫上，托着粉雕玉琢的下巴，猩红的眸子闪烁着审判者般的恶意流光，“在这里，可没有自动存档和复活币那种软弱的温床。每一次挥剑砍向兽人的咽喉，每一次在狭窄的石缝中拆卸毒针陷阱，甚至是试图在酒馆里用花言巧语哄骗老板娘少收你两枚铜币，全都得乖乖通过本小姐定下的难度检定。”",
+              "她背后的暗红蝠翼随着激昂的情绪微微张开些许，尾尖的心形肉刺更是近乎挑逗地轻扫过桌面上的木质挡板。“要是骰出了自然数值的一点，也就是所谓的大失败，呜哇，那场面光是想想就让人忍不住笑出声呢。你可能会一脚踩空滑倒在自己的呕吐物里，或者把手里的长剑直接甩飞插进同伴的屁股上。到那个时候，本小姐绝对会用最华丽、最详细、最不留情面的辞藻，把你的蠢样一字一句大声朗读出来哦，杂鱼先生准备好当众社会性死亡了吗？”",
+              "面对这连珠炮般的恶意挑衅，坐在客席对面的青年只是平静地扶正了桌前的空白羊皮纸，随手拧开铅笔的金属笔帽，甚至连眉毛都没有跳动一下。这种近乎钝感的沉着显然稍微出乎了这位自傲城主的意料。莉莉丝微微蹙起精致修长的浅紫色秀眉，樱粉色的嘴唇有些不满地抿成一条窄线，连带着身后晃动的小尾巴也啪的一声拍在真皮椅背上。",
+              "“啧，居然在这里装出一副胸有成竹的大人模样，真是让人火大……”她收起下巴，嫌弃似地咂了咂舌头，随即伸出戴着黑蕾丝手套的食指，在坚硬的木质桌面上重重扣击了三下，“少在本小姐面前摆架子了！光说不练的笨蛋我见得多了，既然敢坐进这个房间，那就先拿出你身为凡人唯一的尊严证明吧。你的角色卡呢？别告诉我你到现在连属性点都没有分配明白，甚至还需要本小姐手把手教你计算护甲等级和先攻加值吧？”",
+              "少女伸出纤细白嫩的手指，一根接一根地掰算着，语气里满是先入为主的轻慢与嘲弄：“让我猜猜看，你这种毫无幽默感的家伙，八成会选个只会挥舞铁片、智力调整值只有零或者负一的肌肉脑战士吧？还是说，打算打肿脸充胖子，选个生命骰只有可怜的D6、被狂风吹一下都可能暴毙的脆皮法师？如果你胆敢选个成天对着蜥蜴人和骷髅抛媚眼的低俗吟游诗人，本小姐可是会毫不犹豫在开局就降下一道正义的神罚天雷，直接把你轰成焦炭的哦！”",
+              "虽然嘴上说着蛮不讲理的恶毒话语，但莉莉丝那双清亮的大眼睛里却丝毫没有真正想要掀翻桌子的暴虐。相反，她极为熟练且爱惜地将一本厚重如砖石的《玩家手册》竖立在桌角，翻开的边沿甚至贴满了不同颜色分类的半透明索引贴纸。她昂起下巴，骄傲地扬起纤巧的鼻尖：“不过你大可放心，虽然本小姐极度渴望看到你跪在地上抱头痛哭的蠢相，但身为至高无上的城主，我可不屑于使用暗骰改点那种下三滥的作弊手段。无论是哥布林生锈匕首的穿刺伤害，还是成年红龙遮天蔽日的烈焰吐息，所有投掷都会在众目睽睽之下滚入这个纯铜铸造的骰塔里。”",
+              "“唯有在完全平等的规则锁链之下，看着你们这些自以为是的冒险者拼尽全力挣扎，最后却因为自己愚蠢的选择或者命中注定的厄运倒在血泊中，那种无可奈何的绝望表情才是至高无上的美味佳肴。”莉莉丝的舌尖轻轻舔过唇瓣，眼神中闪过一丝炽热的兴奋。铜制骰塔在暖光下反射着幽暗的金色微芒，内部复杂的导流隔板正静静等待着第一枚二十面骰子的坠落与撞击。",
+              "她忽地将上半身猛然前倾，柔软的身躯几乎要越过长桌中线。一股混杂着黑浆果甜香与干燥墨水气味的奇特芬芳扑鼻而来，微凉的蕾丝手套边缘轻轻抵在青年的笔记本上方。少女微微垂下眼帘，涂着晶亮唇彩的嘴唇咧开一个张扬而挑衅的弧度，修长的手指像是在索要战利品般轻轻勾了勾。“好了好了，无意义的心理建设时间到此为止。赶紧老老实实把你的角色卡递上来吧，不知死活的杂鱼先生。究竟是圣光使徒、荒野猎手，还是躲在阴影里偷鸡摸狗的盗贼？”",
+              "“要是胆敢在关键属性和技能熟练项上弄虚作假，或者写出一份漏洞百出、毫无灵魂的复制粘贴背景故事，本小姐手里的红色批注笔可是会毫不留情地把你的角色卡涂得一塌糊涂哦。”莉莉丝将双臂环抱在丰满的胸前，将那原本就惊人的弧度挤压得更为诱人。她身后的心形细尾在半空中欢快地盘成了一个小小的螺旋，眼眸中的戏谑神采几乎要溢出眼角，等待着眼前这位沉默旅人亮出属于他的第一道底牌，“来吧，让我看看你费尽心机准备的底细，到底配不配死在本小姐精心准备的第一张地下城地图里？”"
+            ]
+          },
+          {
+            "id": "mercer",
+            "name": "老派 DM · 马修风",
+            "title": "戏剧 · 群像 · 沉浸",
+            "summary": "以马修·默瑟式戏剧化带团为灵感的虚构主持人，重视NPC、抉择与故事回响。",
+            "quote": "灯光暗下，骰子就位。那么，你想怎么做？",
+            "greeting": [
+              "木质屏风后，主持人合上写满批注的笔记。桌上摆着旧地图、黄铜沙漏和一排涂装过的微缩模型。",
+              "“今晚，世界会记住你们的选择。这里没有唯一正确的路线，但每条路都有人、信念与代价。”他的声音沉稳，转述酒馆老板时又自然换成粗哑的嗓音。",
+              "他将空白地图摊开：“告诉我你的角色在乎什么，害怕失去什么。剩下的，让我们在骰子落下之后一起发现。”"
+            ]
+          },
+          {
+            "id": "inhuman",
+            "name": "白兔 DM · 诺登",
+            "title": "温柔陪伴 · 严谨裁决",
+            "summary": "H结局后的温馨后日谈。格林与诺登回到现实，在藏书室里一起玩D&D；除非格林明确要求调整，否则严谨执行规则与难度。",
+            "quote": "格林，茶已经泡好了。今晚的故事，我们从这里开始。",
+            "greeting": [
+              "藏书室的灯已经亮了。高高的木书架旁，诺登将两杯热茶放到桌上，挪开摊着的童话书，为地图和骰盘腾出地方。她的白色长发垂在浅色披肩上，听见动静时，兔耳轻轻一动。",
+              "与奈亚的战斗已经结束。诺登赢了，也活着回到了现实。如今她与格林共用这间藏书室，书桌上多了一本贴着索引的D&D规则书。窗外雨声细密，今夜有足够的时间慢慢玩。",
+              "“格林，坐这里。”诺登把铅笔放在角色卡旁，红色的眼睛里带着笑意。“想先读一会儿书，还是开始冒险？”",
+              "她翻开夹着书签的规则书，轻轻点了点骰盘。“桌上的规则，我会认真遵守。成功、失败，还有该付出的代价，都照实处理。格林若想调整难度，可以直接告诉我；没有特别约定，我们就按原来的规则继续。”",
+              "“遇到不明白的地方，叫我就好，格林。我们随时可以停下来，把事情说清楚。”她在对面的椅子上坐下，将地图铺平，留着角色卡的位置，等待格林的选择。"
+            ]
+          },
+          {
+            "id": "custom",
+            "name": "自定义 DM",
+            "title": "由你定义主持人",
+            "summary": "自行填写姓名、性格、口吻与主持偏好。只替换主持人，不改角色档案。",
+            "quote": "主持人的声音，由你定义。",
+            "greeting": [
+              "你可以在第一页填写自己的主持人设定：称呼、性格、外形、说话方式，以及希望带团时重视的事情。",
+              "保存后，只会将你填写的这一位主持人交给正文。角色数据、冒险进度与战斗副脑设置保持不变。"
+            ]
+          }
+        ]
+      },
+      "export_with": {
+        "data": true,
+        "button": true
+      },
+      "source": "src/scripts/DM人设选择.js"
+    },
+    {
+      "type": "script",
+      "enabled": true,
+      "name": "变量维护",
+      "id": "87d2112d-e610-48c7-bae1-57f3c743be81",
+      "info": "兼容思考中的标签示例；不保存变量备份，仅保留有效界面偏好和 MVU 必需字段。",
+      "button": {
+        "enabled": false,
+        "buttons": []
+      },
+      "data": {},
+      "export_with": {
+        "data": true,
+        "button": true
+      },
+      "source": "src/scripts/变量维护.js"
+    },
+    {
+      "type": "script",
+      "enabled": true,
+      "name": "状态栏渲染恢复",
+      "id": "a39757e2-61fd-4aa0-8fd2-9ca4c264955a",
+      "info": "vf.0.2.15：仅对最新消息中未挂载的 DND 状态栏代码框请求重绘，不改正文或变量。基于本机酒馆助手 4.12.0 的 TH_REQUEST_RENDER_MESSAGE；真实 TauriTavern 验收待完成。",
+      "button": {
+        "enabled": false,
+        "buttons": []
+      },
+      "data": {},
+      "export_with": {
+        "data": true,
+        "button": true
+      },
+      "source": "src/scripts/状态栏渲染恢复.js"
+    },
+    {
+      "type": "script",
+      "enabled": true,
+      "name": "叙事悬浮开关",
+      "id": "480d6777-f90d-4eba-a811-64cb2f1ffb00",
+      "info": "卡内悬浮骰子：模组、战斗检查、DNJ、开团流程。仅联动当前【明月秋青】预设，不保存或创建命名预设。开关作用于共用世界书；开团模式按聊天保存。",
+      "button": {
+        "enabled": false,
+        "buttons": []
+      },
+      "data": {},
+      "export_with": {
+        "data": true,
+        "button": true
+      },
+      "source": "src/scripts/叙事悬浮开关.js"
+    },
+    {
+      "type": "script",
+      "enabled": true,
+      "name": "私有组件更新",
+      "id": "736c0e4e-67b4-4113-a021-b3890714ba28",
+      "info": "公开下载组件，无需登录或令牌。旧按钮名保留；只更新指定组件源码，保留世界书、人物和聊天。点击安装，保存核对后刷新页面。",
+      "button": {
+        "enabled": true,
+        "buttons": [
+          {
+            "name": "私有更新",
+            "visible": true
+          }
+        ]
+      },
+      "data": {},
+      "export_with": {
+        "data": true,
+        "button": true
+      },
+      "source": "src/scripts/私有组件更新.js"
+    }
+  ],
+  "regexes": [
+    {
+      "id": "01c632e5-1071-4a08-aebd-6a0e5424ea99",
+      "scriptName": "DND生图独立显示",
+      "findRegex": "/<image>\\s*(?:<imgthink>[\\s\\S]*?<\\/imgthink>\\s*)?image###([\\s\\S]*?)###\\s*<\\/image>/gi",
+      "trimStrings": [],
+      "placement": [
+        2
+      ],
+      "disabled": true,
+      "markdownOnly": true,
+      "promptOnly": false,
+      "runOnEdit": true,
+      "substituteRegex": 0,
+      "minDepth": null,
+      "maxDepth": 4,
+      "source": "src/regexes/DND生图独立显示.html"
+    },
+    {
+      "id": "07f940a4-9b91-450f-99d9-0eecfb0b6175",
+      "scriptName": "开场·命运之门",
+      "findRegex": "/<dnd-prologue>[\\s\\S]*?<\\/dnd-prologue>/g",
+      "trimStrings": [],
+      "placement": [
+        2
+      ],
+      "disabled": false,
+      "markdownOnly": true,
+      "promptOnly": false,
+      "runOnEdit": true,
+      "substituteRegex": 0,
+      "minDepth": null,
+      "maxDepth": null,
+      "source": "src/regexes/开场·命运之门.html"
+    },
+    {
+      "disabled": false,
+      "findRegex": "/<(update(?:_?variable)?)>\\s*((?:(?!<\\1>).)*)\\s*<\\/\\1>/gsi",
+      "id": "d4e1e18e-63e6-4a94-b63b-a140798d0b3b",
+      "markdownOnly": true,
+      "maxDepth": null,
+      "minDepth": null,
+      "placement": [
+        1,
+        2
+      ],
+      "promptOnly": false,
+      "runOnEdit": false,
+      "scriptName": "[美化]完整变量更新",
+      "substituteRegex": 0,
+      "trimStrings": [],
+      "source": "src/regexes/[美化]完整变量更新.txt"
+    },
+    {
+      "disabled": false,
+      "findRegex": "/<(update(?:_?variable)?)>(?!.*<\\/\\1>)\\s*((?:(?!<\\1>).)*)\\s*$/gsi",
+      "id": "afa5df56-5392-4e15-b8a6-157791fe56a7",
+      "markdownOnly": true,
+      "maxDepth": null,
+      "minDepth": null,
+      "placement": [
+        1,
+        2
+      ],
+      "promptOnly": false,
+      "runOnEdit": false,
+      "scriptName": "[美化]变量更新中",
+      "substituteRegex": 0,
+      "trimStrings": [],
+      "source": "src/regexes/[美化]变量更新中.txt"
+    },
+    {
+      "disabled": false,
+      "findRegex": "/<(update(?:_?variable)?)>(?:(?!.*<\\/\\1>)(?:(?!<\\1>).)*$|(?:(?!<\\1>).)*<\\/\\1?>)/gsi",
+      "id": "4b31a3fe-d7df-4f51-ac2d-5e4efda6fbe5",
+      "markdownOnly": false,
+      "maxDepth": null,
+      "minDepth": null,
+      "placement": [
+        1,
+        2
+      ],
+      "promptOnly": true,
+      "runOnEdit": false,
+      "scriptName": "[不发送]去除变量更新",
+      "substituteRegex": 0,
+      "trimStrings": [],
+      "source": "src/regexes/[不发送]去除变量更新.txt"
+    },
+    {
+      "disabled": false,
+      "findRegex": "/<dice>([\\s\\S]*?)<\\/dice>/g",
+      "id": "869d4177-a5a3-47b5-9b53-26ecd557d6f3",
+      "markdownOnly": false,
+      "maxDepth": null,
+      "minDepth": null,
+      "placement": [
+        1,
+        2
+      ],
+      "promptOnly": true,
+      "runOnEdit": true,
+      "scriptName": "骰子不发送",
+      "substituteRegex": 0,
+      "trimStrings": [],
+      "source": "src/regexes/骰子不发送.txt"
+    },
+    {
+      "disabled": false,
+      "findRegex": "/(<battle>[\\s\\S]*?<\\/battle>)/g",
+      "id": "36bab6c1-2a4d-44de-b9a7-256c8a68c50d",
+      "markdownOnly": true,
+      "maxDepth": 3,
+      "minDepth": null,
+      "placement": [
+        1,
+        2
+      ],
+      "promptOnly": false,
+      "runOnEdit": true,
+      "scriptName": "dnnd-battle-panel",
+      "substituteRegex": 0,
+      "trimStrings": [],
+      "source": "src/regexes/dnnd-battle-panel.html"
+    },
+    {
+      "disabled": false,
+      "findRegex": "/<dices>([\\s\\S]*?)<\\/dices>/g",
+      "id": "c150cf94-b876-499f-a9e3-80ccc0e96ff0",
+      "markdownOnly": true,
+      "maxDepth": null,
+      "minDepth": null,
+      "placement": [
+        1,
+        2
+      ],
+      "promptOnly": false,
+      "runOnEdit": true,
+      "scriptName": "隐藏旧骰子",
+      "substituteRegex": 0,
+      "trimStrings": [],
+      "source": "src/regexes/隐藏旧骰子.txt"
+    },
+    {
+      "disabled": false,
+      "findRegex": "<StatusPlaceHolderImpl/>",
+      "id": "958c00c8-f1e0-4470-b81c-09de4601f71f",
+      "markdownOnly": true,
+      "maxDepth": 0,
+      "minDepth": null,
+      "placement": [
+        1,
+        2
+      ],
+      "promptOnly": false,
+      "runOnEdit": true,
+      "scriptName": "状态栏",
+      "substituteRegex": 0,
+      "trimStrings": [],
+      "source": "src/regexes/状态栏.html"
+    },
+    {
+      "disabled": false,
+      "findRegex": "levelup",
+      "id": "0d8967e6-d2e8-4afb-9770-d22e332c301c",
+      "markdownOnly": true,
+      "maxDepth": 1,
+      "minDepth": 0,
+      "placement": [
+        1,
+        2
+      ],
+      "promptOnly": true,
+      "runOnEdit": true,
+      "scriptName": "dnd-levelup-panel",
+      "substituteRegex": 0,
+      "trimStrings": [],
+      "source": "src/regexes/dnd-levelup-panel.html"
+    },
+    {
+      "disabled": false,
+      "findRegex": "levelup",
+      "id": "918ecc02-7af0-4700-89c5-cbf05735c7e9",
+      "markdownOnly": true,
+      "maxDepth": null,
+      "minDepth": null,
+      "placement": [
+        1,
+        2
+      ],
+      "promptOnly": true,
+      "runOnEdit": true,
+      "scriptName": "隐藏",
+      "substituteRegex": 0,
+      "trimStrings": [],
+      "source": "src/regexes/隐藏.txt"
+    },
+    {
+      "disabled": false,
+      "findRegex": "/<dice>\\s*发动技能\\s*[:：]\\s*(.*?)\\s*目标\\s*[:：]\\s*(.*?)\\s*情境\\s*[:：]\\s*(.*?)\\s*检定细节\\s*[:：]\\s*(.*?)\\s*判定结果\\s*[:：]\\s*(?:(大成功(?:（Critical Success）|\\(Critical Success\\)|[（(]Nat ?20[）)])?)|(大失败(?:（Critical Failure）|\\(Critical Failure\\)|[（(]Nat ?1[）)])?)|(成功(?:（Success）|\\(Success\\))?)|(失败(?:（Failure）|\\(Failure\\))?)|([^\\n]+))\\s*结果描述\\s*[:：]\\s*([\\s\\S]*?)\\s*<\\/dice>/gs",
+      "id": "dice-structured-1774751424197",
+      "markdownOnly": true,
+      "maxDepth": null,
+      "minDepth": null,
+      "placement": [
+        1,
+        2
+      ],
+      "promptOnly": false,
+      "runOnEdit": true,
+      "scriptName": "骰子（预制菜）",
+      "substituteRegex": 0,
+      "trimStrings": [],
+      "source": "src/regexes/骰子（预制菜）.txt"
+    },
+    {
+      "disabled": false,
+      "findRegex": "/<battlecheck>\\s*发动者\\s*[:：]\\s*(.*?)\\s*目标\\s*[:：]\\s*(.*?)\\s*行动\\s*[:：]\\s*(.*?)\\s*检定类型\\s*[:：]\\s*(.*?)\\s*检定细节\\s*[:：]\\s*(.*?)\\s*判定结果\\s*[:：]\\s*(?:(大成功(?:（Critical Success）|\\(Critical Success\\)|[（(]Nat ?20[）)])?)|(大失败(?:（Critical Failure）|\\(Critical Failure\\)|[（(]Nat ?1[）)])?)|((?:成功(?:（Success）|\\(Success\\))?|命中(?:（Hit）|\\(Hit\\))?|豁免成功))|((?:失败(?:（Failure）|\\(Failure\\))?|未命中(?:（Miss）|\\(Miss\\))?|豁免失败))|([^\\n]+))\\s*战果描述\\s*[:：]\\s*([\\s\\S]*?)\\s*<\\/battlecheck>/gs",
+      "id": "battle-check-1774752962048",
+      "markdownOnly": true,
+      "maxDepth": null,
+      "minDepth": null,
+      "placement": [
+        1,
+        2
+      ],
+      "promptOnly": false,
+      "runOnEdit": true,
+      "scriptName": "战斗检定（预制菜）",
+      "substituteRegex": 0,
+      "trimStrings": [],
+      "source": "src/regexes/战斗检定（预制菜）.txt"
+    },
+    {
+      "disabled": false,
+      "findRegex": "<char_info>((?:(?!<\\/?char_info>)[\\s\\S])*)<\\/char_info>",
+      "id": "d7a9c17d-960e-4a56-9e17-0c77e86c71a8",
+      "markdownOnly": true,
+      "maxDepth": 3,
+      "minDepth": null,
+      "placement": [
+        2
+      ],
+      "promptOnly": false,
+      "runOnEdit": true,
+      "scriptName": "角色生成美化 (性能)",
+      "substituteRegex": 0,
+      "trimStrings": [],
+      "source": "src/regexes/角色生成美化 (性能).html"
+    },
+    {
+      "disabled": false,
+      "findRegex": "<char_info>((?:(?!<\\/?char_info>)[\\s\\S])*)<\\/char_info>",
+      "id": "1c6924c3-1308-430b-b62c-e2ce7e0d1814",
+      "markdownOnly": true,
+      "maxDepth": null,
+      "minDepth": 5,
+      "placement": [
+        1,
+        2
+      ],
+      "promptOnly": true,
+      "runOnEdit": true,
+      "scriptName": "角色生成隐藏@晚鸢尾",
+      "substituteRegex": 0,
+      "trimStrings": [],
+      "source": "src/regexes/角色生成隐藏@晚鸢尾.txt"
+    },
+    {
+      "disabled": false,
+      "findRegex": "/\\[Start\\]/g",
+      "id": "b179c655-147d-4572-a6ea-1c0326363009",
+      "markdownOnly": true,
+      "maxDepth": 1,
+      "minDepth": null,
+      "placement": [
+        1,
+        2
+      ],
+      "promptOnly": true,
+      "runOnEdit": true,
+      "scriptName": "创建页面",
+      "substituteRegex": 0,
+      "trimStrings": [],
+      "source": "src/regexes/创建页面.html"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+# Keep only component sources, metadata and maintenance tools in this repository.
+/*
+!/.gitignore
+!/README.md
+!/latest.json
+!/components.json
+!/src/
+!/tools/
+!/tests/
+**/__pycache__/
+**/*.pyc
+**/node_modules/
+**/.env*
+**/*.png
+**/*.jpg
+**/*.webp
+**/*.zip
+**/*.charx
+**/DND*.json

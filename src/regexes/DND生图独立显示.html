@@ -1,0 +1,36 @@
+```html
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+html,body{margin:0;padding:0;background:transparent;overflow-x:hidden}
+#dnd-image-slot{min-height:40px;overflow-wrap:anywhere}
+img,video{max-width:100%;height:auto}
+</style>
+</head>
+<body>
+<textarea id="dnd-image-source" hidden>$1</textarea>
+<div id="dnd-image-slot"></div>
+<script>
+const source=document.getElementById('dnd-image-source');
+const prompt=source.value;
+const slot=document.getElementById('dnd-image-slot');
+source.remove();
+function mountImagePrompt(){
+  let mounted=false;
+  const mount=()=>{if(!mounted){mounted=true;slot.textContent='image'+'###'+prompt+'###';}};
+  if(typeof IntersectionObserver!=='function'){mount();return;}
+  const observer=new IntersectionObserver(entries=>{
+    if(entries.some(entry=>entry.isIntersecting)){mount();observer.disconnect();}
+  });
+  observer.observe(slot);
+  window.addEventListener('pagehide',()=>observer.disconnect(),{once:true});
+}
+if(document.readyState==='complete')setTimeout(mountImagePrompt,0);
+else window.addEventListener('load',()=>setTimeout(mountImagePrompt,0),{once:true});
+</script>
+</body>
+</html>
+```

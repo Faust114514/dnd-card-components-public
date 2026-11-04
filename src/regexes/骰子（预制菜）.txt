@@ -1,0 +1,25 @@
+<style>
+.check-panel{border:1px solid #c9a063;background:linear-gradient(135deg,#1a1a1a 0%,#2a2a2a 100%);padding:15px;margin:15px 0;font-family:'Cinzel','Noto Serif SC',serif;color:#e0e0e0;box-shadow:0 4px 15px rgba(0,0,0,0.5);border-radius:4px;}
+.check-header{border-bottom:1px solid #4a4a4a;padding-bottom:5px;margin-bottom:10px;font-size:.9em;color:#c9a063;display:flex;justify-content:space-between;gap:12px;}
+.check-body{font-size:.95em;line-height:1.5;}
+.roll-val{color:#4ec9b0;font-weight:bold;}
+.check-result-tag{display:inline-block;padding:2px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.14);margin:0;box-shadow:none;}
+.check-result-tag:empty{display:none !important;}
+.crit-success{color:#ffd700;text-shadow:0 0 5px #ffd700;background:rgba(255,215,0,.12);border-color:rgba(255,215,0,.35);}
+.success{color:#4cd137;background:rgba(76,209,55,.12);border-color:rgba(76,209,55,.24);}
+.failure{color:#ff9f43;background:rgba(255,159,67,.12);border-color:rgba(255,159,67,.24);}
+.crit-failure{color:#ff4444;text-shadow:0 0 5px rgba(255,68,68,.4);background:rgba(255,68,68,.12);border-color:rgba(255,68,68,.28);}
+.check-flavor{font-size:.85em;color:#aaa;margin-top:5px;}
+</style>
+<div class="check-panel">
+  <div class="check-header">
+    <span>🎲 判定：$1</span>
+    <span>目标：$2</span>
+  </div>
+  <div class="check-body">
+    <div><strong>情境：</strong> $3</div>
+    <div><strong>检定细节：</strong> <span class="roll-val">$4</span></div>
+    <div><strong>判定结果：</strong> <span class="check-result-tag crit-success">$5</span><span class="check-result-tag crit-failure">$6</span><span class="check-result-tag success">$7</span><span class="check-result-tag failure">$8</span><span class="check-result-tag">$9</span></div>
+    <div class="check-flavor">$10</div>
+  </div>
+</div>

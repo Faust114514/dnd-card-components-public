@@ -1,0 +1,2863 @@
+```html
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DND Panel</title>
+<style>
+html,
+body {
+height: 100%;
+}
+
+body {
+margin: 0;
+}
+
+.battle-embed {
+color-scheme: light;
+font-family: "Cinzel", "Palatino Linotype", "Garamond", "Georgia", serif;
+background: transparent;
+color: #efe6d6;
+padding: 0;
+margin: 0;
+display: inline-flex;
+align-items: flex-start;
+justify-content: flex-start;
+width: fit-content;
+height: fit-content;
+max-width: 100%;
+}
+
+.battle-embed,
+.battle-embed * {
+box-sizing: border-box;
+}
+
+.battle-embed * {
+margin: 0;
+padding: 0;
+}
+
+.battle-embed .battle-data {
+display: none;
+}
+
+.battle-embed .panel {
+--panel-bg: #17130f;
+--panel-edge: #5f4a36;
+--panel-glow: rgba(246, 209, 156, 0.2);
+--terrain-base: #2a231c;
+--terrain-rock: #3a2f26;
+--terrain-water: #1b2b31;
+--terrain-shadow: rgba(0, 0, 0, 0.55);
+--grid-line: rgba(255, 255, 255, 0.08);
+--accent: #d7a36b;
+--accent-strong: #f0c289;
+--token-glow: rgba(240, 194, 137, 0.65);
+width: auto;
+height: auto;
+min-width: 0;
+min-height: 0;
+background:
+radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.04), transparent 55%),
+var(--panel-bg);
+border: 1px solid var(--panel-edge);
+box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+border-radius: 18px;
+padding: 0;
+position: relative;
+overflow: hidden;
+display: flex;
+flex-direction: column;
+}
+
+
+.battle-embed .panel__head {
+display: flex;
+align-items: center;
+justify-content: flex-start;
+gap: 12px;
+margin-bottom: 0;
+position: absolute;
+top: 12px;
+left: 12px;
+z-index: 6;
+}
+
+.battle-embed .settings {
+position: relative;
+display: inline-flex;
+align-items: center;
+justify-content: flex-end;
+z-index: 6;
+}
+
+.battle-embed .settings__toggle {
+border-radius: 999px;
+border: 1px solid rgba(255, 255, 255, 0.2);
+background: rgba(0, 0, 0, 0.45);
+color: rgba(239, 230, 214, 0.85);
+padding: 6px 10px;
+display: inline-flex;
+align-items: center;
+gap: 6px;
+cursor: pointer;
+transition: 0.2s ease;
+font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+font-size: 12px;
+}
+
+.battle-embed .settings__toggle:hover {
+background: rgba(255, 255, 255, 0.1);
+}
+
+.battle-embed .settings__toggle svg {
+width: 16px;
+height: 16px;
+fill: currentColor;
+}
+
+.battle-embed .settings__menu {
+position: absolute;
+top: calc(100% + 8px);
+left: 0;
+min-width: 240px;
+padding: 12px;
+border-radius: 14px;
+border: 1px solid rgba(255, 255, 255, 0.18);
+background: rgba(16, 12, 9, 0.92);
+box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+opacity: 0;
+pointer-events: none;
+transform: translateY(-6px);
+transition: 0.2s ease;
+max-height: calc(100vh - 24px);
+overflow-y: auto;
+}
+
+.battle-embed .settings--open .settings__menu {
+opacity: 1;
+pointer-events: auto;
+transform: translateY(0);
+}
+
+.battle-embed .controls {
+display: flex;
+align-items: stretch;
+justify-content: flex-start;
+gap: 10px;
+flex-direction: column;
+font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+}
+
+.battle-embed .theme-switch {
+display: flex;
+gap: 8px;
+flex-wrap: wrap;
+justify-content: flex-start;
+}
+
+.battle-embed .theme-switch button {
+border: 1px solid rgba(255, 255, 255, 0.15);
+background: rgba(0, 0, 0, 0.4);
+color: rgba(239, 230, 214, 0.7);
+padding: 6px 10px;
+border-radius: 999px;
+font-size: 12px;
+cursor: pointer;
+transition: 0.2s ease;
+}
+
+.battle-embed .theme-switch button.active {
+color: #1b140a;
+background: var(--accent-strong);
+border-color: transparent;
+box-shadow: 0 0 12px rgba(240, 194, 137, 0.5);
+}
+
+.battle-embed .zoom {
+display: flex;
+align-items: center;
+gap: 8px;
+font-size: 12px;
+color: rgba(239, 230, 214, 0.7);
+}
+
+.battle-embed .zoom__hint {
+color: rgba(239, 230, 214, 0.5);
+font-size: 11px;
+letter-spacing: 0.3px;
+}
+
+.battle-embed .map-size-controls {
+display: flex;
+align-items: center;
+gap: 6px;
+font-size: 12px;
+color: rgba(239, 230, 214, 0.7);
+flex-wrap: wrap;
+}
+
+.battle-embed .map-size-controls input {
+width: 64px;
+padding: 4px 6px;
+border-radius: 8px;
+border: 1px solid rgba(255, 255, 255, 0.2);
+background: rgba(0, 0, 0, 0.35);
+color: #f2e6d0;
+font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+}
+
+.battle-embed .token-base-controls {
+display: flex;
+flex-direction: column;
+gap: 6px;
+font-size: 12px;
+color: rgba(239, 230, 214, 0.7);
+}
+
+.battle-embed .token-base-controls label {
+display: flex;
+align-items: center;
+justify-content: space-between;
+gap: 8px;
+}
+
+.battle-embed .token-base-controls__row {
+display: flex;
+align-items: center;
+gap: 6px;
+}
+
+.battle-embed .token-base-controls input {
+flex: 1 1 auto;
+min-width: 180px;
+padding: 6px 8px;
+border-radius: 8px;
+border: 1px solid rgba(255, 255, 255, 0.2);
+background: rgba(0, 0, 0, 0.35);
+color: #f2e6d0;
+font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+}
+
+.battle-embed .token-base-controls small {
+color: rgba(239, 230, 214, 0.46);
+line-height: 1.45;
+}
+
+.battle-embed .token-library {
+display: flex;
+flex-direction: column;
+gap: 8px;
+padding: 10px;
+border-radius: 12px;
+border: 1px solid rgba(255, 255, 255, 0.1);
+background: rgba(255, 255, 255, 0.04);
+}
+
+.battle-embed .token-library__head {
+display: flex;
+align-items: center;
+justify-content: space-between;
+gap: 8px;
+font-size: 12px;
+color: rgba(239, 230, 214, 0.82);
+}
+
+.battle-embed .token-library__head strong {
+font-size: 12px;
+letter-spacing: 0.2px;
+}
+
+.battle-embed .token-library__actions {
+display: inline-flex;
+align-items: center;
+gap: 6px;
+}
+
+.battle-embed .token-library__actions a {
+color: var(--accent-strong);
+text-decoration: none;
+}
+
+.battle-embed .token-library__status {
+font-size: 11px;
+line-height: 1.5;
+color: rgba(239, 230, 214, 0.55);
+}
+
+.battle-embed .token-library__status[data-state="error"] {
+color: #f2b1a1;
+}
+
+.battle-embed .token-library__status[data-state="ready"] {
+color: #d7e6c2;
+}
+
+.battle-embed .token-library__search {
+width: 100%;
+padding: 6px 8px;
+border-radius: 8px;
+border: 1px solid rgba(255, 255, 255, 0.16);
+background: rgba(0, 0, 0, 0.3);
+color: #f2e6d0;
+font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+}
+
+.battle-embed .token-library__results {
+display: grid;
+grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+gap: 8px;
+}
+
+.battle-embed .token-library__empty {
+font-size: 11px;
+line-height: 1.5;
+color: rgba(239, 230, 214, 0.55);
+}
+
+.battle-embed .token-library__card {
+display: flex;
+flex-direction: column;
+gap: 6px;
+padding: 8px;
+border-radius: 10px;
+border: 1px solid rgba(255, 255, 255, 0.08);
+background: rgba(0, 0, 0, 0.26);
+min-width: 0;
+}
+
+.battle-embed .token-library__thumb {
+width: 100%;
+aspect-ratio: 1;
+border-radius: 8px;
+overflow: hidden;
+background:
+radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.12), transparent 50%),
+rgba(255, 255, 255, 0.04);
+border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.battle-embed .token-library__thumb img {
+width: 100%;
+height: 100%;
+display: block;
+object-fit: cover;
+}
+
+.battle-embed .token-library__name {
+font-size: 11px;
+line-height: 1.35;
+word-break: break-word;
+color: rgba(239, 230, 214, 0.84);
+}
+
+.battle-embed .token-library__copy {
+width: 100%;
+justify-content: center;
+}
+
+.battle-embed .stat-strip {
+position: absolute;
+top: 12px;
+left: 12px;
+right: 12px;
+display: flex;
+justify-content: center;
+gap: 8px;
+padding: 8px 10px;
+border-radius: 14px;
+border: none;
+background: transparent;
+box-shadow: none;
+backdrop-filter: none;
+overflow-x: auto;
+overflow-y: hidden;
+z-index: 4;
+cursor: grab;
+touch-action: pan-x;
+-webkit-overflow-scrolling: touch;
+scrollbar-width: none;
+-ms-overflow-style: none;
+}
+
+.battle-embed .stat-strip.is-fixed {
+position: fixed;
+top: 12px;
+left: 50%;
+right: auto;
+transform: translateX(-50%);
+width: max-content;
+max-width: calc(100vw - 24px);
+z-index: 8;
+}
+
+.battle-embed .stat-strip.is-scrollable {
+justify-content: flex-start;
+}
+
+.battle-embed .stat-strip.is-dragging {
+cursor: grabbing;
+user-select: none;
+}
+
+.battle-embed .stat-strip::-webkit-scrollbar {
+display: none;
+}
+
+.battle-embed .stat-card {
+width: 56px;
+height: 86px;
+background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(0, 0, 0, 0.2));
+border: 1px solid rgba(255, 255, 255, 0.15);
+border-radius: 12px;
+display: flex;
+flex-direction: column;
+justify-content: space-between;
+align-items: center;
+padding: 8px 6px;
+box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4);
+flex: 0 0 auto;
+transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.battle-embed .stat-card.is-linked-hover {
+border-color: rgba(255, 232, 176, 0.78);
+box-shadow:
+0 0 0 1px rgba(255, 232, 176, 0.24),
+0 14px 30px rgba(0, 0, 0, 0.28),
+0 0 22px rgba(255, 214, 135, 0.3);
+transform: translateY(-2px);
+background:
+linear-gradient(145deg, rgba(255, 237, 186, 0.16), rgba(255, 214, 135, 0.06)),
+rgba(0, 0, 0, 0.42);
+}
+
+.battle-embed .stat-card.is-next {
+border-color: var(--accent-strong);
+box-shadow:
+0 0 14px rgba(240, 194, 137, 0.45),
+inset 0 0 0 1px rgba(240, 194, 137, 0.35);
+background: linear-gradient(180deg, rgba(240, 194, 137, 0.18), rgba(0, 0, 0, 0.3));
+}
+
+.battle-embed .stat-card span {
+font-size: 10px;
+letter-spacing: 1px;
+text-transform: uppercase;
+color: rgba(239, 230, 214, 0.6);
+}
+
+.battle-embed .stat-card strong {
+font-size: 16px;
+font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+}
+
+.battle-embed .stat-card .stat-name {
+font-size: 13px;
+text-transform: uppercase;
+letter-spacing: 1px;
+color: var(--accent-strong);
+}
+
+.battle-embed .panel__body {
+display: flex;
+flex-direction: column;
+gap: 0;
+flex: 1;
+}
+
+.battle-embed .map-section {
+display: flex;
+flex-direction: column;
+gap: 0;
+flex: 1;
+min-height: 0;
+}
+
+.battle-embed .map-stage {
+position: relative;
+flex: 0 0 auto;
+min-height: 0;
+display: flex;
+flex-direction: column;
+min-height: 0;
+}
+
+.battle-embed .map-toolbar {
+display: flex;
+justify-content: space-between;
+align-items: center;
+gap: 12px;
+font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+font-size: 12px;
+color: rgba(239, 230, 214, 0.7);
+position: absolute;
+right: 14px;
+bottom: 12px;
+padding: 6px 10px;
+border-radius: 999px;
+background: rgba(0, 0, 0, 0.45);
+border: 1px solid rgba(255, 255, 255, 0.12);
+pointer-events: none;
+z-index: 3;
+}
+
+.battle-embed .parse-status {
+position: absolute;
+left: 14px;
+bottom: 12px;
+display: inline-flex;
+align-items: center;
+gap: 7px;
+max-width: min(68%, 360px);
+padding: 6px 10px;
+border-radius: 999px;
+border: 1px solid rgba(255, 255, 255, 0.16);
+background: rgba(0, 0, 0, 0.45);
+font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+font-size: 12px;
+color: rgba(239, 230, 214, 0.88);
+overflow: hidden;
+text-overflow: ellipsis;
+white-space: nowrap;
+z-index: 3;
+}
+
+.battle-embed .parse-status__dot {
+width: 8px;
+height: 8px;
+border-radius: 50%;
+background: #96c76f;
+box-shadow: 0 0 8px rgba(150, 199, 111, 0.55);
+flex: 0 0 auto;
+}
+
+.battle-embed .parse-status--warn .parse-status__dot {
+background: #d8b86f;
+box-shadow: 0 0 8px rgba(216, 184, 111, 0.55);
+}
+
+.battle-embed .parse-status--error .parse-status__dot {
+background: #d07c6f;
+box-shadow: 0 0 8px rgba(208, 124, 111, 0.55);
+}
+
+.battle-embed .event-feed {
+position: absolute;
+right: 12px;
+top: 88px;
+width: min(220px, calc(100% - 24px));
+padding: 10px;
+border-radius: 12px;
+border: 1px solid rgba(255, 255, 255, 0.14);
+background: rgba(12, 9, 7, 0.72);
+backdrop-filter: blur(2px);
+z-index: 3;
+pointer-events: none;
+font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+}
+
+.battle-embed .event-feed.is-empty {
+display: none;
+}
+
+.battle-embed .event-feed__title {
+display: block;
+font-size: 11px;
+letter-spacing: 1px;
+text-transform: uppercase;
+color: rgba(239, 230, 214, 0.62);
+margin-bottom: 7px;
+}
+
+.battle-embed .event-feed__list {
+list-style: none;
+display: flex;
+flex-direction: column;
+gap: 4px;
+max-height: 130px;
+overflow: hidden;
+}
+
+.battle-embed .event-feed__list li {
+font-size: 12px;
+color: rgba(239, 230, 214, 0.9);
+line-height: 1.3;
+overflow: hidden;
+text-overflow: ellipsis;
+white-space: nowrap;
+}
+
+.battle-embed .map-viewport {
+border-radius: 20px;
+border: none;
+background: transparent;
+padding: 0;
+overflow: auto;
+min-height: 0;
+flex: 0 0 auto;
+contain: layout paint;
+touch-action: none;
+overscroll-behavior: contain;
+cursor: grab;
+user-select: none;
+scrollbar-width: none;
+-ms-overflow-style: none;
+}
+
+.battle-embed .map-viewport::-webkit-scrollbar {
+display: none;
+}
+
+.battle-embed .map-viewport.is-grabbing {
+cursor: grabbing;
+}
+
+.battle-embed .map {
+position: relative;
+background-color: var(--terrain-base);
+border-radius: 18px;
+overflow: hidden;
+contain: layout paint size;
+min-width: 100%;
+min-height: 100%;
+--min-x: 0;
+--min-y: 0;
+--scale: 6.8px;
+box-shadow:
+inset 0 0 40px var(--terrain-shadow),
+inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+background-image:
+linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
+linear-gradient(0deg, var(--grid-line) 1px, transparent 1px);
+background-size: var(--cell) var(--cell);
+background-position: center;
+}
+
+.battle-embed .terrain-layer,
+.battle-embed .token-layer,
+.battle-embed .axis-layer {
+position: absolute;
+inset: 0;
+}
+
+.battle-embed .terrain {
+position: absolute;
+border-radius: 12px;
+background: var(--terrain-rock);
+box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.6);
+opacity: 0.85;
+left: calc((var(--x) - var(--min-x)) * var(--scale));
+top: calc((var(--y) - var(--min-y)) * var(--scale));
+width: calc(var(--w) * var(--scale));
+height: calc(var(--h) * var(--scale));
+}
+
+.battle-embed .terrain.water {
+background: linear-gradient(135deg, rgba(44, 78, 93, 0.9), rgba(20, 40, 48, 0.9));
+}
+
+.battle-embed .terrain.chasm {
+background: linear-gradient(180deg, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.85));
+border: 1px dashed rgba(255, 255, 255, 0.2);
+}
+
+.battle-embed .terrain.ledge {
+background: linear-gradient(180deg, rgba(120, 97, 77, 0.6), rgba(70, 55, 42, 0.8));
+}
+
+.battle-embed .terrain.stalagmite {
+background: radial-gradient(circle at 50% 20%, rgba(120, 90, 70, 0.9), rgba(40, 30, 25, 0.9));
+border-radius: 50% 50% 30% 30%;
+}
+
+.battle-embed .token {
+position: absolute;
+width: calc(var(--cell) * 0.85);
+height: calc(var(--cell) * 0.85);
+border-radius: 50%;
+--portrait: none;
+background-image:
+var(--portrait),
+radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.35), rgba(0, 0, 0, 0.6));
+background-size: cover, cover;
+background-position: center, center;
+background-repeat: no-repeat;
+border: 2px solid rgba(255, 255, 255, 0.2);
+display: grid;
+place-items: center;
+transform: translate(-50%, -50%);
+color: #f6e7cf;
+font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+font-weight: 600;
+text-transform: uppercase;
+box-shadow: 0 6px 12px rgba(0, 0, 0, 0.45);
+overflow: visible;
+left: calc((var(--x) - var(--min-x)) * var(--scale) + (var(--cell) / 2));
+top: calc((var(--y) - var(--min-y)) * var(--scale) + (var(--cell) / 2));
+transition:
+transform 0.18s ease,
+box-shadow 0.18s ease,
+border-color 0.18s ease,
+filter 0.18s ease;
+}
+
+.battle-embed .token.has-portrait::after {
+content: "";
+position: absolute;
+inset: 0;
+border-radius: 50%;
+background: radial-gradient(circle at 30% 25%, rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.55));
+pointer-events: none;
+}
+
+.battle-embed .token.has-portrait > div {
+position: relative;
+z-index: 1;
+text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85);
+}
+
+.battle-embed .token__stack {
+position: relative;
+z-index: 1;
+display: flex;
+flex-direction: column;
+align-items: center;
+line-height: 1;
+text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
+}
+
+.battle-embed .token__id {
+font-size: 11px;
+letter-spacing: 0.5px;
+}
+
+.battle-embed .token__status-text {
+position: absolute;
+left: 50%;
+bottom: calc(var(--cell) * -0.24);
+transform: translateX(-50%);
+max-width: calc(var(--cell) * 1.7);
+padding: 1px 6px;
+border-radius: 999px;
+border: 1px solid rgba(255, 255, 255, 0.22);
+background: rgba(0, 0, 0, 0.7);
+color: rgba(246, 231, 207, 0.95);
+font-size: 10px;
+line-height: 1.25;
+letter-spacing: 0;
+text-transform: none;
+white-space: nowrap;
+overflow: hidden;
+text-overflow: ellipsis;
+pointer-events: none;
+}
+
+.battle-embed .token small {
+font-size: 10px;
+letter-spacing: 1px;
+}
+
+.battle-embed .token.friendly {
+border-color: rgba(132, 204, 154, 0.8);
+}
+
+.battle-embed .token.hostile {
+border-color: rgba(213, 120, 108, 0.8);
+}
+
+.battle-embed .token.neutral {
+border-color: rgba(176, 185, 196, 0.8);
+}
+
+.battle-embed .token.is-next {
+border-color: var(--accent-strong);
+box-shadow:
+0 0 10px var(--token-glow),
+0 0 24px var(--token-glow),
+0 6px 12px rgba(0, 0, 0, 0.45);
+}
+
+.battle-embed .token.is-bloodied {
+border-color: rgba(224, 141, 99, 0.95);
+}
+
+.battle-embed .token.is-critical {
+border-color: rgba(220, 88, 88, 0.98);
+box-shadow:
+0 0 8px rgba(220, 88, 88, 0.5),
+0 6px 12px rgba(0, 0, 0, 0.45);
+}
+
+.battle-embed .token.is-linked-hover {
+z-index: 4;
+border-color: rgba(255, 232, 176, 0.95);
+box-shadow:
+0 0 0 2px rgba(255, 232, 176, 0.28),
+0 0 18px rgba(255, 214, 135, 0.55),
+0 12px 26px rgba(0, 0, 0, 0.4);
+filter: saturate(1.1) brightness(1.06);
+transform: translate(-50%, -50%) scale(1.08);
+}
+
+.battle-embed .axis-label {
+position: absolute;
+font-size: 10px;
+color: rgba(239, 230, 214, 0.5);
+font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+letter-spacing: 0.5px;
+}
+
+.battle-embed .axis-label.x {
+left: calc((var(--x) - var(--min-x)) * var(--scale) + 4px);
+top: 6px;
+}
+
+.battle-embed .axis-label.y {
+left: 6px;
+top: calc((var(--y) - var(--min-y)) * var(--scale) + 4px);
+}
+
+.battle-embed .btn {
+padding: 6px 12px;
+border-radius: 999px;
+border: 1px solid rgba(255, 255, 255, 0.15);
+background: rgba(0, 0, 0, 0.4);
+color: rgba(239, 230, 214, 0.8);
+cursor: pointer;
+font-size: 12px;
+transition: 0.2s ease;
+}
+
+.battle-embed .btn:hover {
+background: rgba(255, 255, 255, 0.12);
+}
+
+.battle-embed.is-mobile {
+display: block;
+width: 100%;
+max-width: 100%;
+}
+
+.battle-embed.is-mobile .panel {
+border-radius: 14px;
+}
+
+.battle-embed.is-mobile .panel__head {
+top: 8px;
+left: 8px;
+right: 8px;
+justify-content: flex-end;
+}
+
+.battle-embed.is-mobile .settings {
+margin-left: auto;
+}
+
+.battle-embed.is-mobile .settings__toggle {
+min-height: 40px;
+padding: 8px 12px;
+font-size: 13px;
+}
+
+.battle-embed.is-mobile .settings__menu {
+position: fixed;
+top: 56px;
+left: auto;
+right: 12px;
+min-width: min(280px, calc(100vw - 24px));
+max-width: calc(100vw - 24px);
+max-height: min(72vh, 420px);
+}
+
+.battle-embed.is-mobile .stat-strip {
+top: 52px;
+left: 8px;
+right: 8px;
+padding: 6px 8px;
+gap: 6px;
+}
+
+.battle-embed.is-mobile .stat-strip.is-fixed {
+top: 8px;
+max-width: calc(100vw - 16px);
+}
+
+.battle-embed.is-mobile .stat-card {
+width: 52px;
+height: 80px;
+padding: 6px 4px;
+}
+
+.battle-embed.is-mobile .map-toolbar {
+right: 8px;
+bottom: 8px;
+padding: 4px 8px;
+font-size: 11px;
+}
+
+.battle-embed.is-mobile .parse-status {
+left: 8px;
+bottom: 8px;
+max-width: calc(100% - 16px);
+font-size: 11px;
+padding: 4px 8px;
+}
+
+.battle-embed.is-mobile .event-feed {
+top: 84px;
+right: 8px;
+width: min(210px, calc(100% - 16px));
+padding: 8px;
+}
+
+.battle-embed.is-mobile .map-viewport,
+.battle-embed.is-mobile .map {
+border-radius: 14px;
+}
+
+.battle-embed.is-mobile .map-size-controls input {
+width: 72px;
+min-height: 36px;
+font-size: 16px;
+}
+
+.battle-embed.is-mobile .btn {
+min-height: 36px;
+padding: 7px 12px;
+font-size: 13px;
+}
+
+.battle-embed.is-narrow .panel {
+border-radius: 12px;
+}
+
+.battle-embed.is-narrow .panel__head {
+top: 6px;
+left: 6px;
+right: 6px;
+}
+
+.battle-embed.is-narrow .settings__toggle {
+min-height: 42px;
+padding: 8px 14px;
+}
+
+.battle-embed.is-narrow .settings {
+position: static;
+}
+
+.battle-embed.is-narrow .settings::before {
+content: "";
+position: fixed;
+inset: 0;
+background: rgba(0, 0, 0, 0.42);
+opacity: 0;
+pointer-events: none;
+transition: opacity 0.2s ease;
+z-index: 5;
+}
+
+.battle-embed.is-narrow .settings--open::before {
+opacity: 1;
+pointer-events: auto;
+}
+
+.battle-embed.is-narrow .settings__menu {
+position: fixed;
+left: 0;
+right: 0;
+top: auto;
+bottom: 0;
+transform: translateY(calc(100% + 12px));
+border-radius: 16px 16px 0 0;
+min-width: 0;
+max-width: none;
+max-height: min(74vh, 460px);
+padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+border-left: none;
+border-right: none;
+border-bottom: none;
+z-index: 6;
+}
+
+.battle-embed.is-narrow .settings--open .settings__menu {
+transform: translateY(0);
+}
+
+.battle-embed.is-narrow .controls {
+gap: 12px;
+}
+
+.battle-embed.is-narrow .theme-switch button {
+flex: 1 1 calc(50% - 8px);
+min-width: 0;
+text-align: center;
+}
+
+.battle-embed.is-narrow .zoom {
+flex-wrap: wrap;
+gap: 6px;
+}
+
+.battle-embed.is-narrow .stat-strip {
+top: 48px;
+left: 6px;
+right: 6px;
+padding: 5px 6px;
+gap: 5px;
+}
+
+.battle-embed.is-narrow .stat-strip.is-fixed {
+max-width: calc(100vw - 12px);
+}
+
+.battle-embed.is-narrow .stat-card {
+width: 48px;
+height: 74px;
+border-radius: 10px;
+padding: 5px 4px;
+}
+
+.battle-embed.is-narrow .stat-card strong {
+font-size: 14px;
+}
+
+.battle-embed.is-narrow .stat-card .stat-name {
+font-size: 12px;
+}
+
+.battle-embed.is-narrow .map-toolbar {
+left: 6px;
+right: auto;
+bottom: 6px;
+max-width: calc(100% - 12px);
+font-size: 10px;
+padding: 4px 7px;
+}
+
+.battle-embed.is-narrow .parse-status {
+left: 6px;
+bottom: 6px;
+max-width: calc(100% - 12px);
+font-size: 10px;
+padding: 3px 6px;
+}
+
+.battle-embed.is-narrow .event-feed {
+top: 78px;
+right: 6px;
+width: min(180px, calc(100% - 12px));
+padding: 7px;
+}
+
+.battle-embed.is-narrow .event-feed__list li {
+font-size: 11px;
+}
+
+@media (pointer: coarse) {
+.battle-embed .settings__toggle,
+.battle-embed .btn,
+.battle-embed .theme-switch button {
+min-height: 38px;
+}
+
+.battle-embed .theme-switch button {
+padding: 8px 12px;
+}
+}
+</style>
+</head>
+<body>
+<div class="battle-embed" data-portrait-a="" data-token-base-url="https://maritime-llc-scores-adapted.trycloudflare.com/DNDtokens/">
+<template id="raw-data" data-role="rawData">$1</template>
+<div class="panel" data-role="panel">
+<div class="panel__head">
+<div class="settings" data-role="settings">
+<button class="settings__toggle" data-role="settingsToggle" type="button" aria-expanded="false" aria-label="Settings">
+<svg viewBox="0 0 24 24" aria-hidden="true">
+<path d="M12 8.7a3.3 3.3 0 1 0 0 6.6 3.3 3.3 0 0 0 0-6.6Zm9.2 2.8-1.7-.3a7.7 7.7 0 0 0-.8-1.9l1-1.4a.7.7 0 0 0-.1-.9l-1.6-1.6a.7.7 0 0 0-.9-.1l-1.4 1a7.7 7.7 0 0 0-1.9-.8l-.3-1.7A.7.7 0 0 0 11.8 2h-1.6a.7.7 0 0 0-.7.6l-.3 1.7a7.7 7.7 0 0 0-1.9.8l-1.4-1a.7.7 0 0 0-.9.1L3.4 6a.7.7 0 0 0-.1.9l1 1.4a7.7 7.7 0 0 0-.8 1.9l-1.7.3a.7.7 0 0 0-.6.7v1.6c0 .3.3.6.6.7l1.7.3c.2.7.5 1.3.8 1.9l-1 1.4a.7.7 0 0 0 .1.9l1.6 1.6c.2.2.6.3.9.1l1.4-1c.6.4 1.2.6 1.9.8l.3 1.7c0 .3.3.6.7.6h1.6c.3 0 .6-.3.7-.6l.3-1.7c.7-.2 1.3-.5 1.9-.8l1.4 1c.3.2.7.1.9-.1l1.6-1.6a.7.7 0 0 0 .1-.9l-1-1.4c.4-.6.6-1.2.8-1.9l1.7-.3c.3 0 .6-.3.6-.7v-1.6a.7.7 0 0 0-.6-.7Z"/>
+</svg>
+<span>Settings</span>
+</button>
+<div class="settings__menu" data-role="settingsMenu">
+<div class="controls">
+<div class="theme-switch" data-role="themeSwitch"></div>
+<div class="zoom">
+<span>Zoom</span>
+<span class="zoom__hint">Wheel / Pinch</span>
+<button class="btn" data-role="fit" type="button">Fit View</button>
+</div>
+<div class="map-size-controls">
+<label>Grid</label>
+<input data-role="mapCols" type="number" min="1" step="1" placeholder="Cols" aria-label="Cols" />
+<span>×</span>
+<input data-role="mapRows" type="number" min="1" step="1" placeholder="Rows" aria-label="Rows" />
+<button class="btn" data-role="applySize" type="button">Apply</button>
+<button class="btn" data-role="autoSize" type="button">Auto</button>
+</div>
+<div class="token-base-controls">
+<label for="battle-token-base">Token Base URL <span>在线资源根目录</span></label>
+<div class="token-base-controls__row">
+<input id="battle-token-base" data-role="tokenBaseUrl" type="text" placeholder="https://cdn.example.com/DNDtokens/" aria-label="Token Base URL" />
+<button class="btn" data-role="applyTokenBase" type="button">Save</button>
+</div>
+<small>推荐在 battle 数据里写 <code>portrait token:aboleth.webp</code>，面板会自动拼到这个根地址后面。</small>
+</div>
+<div class="token-library">
+<div class="token-library__head">
+<strong>Token Library</strong>
+<div class="token-library__actions">
+<button class="btn" data-role="tokenManifestReload" type="button">Reload</button>
+<a data-role="tokenLibraryOpen" href="https://maritime-llc-scores-adapted.trycloudflare.com/DNDtokens/" target="_blank" rel="noopener noreferrer">Open</a>
+</div>
+</div>
+<div class="token-library__status" data-role="tokenLibraryStatus" data-state="idle">保存 Token Base URL 后会尝试读取 manifest.json。</div>
+<input class="token-library__search" data-role="tokenLibrarySearch" type="text" placeholder="搜索 token 文件名，例如 goblin、dragon..." aria-label="Search token library" />
+<div class="token-library__results" data-role="tokenLibraryResults"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="panel__body">
+<section class="map-section">
+<div class="map-stage">
+<div class="stat-strip" data-role="statStrip"></div>
+<div class="event-feed is-empty" data-role="eventFeed">
+<strong class="event-feed__title">Recent Events</strong>
+<ul class="event-feed__list" data-role="eventList"></ul>
+</div>
+<div class="map-toolbar">
+<span data-role="mapSize"></span>
+</div>
+<div class="parse-status parse-status--ok" data-role="parseStatus" aria-live="polite">
+<span class="parse-status__dot" aria-hidden="true"></span>
+<span data-role="parseStatusText">Waiting for battle snapshot</span>
+</div>
+<div class="map-viewport" data-role="mapViewport">
+<div class="map" data-role="map" style="--cell: 34px;">
+<div class="terrain-layer" data-role="terrainLayer"></div>
+<div class="token-layer" data-role="tokenLayer"></div>
+<div class="axis-layer" data-role="axisLayer"></div>
+</div>
+</div>
+</div>
+</section>
+</div>
+</div>
+
+<script>
+(() => {
+const root = document.currentScript?.closest(".battle-embed") || document.querySelector(".battle-embed");
+if (!root) return;
+
+const rawData = root.querySelector('[data-role="rawData"]') || root.querySelector("#raw-data");
+const demoPortraitA = root.dataset?.portraitA || "";
+
+const themes = {
+cave: {
+label: "Cave",
+panelBg: "#17130f",
+panelEdge: "#5f4a36",
+panelGlow: "rgba(246, 209, 156, 0.2)",
+terrainBase: "#2a231c",
+terrainRock: "#3a2f26",
+terrainWater: "#1b2b31",
+terrainShadow: "rgba(0, 0, 0, 0.55)",
+gridLine: "rgba(255, 255, 255, 0.08)",
+accent: "#d7a36b",
+accentStrong: "#f0c289",
+tokenGlow: "rgba(240, 194, 137, 0.65)"
+},
+dungeon: {
+label: "Dungeon",
+panelBg: "#141619",
+panelEdge: "#4f5a66",
+panelGlow: "rgba(114, 156, 198, 0.18)",
+terrainBase: "#202327",
+terrainRock: "#303a44",
+terrainWater: "#1c2834",
+terrainShadow: "rgba(0, 0, 0, 0.5)",
+gridLine: "rgba(255, 255, 255, 0.1)",
+accent: "#85a9c6",
+accentStrong: "#b9d0e7",
+tokenGlow: "rgba(185, 208, 231, 0.55)"
+},
+forest: {
+label: "Forest",
+panelBg: "#132017",
+panelEdge: "#35543d",
+panelGlow: "rgba(166, 215, 165, 0.2)",
+terrainBase: "#1f2e22",
+terrainRock: "#2f3d2c",
+terrainWater: "#16302b",
+terrainShadow: "rgba(0, 0, 0, 0.45)",
+gridLine: "rgba(255, 255, 255, 0.08)",
+accent: "#9bc89b",
+accentStrong: "#cbe7c9",
+tokenGlow: "rgba(203, 231, 201, 0.55)"
+},
+desert: {
+label: "Desert",
+panelBg: "#2a1f14",
+panelEdge: "#8a6b40",
+panelGlow: "rgba(255, 217, 156, 0.2)",
+terrainBase: "#3a2a1b",
+terrainRock: "#5b432a",
+terrainWater: "#2b2c34",
+terrainShadow: "rgba(0, 0, 0, 0.4)",
+gridLine: "rgba(255, 255, 255, 0.08)",
+accent: "#e0b77e",
+accentStrong: "#f4d6a3",
+tokenGlow: "rgba(244, 214, 163, 0.6)"
+}
+};
+
+const statusMeta = {
+blinded: { color: "#8c7baf", label: "Blinded" },
+charmed: { color: "#c891c8", label: "Charmed" },
+deafened: { color: "#8aa0b8", label: "Deafened" },
+frightened: { color: "#d18c6f", label: "Frightened" },
+grappled: { color: "#d2a85c", label: "Grappled" },
+incapacitated: { color: "#b38c6c", label: "Incapacitated" },
+invisible: { color: "#7fb6d6", label: "Invisible" },
+paralyzed: { color: "#d08f82", label: "Paralyzed" },
+petrified: { color: "#8b8e93", label: "Petrified" },
+poisoned: { color: "#8ab86a", label: "Poisoned" },
+prone: { color: "#c3a687", label: "Prone" },
+restrained: { color: "#d0b070", label: "Restrained" },
+stunned: { color: "#e6b36a", label: "Stunned" },
+unconscious: { color: "#7f8a99", label: "Unconscious" }
+};
+
+const statusAliases = {
+blinded: "blinded",
+blind: "blinded",
+blindeded: "blinded",
+"\u76EE\u76F2": "blinded",
+charmed: "charmed",
+charm: "charmed",
+"\u9B45\u60D1": "charmed",
+deafened: "deafened",
+deaf: "deafened",
+"\u8033\u804B": "deafened",
+frightened: "frightened",
+frighten: "frightened",
+"\u6050\u614C": "frightened",
+"\u60CA\u614C": "frightened",
+grappled: "grappled",
+grapple: "grappled",
+"\u64D2\u62B1": "grappled",
+incapacitated: "incapacitated",
+incapacitate: "incapacitated",
+"\u5931\u80FD": "incapacitated",
+invisible: "invisible",
+invis: "invisible",
+"\u9690\u5F62": "invisible",
+paralyzed: "paralyzed",
+paralyse: "paralyzed",
+"\u9EBB\u75F9": "paralyzed",
+petrified: "petrified",
+petrify: "petrified",
+"\u77F3\u5316": "petrified",
+poisoned: "poisoned",
+poison: "poisoned",
+"\u4E2D\u6BD2": "poisoned",
+prone: "prone",
+down: "prone",
+"\u5012\u5730": "prone",
+restrained: "restrained",
+restrain: "restrained",
+"\u675F\u7F1A": "restrained",
+stunned: "stunned",
+stun: "stunned",
+"\u9707\u6151": "stunned",
+unconscious: "unconscious",
+unconscioused: "unconscious",
+"\u660F\u8FF7": "unconscious"
+};
+
+const state = {
+theme: "cave",
+gridFt: 5,
+baseCell: 34,
+zoom: 1,
+tokenBaseUrl: "",
+pan: { x: 0, y: 0 },
+mapDims: {
+cols: 25,
+rows: 17
+},
+paddingFt: 10,
+units: [
+{
+id: "A",
+faction: "friendly",
+attitude: 0,
+init: 16,
+hp: { cur: 32, max: 40 },
+pos: [10, 30],
+portrait: demoPortraitA,
+status: ["prone"]
+},
+{
+id: "B",
+faction: "friendly",
+attitude: 0,
+init: 14,
+hp: { cur: 22, max: 22 },
+pos: [20, 25],
+portrait: "",
+status: ["invisible"]
+},
+{
+id: "C",
+faction: "hostile",
+attitude: 2,
+init: 11,
+hp: { cur: 7, max: 7 },
+pos: [25, 20],
+portrait: "",
+status: ["frightened"]
+},
+{
+id: "D",
+faction: "hostile",
+attitude: 2,
+init: 9,
+hp: { cur: 18, max: 18 },
+pos: [15, 35],
+portrait: "",
+status: ["grappled"]
+}
+],
+terrain: [],
+events: []
+};
+
+const panel = root.querySelector('[data-role="panel"]');
+const settings = root.querySelector('[data-role="settings"]');
+const settingsToggle = root.querySelector('[data-role="settingsToggle"]');
+const settingsMenu = root.querySelector('[data-role="settingsMenu"]');
+const themeSwitch = root.querySelector('[data-role="themeSwitch"]');
+const fitBtn = root.querySelector('[data-role="fit"]');
+const mapColsInput = root.querySelector('[data-role="mapCols"]');
+const mapRowsInput = root.querySelector('[data-role="mapRows"]');
+const applySizeBtn = root.querySelector('[data-role="applySize"]');
+const autoSizeBtn = root.querySelector('[data-role="autoSize"]');
+const tokenBaseInput = root.querySelector('[data-role="tokenBaseUrl"]');
+const applyTokenBaseBtn = root.querySelector('[data-role="applyTokenBase"]');
+const tokenLibraryStatus = root.querySelector('[data-role="tokenLibraryStatus"]');
+const tokenLibrarySearchInput = root.querySelector('[data-role="tokenLibrarySearch"]');
+const tokenLibraryResults = root.querySelector('[data-role="tokenLibraryResults"]');
+const tokenManifestReloadBtn = root.querySelector('[data-role="tokenManifestReload"]');
+const tokenLibraryOpenLink = root.querySelector('[data-role="tokenLibraryOpen"]');
+const statStrip = root.querySelector('[data-role="statStrip"]');
+const mapViewport = root.querySelector('[data-role="mapViewport"]');
+const mapEl = root.querySelector('[data-role="map"]');
+const mapSize = root.querySelector('[data-role="mapSize"]');
+const parseStatus = root.querySelector('[data-role="parseStatus"]');
+const parseStatusText = root.querySelector('[data-role="parseStatusText"]');
+const eventFeed = root.querySelector('[data-role="eventFeed"]');
+const eventList = root.querySelector('[data-role="eventList"]');
+const terrainLayer = root.querySelector('[data-role="terrainLayer"]');
+const tokenLayer = root.querySelector('[data-role="tokenLayer"]');
+const axisLayer = root.querySelector('[data-role="axisLayer"]');
+
+if (!panel || !settings || !settingsToggle || !settingsMenu || !themeSwitch || !fitBtn ||
+!mapColsInput || !mapRowsInput || !applySizeBtn || !autoSizeBtn || !tokenBaseInput || !applyTokenBaseBtn ||
+!statStrip || !mapViewport ||
+!mapEl || !mapSize || !parseStatus || !parseStatusText || !eventFeed || !eventList ||
+!terrainLayer || !tokenLayer || !axisLayer) {
+return;
+}
+
+let layoutDirty = true;
+let lastTickFt = 10;
+let rafId = 0;
+let lastBoundsKey = "";
+let pendingFocusUnitId = "";
+let domSyncRafId = 0;
+let linkedHoverUnitId = "";
+let bootSyncRetryId = 0;
+const zoomMin = 0.2;
+const zoomMax = 8.0;
+const TOKEN_BASE_STORAGE_KEY = "dnnd-battle-token-base-url";
+const TOKEN_MANIFEST_FILE = "manifest.json";
+const desktopBaseCell = 34;
+const mobileBaseCell = 28;
+const narrowBaseCell = 24;
+let mobileMode = false;
+let narrowMode = false;
+const activePointers = new Map();
+let pinchStartDist = 0;
+let pinchStartZoom = state.zoom;
+const dragState = {
+active: false,
+pointerId: null,
+startX: 0,
+startY: 0,
+startPanX: 0,
+startPanY: 0
+};
+const statDragState = {
+active: false,
+pointerId: null,
+startX: 0,
+startScrollLeft: 0,
+moved: false
+};
+const ingestState = {
+lastSourceKey: "",
+lastGoodUnits: state.units.map((unit) => ({
+...unit,
+hp: { ...unit.hp },
+pos: Array.isArray(unit.pos) ? [...unit.pos] : [0, 0],
+status: Array.isArray(unit.status) ? [...unit.status] : []
+}))
+};
+const tokenManifestState = {
+baseUrl: "",
+items: [],
+query: "",
+loading: false,
+error: "",
+requestId: 0
+};
+
+function normalizeToGrid(value) {
+return Math.round(value / state.gridFt) * state.gridFt;
+}
+
+function floorToGrid(value) {
+return Math.floor(value / state.gridFt) * state.gridFt;
+}
+
+function ceilToGrid(value) {
+return Math.ceil(value / state.gridFt) * state.gridFt;
+}
+
+function getMedian(values) {
+if (!values.length) return 0;
+const sorted = [...values].sort((a, b) => a - b);
+const mid = Math.floor(sorted.length / 2);
+if (sorted.length % 2 === 1) return sorted[mid];
+return (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function getPercentile(sortedValues, percentile) {
+if (!sortedValues.length) return 0;
+if (sortedValues.length === 1) return sortedValues[0];
+const p = Math.min(1, Math.max(0, percentile));
+const index = (sortedValues.length - 1) * p;
+const low = Math.floor(index);
+const high = Math.ceil(index);
+if (low === high) return sortedValues[low];
+const weight = index - low;
+return sortedValues[low] * (1 - weight) + sortedValues[high] * weight;
+}
+
+function filterAxisOutliers(values) {
+if (!values.length) return [];
+if (values.length < 4) return [...values];
+const sorted = [...values].sort((a, b) => a - b);
+const q1 = getPercentile(sorted, 0.25);
+const q3 = getPercentile(sorted, 0.75);
+const iqr = Math.max(state.gridFt, q3 - q1);
+const lowerFence = q1 - (iqr * 1.5);
+const upperFence = q3 + (iqr * 1.5);
+const filtered = values.filter((value) => value >= lowerFence && value <= upperFence);
+// Avoid over-filtering in very small groups.
+if (!filtered.length || filtered.length < Math.ceil(values.length * 0.6)) {
+return [...values];
+}
+return filtered;
+}
+
+function pickAxisCenter(values) {
+if (!values.length) return 0;
+const coreValues = filterAxisOutliers(values);
+const min = Math.min(...coreValues);
+const max = Math.max(...coreValues);
+const median = normalizeToGrid(getMedian(coreValues));
+const midRange = normalizeToGrid((min + max) / 2);
+const hasPositive = max > state.gridFt;
+const hasNegative = min < -state.gridFt;
+
+// Mixed positive/negative coordinates near origin should stay visually centered on 0.
+if (hasPositive && hasNegative) {
+const originBand = state.gridFt * 2;
+if (Math.abs(midRange) <= originBand && Math.abs(median) <= originBand) {
+return 0;
+}
+}
+
+// Prefer geometric midpoint so all-positive LLM coordinates still center the battle.
+return midRange;
+}
+
+function computePreferredCenter() {
+const unitXs = [];
+const unitYs = [];
+state.units.forEach((unit) => {
+if (!Array.isArray(unit.pos) || unit.pos.length < 2) return;
+unitXs.push(unit.pos[0]);
+unitYs.push(unit.pos[1]);
+});
+return {
+x: pickAxisCenter(unitXs),
+y: pickAxisCenter(unitYs)
+};
+}
+
+function formatCoord(value) {
+if (Math.abs(value) < 0.001) return "0";
+const rounded = Math.round(value);
+if (Math.abs(value - rounded) < 0.001) return `${rounded}`;
+return value.toFixed(1);
+}
+
+function cloneUnits(units) {
+return units.map((unit) => ({
+...unit,
+hp: {
+cur: unit?.hp?.cur ?? 0,
+max: unit?.hp?.max ?? 0
+},
+pos: Array.isArray(unit.pos) ? [...unit.pos] : [0, 0],
+status: Array.isArray(unit.status) ? [...unit.status] : []
+}));
+}
+
+function readStoredTokenBaseUrl() {
+try {
+return window.localStorage.getItem(TOKEN_BASE_STORAGE_KEY) || "";
+} catch (error) {
+return "";
+}
+}
+
+function writeStoredTokenBaseUrl(value) {
+try {
+if (value) {
+window.localStorage.setItem(TOKEN_BASE_STORAGE_KEY, value);
+} else {
+window.localStorage.removeItem(TOKEN_BASE_STORAGE_KEY);
+}
+} catch (error) {
+// Ignore storage failures in embedded or private contexts.
+}
+}
+
+function normalizeTokenBaseUrl(value) {
+const trimmed = typeof value === "string" ? value.trim() : "";
+if (!trimmed) return "";
+if (/^(data:|blob:)/i.test(trimmed)) return "";
+if (/^https?:\/\//i.test(trimmed)) {
+return `${trimmed.replace(/\/+$/, "")}/`;
+}
+const normalized = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+return `${normalized.replace(/\/+$/, "")}/`;
+}
+
+function normalizeTokenAssetPath(assetPath) {
+return typeof assetPath === "string" ? assetPath.trim().replace(/^\/+/, "") : "";
+}
+
+function buildTokenAssetUrl(assetPath) {
+const cleanedPath = normalizeTokenAssetPath(assetPath);
+if (!cleanedPath) return "";
+const base = state.tokenBaseUrl || normalizeTokenBaseUrl(root.dataset?.tokenBaseUrl || "/DNDtokens/");
+if (!base) return "";
+return `${base}${cleanedPath}`;
+}
+
+function buildTokenManifestUrl(baseUrl) {
+const normalizedBase = normalizeTokenBaseUrl(baseUrl);
+if (!normalizedBase) return "";
+return `${normalizedBase}${TOKEN_MANIFEST_FILE}`;
+}
+
+function buildTokenLibraryUrl(baseUrl) {
+return normalizeTokenBaseUrl(baseUrl);
+}
+
+function buildTokenAlias(assetPath) {
+const cleanedPath = normalizeTokenAssetPath(assetPath);
+if (!cleanedPath) return "";
+return `token:${cleanedPath}`;
+}
+
+function humanizeTokenName(value) {
+const normalized = normalizeTokenAssetPath(value).replace(/\.[^.]+$/, "");
+if (!normalized) return "";
+return normalized
+.split("/")
+.pop()
+.replace(/[-_]+/g, " ")
+.replace(/\s+/g, " ")
+.trim();
+}
+
+function setTokenLibraryStatus(text, stateKey = "idle") {
+if (!tokenLibraryStatus) return;
+tokenLibraryStatus.textContent = text;
+tokenLibraryStatus.dataset.state = stateKey;
+}
+
+function updateTokenLibraryLink() {
+if (!tokenLibraryOpenLink) return;
+const href = buildTokenLibraryUrl(state.tokenBaseUrl || root.dataset?.tokenBaseUrl || "/DNDtokens/") || "/DNDtokens/";
+tokenLibraryOpenLink.href = href;
+}
+
+async function copyText(text) {
+if (!text) return false;
+try {
+if (navigator.clipboard?.writeText) {
+await navigator.clipboard.writeText(text);
+return true;
+}
+} catch (error) {
+// Fall back to execCommand below.
+}
+try {
+const input = document.createElement("textarea");
+input.value = text;
+input.setAttribute("readonly", "readonly");
+input.style.position = "fixed";
+input.style.opacity = "0";
+document.body.appendChild(input);
+input.focus();
+input.select();
+const copied = document.execCommand("copy");
+input.remove();
+return copied;
+} catch (error) {
+return false;
+}
+}
+
+function getFilteredTokenManifestItems() {
+const query = (tokenManifestState.query || "").trim().toLowerCase();
+if (!query) return tokenManifestState.items;
+return tokenManifestState.items.filter((item) => {
+const haystack = [
+item.file,
+item.name,
+item.label
+].join(" ").toLowerCase();
+return haystack.includes(query);
+});
+}
+
+function renderTokenLibrary() {
+if (!tokenLibraryResults) return;
+updateTokenLibraryLink();
+tokenLibraryResults.replaceChildren();
+if (tokenLibrarySearchInput) {
+tokenLibrarySearchInput.disabled = tokenManifestState.loading;
+}
+if (tokenManifestState.loading) {
+setTokenLibraryStatus("正在读取 manifest.json ...", "idle");
+const loading = document.createElement("div");
+loading.className = "token-library__empty";
+loading.textContent = "正在加载共享 token 目录。";
+tokenLibraryResults.appendChild(loading);
+return;
+}
+if (tokenManifestState.error) {
+setTokenLibraryStatus(tokenManifestState.error, "error");
+const errorText = document.createElement("div");
+errorText.className = "token-library__empty";
+errorText.textContent = "没读到 manifest.json，但仍然可以直接手写 token:文件名。";
+tokenLibraryResults.appendChild(errorText);
+return;
+}
+const filtered = getFilteredTokenManifestItems();
+const total = tokenManifestState.items.length;
+const visible = filtered.slice(0, 18);
+setTokenLibraryStatus(`已加载 ${total} 个 token，当前显示 ${visible.length}${filtered.length > visible.length ? ` / ${filtered.length}` : ""}。`, "ready");
+if (!visible.length) {
+const empty = document.createElement("div");
+empty.className = "token-library__empty";
+empty.textContent = total ? "没有匹配的 token。" : "当前 manifest 里没有 token 条目。";
+tokenLibraryResults.appendChild(empty);
+return;
+}
+const frag = document.createDocumentFragment();
+visible.forEach((item) => {
+const card = document.createElement("div");
+card.className = "token-library__card";
+const thumb = document.createElement("div");
+thumb.className = "token-library__thumb";
+const img = document.createElement("img");
+img.loading = "lazy";
+img.decoding = "async";
+img.alt = item.label || item.name || item.file;
+img.src = buildTokenAssetUrl(item.file);
+thumb.appendChild(img);
+const name = document.createElement("div");
+name.className = "token-library__name";
+name.textContent = item.label || item.name || item.file;
+const copyBtn = document.createElement("button");
+copyBtn.type = "button";
+copyBtn.className = "btn token-library__copy";
+copyBtn.textContent = "Copy token:";
+copyBtn.title = buildTokenAlias(item.file);
+copyBtn.addEventListener("click", async () => {
+const alias = buildTokenAlias(item.file);
+const copied = await copyText(alias);
+setTokenLibraryStatus(copied ? `已复制 ${alias}` : `复制失败，请手动使用 ${alias}`, copied ? "ready" : "error");
+});
+card.appendChild(thumb);
+card.appendChild(name);
+card.appendChild(copyBtn);
+frag.appendChild(card);
+});
+tokenLibraryResults.appendChild(frag);
+}
+
+async function loadTokenManifest(baseUrl, options = {}) {
+if (!tokenLibraryResults) return;
+const normalizedBase = normalizeTokenBaseUrl(baseUrl);
+const previousBase = tokenManifestState.baseUrl;
+tokenManifestState.error = "";
+if (!normalizedBase) {
+tokenManifestState.baseUrl = "";
+tokenManifestState.items = [];
+tokenManifestState.loading = false;
+renderTokenLibrary();
+return;
+}
+if (!options.force && normalizedBase === previousBase && tokenManifestState.items.length) {
+renderTokenLibrary();
+return;
+}
+const requestId = ++tokenManifestState.requestId;
+tokenManifestState.baseUrl = normalizedBase;
+tokenManifestState.loading = true;
+renderTokenLibrary();
+try {
+const manifestUrl = buildTokenManifestUrl(normalizedBase);
+const response = await fetch(manifestUrl, { cache: options.force ? "reload" : "default" });
+if (!response.ok) {
+throw new Error(`无法读取 ${TOKEN_MANIFEST_FILE} (${response.status})`);
+}
+const payload = await response.json();
+const files = Array.isArray(payload?.files) ? payload.files : Array.isArray(payload) ? payload : [];
+const items = files
+.map((entry) => {
+if (typeof entry === "string") {
+const file = normalizeTokenAssetPath(entry);
+return file ? { file, name: humanizeTokenName(file), label: humanizeTokenName(file) } : null;
+}
+const file = normalizeTokenAssetPath(entry?.file || entry?.path || entry?.name || "");
+if (!file) return null;
+return {
+file,
+name: String(entry?.name || humanizeTokenName(file)).trim(),
+label: String(entry?.label || entry?.name || humanizeTokenName(file)).trim()
+};
+})
+.filter(Boolean);
+if (requestId !== tokenManifestState.requestId) return;
+tokenManifestState.items = items;
+tokenManifestState.loading = false;
+tokenManifestState.error = "";
+renderTokenLibrary();
+} catch (error) {
+if (requestId !== tokenManifestState.requestId) return;
+tokenManifestState.items = [];
+tokenManifestState.loading = false;
+tokenManifestState.error = error?.message || "manifest 加载失败";
+renderTokenLibrary();
+}
+}
+
+function normalizeUnitKey(unitId) {
+return String(unitId || "").trim().toUpperCase();
+}
+
+function syncLinkedHoverState() {
+const cards = statStrip.querySelectorAll(".stat-card");
+const tokens = tokenLayer.querySelectorAll(".token");
+cards.forEach((card) => {
+card.classList.toggle("is-linked-hover", !!linkedHoverUnitId && card.dataset.unitId === linkedHoverUnitId);
+});
+tokens.forEach((token) => {
+token.classList.toggle("is-linked-hover", !!linkedHoverUnitId && token.dataset.unitId === linkedHoverUnitId);
+});
+}
+
+function setLinkedHoverUnit(unitId) {
+const nextValue = normalizeUnitKey(unitId) || "";
+if (linkedHoverUnitId === nextValue) return;
+linkedHoverUnitId = nextValue;
+syncLinkedHoverState();
+}
+
+function applyTokenBaseUrl(value, options = {}) {
+const persist = options.persist !== false;
+const normalized = normalizeTokenBaseUrl(value);
+state.tokenBaseUrl = normalized;
+tokenBaseInput.value = normalized;
+updateTokenLibraryLink();
+if (persist) {
+writeStoredTokenBaseUrl(normalized);
+}
+loadTokenManifest(normalized, { force: options.forceManifest === true });
+scheduleMapRender();
+}
+
+function setParseStatus(level, text, details = []) {
+parseStatus.classList.remove("parse-status--ok", "parse-status--warn", "parse-status--error");
+if (level === "error") {
+parseStatus.classList.add("parse-status--error");
+} else if (level === "warn") {
+parseStatus.classList.add("parse-status--warn");
+} else {
+parseStatus.classList.add("parse-status--ok");
+}
+parseStatusText.textContent = text;
+parseStatus.title = details.length ? details.join("\n") : text;
+}
+
+function renderEventFeed() {
+if (!state.events.length) {
+eventList.replaceChildren();
+eventFeed.classList.add("is-empty");
+return;
+}
+const frag = document.createDocumentFragment();
+state.events.slice(0, 3).forEach((line) => {
+const item = document.createElement("li");
+item.textContent = line;
+frag.appendChild(item);
+});
+eventList.replaceChildren(frag);
+eventFeed.classList.remove("is-empty");
+}
+
+function syncContainerSize(width, height) {
+const styles = getComputedStyle(root);
+const padX = parseFloat(styles.paddingLeft) + parseFloat(styles.paddingRight);
+const padY = parseFloat(styles.paddingTop) + parseFloat(styles.paddingBottom);
+const nextWidth = Math.ceil(width + padX);
+const nextHeight = Math.ceil(height + padY);
+root.style.width = `${nextWidth}px`;
+root.style.height = `${nextHeight}px`;
+}
+
+function shouldUseMobileLayout() {
+const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+return viewportWidth <= 900;
+}
+
+function shouldUseNarrowLayout() {
+const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+return viewportWidth <= 390;
+}
+
+function updateResponsiveMode() {
+const nextMobileMode = shouldUseMobileLayout();
+const nextNarrowMode = shouldUseNarrowLayout();
+if (nextMobileMode !== mobileMode || nextNarrowMode !== narrowMode) {
+mobileMode = nextMobileMode;
+narrowMode = nextNarrowMode;
+if (narrowMode) {
+state.baseCell = narrowBaseCell;
+} else if (mobileMode) {
+state.baseCell = mobileBaseCell;
+} else {
+state.baseCell = desktopBaseCell;
+}
+layoutDirty = true;
+}
+root.classList.toggle("is-mobile", mobileMode);
+root.classList.toggle("is-narrow", narrowMode);
+}
+
+function getViewportSize(mapWidth, mapHeight) {
+if (!mobileMode) {
+return { width: mapWidth, height: mapHeight };
+}
+const viewportWidth = window.innerWidth || document.documentElement.clientWidth || mapWidth;
+const viewportHeight = window.innerHeight || document.documentElement.clientHeight || mapHeight;
+const widthLimit = narrowMode
+? Math.max(236, viewportWidth - 10)
+: Math.max(260, viewportWidth - 16);
+const heightLimit = narrowMode
+? Math.max(240, Math.min(viewportHeight - 18, Math.round(viewportWidth * 1.05)))
+: Math.max(280, Math.min(viewportHeight - 24, Math.round(viewportWidth * 1.2)));
+return {
+width: Math.min(mapWidth, widthLimit),
+height: Math.min(mapHeight, heightLimit)
+};
+}
+
+function updateStatStripMode() {
+const mapWidth = mapEl.offsetWidth;
+const mapHeight = mapEl.offsetHeight;
+const viewportWidth = mapViewport.clientWidth;
+const viewportHeight = mapViewport.clientHeight;
+const shouldFix = mapWidth > viewportWidth + 1 || mapHeight > viewportHeight + 1;
+statStrip.classList.toggle("is-fixed", shouldFix);
+updateStatStripLayout();
+}
+
+function updateStatStripLayout() {
+const isScrollable = statStrip.scrollWidth > statStrip.clientWidth + 1;
+statStrip.classList.toggle("is-scrollable", isScrollable);
+}
+
+function scheduleMapRender() {
+if (rafId) return;
+rafId = requestAnimationFrame(() => {
+rafId = 0;
+renderMap();
+});
+}
+
+function pickTickFt(widthFt, heightFt) {
+const maxLabels = 80;
+const maxDim = Math.max(widthFt, heightFt);
+const candidates = [10, 25, 50, 100, 200, 500, 1000];
+for (const tick of candidates) {
+if (Math.ceil(maxDim / tick) <= maxLabels) {
+return tick;
+}
+}
+return candidates[candidates.length - 1];
+}
+
+function normalizeRawText(source) {
+if (typeof source !== "string") return "";
+return source
+.replace(/\r/g, "")
+.replace(/[｜¦]/g, "|")
+.replace(/[，、]/g, ",")
+.replace(/[：]/g, ":")
+.replace(/\u00a0/g, " ")
+.trim();
+}
+
+function extractLatestTagContent(source, tagName) {
+if (!source) return "";
+const regex = new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)<\\/${tagName}>`, "gi");
+let lastContent = "";
+let match;
+while ((match = regex.exec(source)) !== null) {
+lastContent = match[1];
+}
+return normalizeRawText(lastContent);
+}
+
+function collectSourceCandidates() {
+const candidates = [];
+const fromDataBattle = (root.dataset?.battle || "").trim();
+const fromDataEvent = (root.dataset?.event || "").trim();
+const fromRawTemplate = rawData ? (rawData.innerHTML || rawData.textContent || "").trim() : "";
+const injected = root.querySelector(".battle-data");
+const fromInjected = injected
+? (("value" in injected ? injected.value : injected.textContent) || injected.dataset?.battle || "").trim()
+: "";
+const embeddedBattle = root.querySelector("battle");
+const fromEmbeddedBattle = embeddedBattle ? (embeddedBattle.outerHTML || embeddedBattle.textContent || "").trim() : "";
+const embeddedEvent = root.querySelector("event");
+const fromEmbeddedEvent = embeddedEvent ? (embeddedEvent.outerHTML || embeddedEvent.textContent || "").trim() : "";
+
+if (fromDataBattle) candidates.push({ key: "data-battle", text: fromDataBattle });
+if (fromRawTemplate) candidates.push({ key: "template", text: fromRawTemplate });
+if (fromInjected) candidates.push({ key: "battle-data", text: fromInjected });
+if (fromEmbeddedBattle) candidates.push({ key: "embedded-battle", text: fromEmbeddedBattle });
+if (fromDataEvent) candidates.push({ key: "data-event", text: `<event>${fromDataEvent}</event>` });
+if (fromEmbeddedEvent) candidates.push({ key: "embedded-event", text: fromEmbeddedEvent });
+return candidates;
+}
+
+function splitBattleLines(source) {
+const normalized = normalizeRawText(source);
+if (!normalized) return [];
+const cleaned = normalized
+.replace(/```[\s\S]*?```/g, "")
+.replace(/<\/?battle[^>]*>/gi, "")
+.trim();
+if (!cleaned) return [];
+if (cleaned.includes("\n")) {
+return cleaned
+.split("\n")
+.map((line) => line.replace(/^[-*>\s]+/, "").trim())
+.filter((line) => line && line !== "```");
+}
+return cleaned
+.split(/(?=[^|\n]+\|\s*(?:init|hp|pos|status|portrait|att|attitude|next)\b)/i)
+.map((line) => line.trim())
+.filter(Boolean);
+}
+
+function parseStatusList(rawStatus) {
+const tokens = normalizeRawText(rawStatus)
+.split(/[\s,;|]+/)
+.map((token) => token.trim().toLowerCase())
+.filter(Boolean);
+const statuses = [];
+const ignored = [];
+tokens.forEach((token) => {
+const resolved = statusAliases[token] || token;
+if (statusMeta[resolved]) {
+if (!statuses.includes(resolved)) {
+statuses.push(resolved);
+}
+} else {
+ignored.push(token);
+}
+});
+return { statuses, ignored };
+}
+
+function getStatusLabel(statusKey) {
+return statusMeta[statusKey]?.label || statusKey;
+}
+
+function formatStatusText(statuses) {
+if (!Array.isArray(statuses) || !statuses.length) return '';
+const labels = statuses.map((status) => getStatusLabel(status)).filter(Boolean);
+if (!labels.length) return '';
+if (labels.length === 1) return labels[0];
+return `${labels[0]}+${labels.length - 1}`;
+}
+
+function parseBattleBlock(rawSource) {
+const source = normalizeRawText(rawSource);
+const battleContent = extractLatestTagContent(source, 'battle');
+const battleText = battleContent || source;
+const lines = splitBattleLines(battleText);
+const units = [];
+const errors = [];
+const warnings = [];
+lines.forEach((line, index) => {
+if (!line.includes('|')) {
+return;
+}
+const parts = line.split('|').map((part) => part.trim()).filter(Boolean);
+if (!parts.length) return;
+const idRaw = (parts[0] || '').replace(/[`*]/g, '').trim();
+const id = (idRaw.match(/^[^\s]+/) || [idRaw])[0];
+if (!id) {
+errors.push(`Line ${index + 1}: missing unit ID`);
+return;
+}
+const unit = {
+id,
+attitude: 0,
+faction: "friendly",
+init: 0,
+hp: { cur: 0, max: 0 },
+pos: [0, 0],
+status: [],
+portrait: "",
+next: false
+};
+parts.slice(1).forEach((part) => {
+const normalizedPart = normalizeRawText(part);
+if (!normalizedPart) return;
+if (/^next\b/i.test(normalizedPart)) {
+unit.next = true;
+return;
+}
+const fieldMatch = normalizedPart.match(/^([a-zA-Z]+)\s*[:\s]\s*(.+)$/);
+if (!fieldMatch) {
+warnings.push(`Line ${index + 1}: ignored token '${normalizedPart}'`);
+return;
+}
+const field = fieldMatch[1].toLowerCase();
+const value = fieldMatch[2].trim();
+if (field === "init") {
+const parsedInit = parseInt(value, 10);
+if (Number.isFinite(parsedInit)) {
+unit.init = parsedInit;
+} else {
+errors.push(`Line ${index + 1}: cannot parse init '${value}'`);
+}
+} else if (field === "hp") {
+const hpMatch = value.match(/(-?\d+)\s*(?:\/\s*(-?\d+))?/);
+if (!hpMatch) {
+errors.push(`Line ${index + 1}: cannot parse hp '${value}'`);
+return;
+}
+const cur = parseInt(hpMatch[1], 10);
+const max = hpMatch[2] ? parseInt(hpMatch[2], 10) : cur;
+unit.hp.cur = Number.isFinite(cur) ? cur : 0;
+unit.hp.max = Number.isFinite(max) ? max : unit.hp.cur;
+} else if (field === "pos") {
+const coords = value
+.split(/[,\s]+/)
+.map((num) => parseFloat(num))
+.filter((num) => Number.isFinite(num));
+if (coords.length >= 2) {
+unit.pos = [normalizeToGrid(coords[0]), normalizeToGrid(coords[1])];
+} else {
+errors.push(`Line ${index + 1}: cannot parse pos '${value}'`);
+}
+} else if (field === "status") {
+const { statuses, ignored } = parseStatusList(value);
+unit.status = statuses;
+if (ignored.length) {
+warnings.push(`Line ${index + 1}: unknown status ${ignored.join(', ')}`);
+}
+} else if (field === "portrait") {
+unit.portrait = value;
+} else if (field === "attitude" || field === "att") {
+const parsedAttitude = parseInt(value, 10);
+if (!Number.isFinite(parsedAttitude)) {
+errors.push(`Line ${index + 1}: cannot parse att '${value}'`);
+return;
+}
+unit.attitude = Math.max(0, Math.min(2, parsedAttitude));
+unit.faction = resolveFaction(unit.attitude);
+} else {
+warnings.push(`Line ${index + 1}: ignored field ${field}`);
+}
+});
+unit.faction = resolveFaction(unit.attitude);
+units.push(unit);
+});
+return {
+hasBattleTag: /<battle[\s>]/i.test(source),
+units,
+errors,
+warnings
+};
+}
+
+function parseEventBlock(rawSource) {
+const source = normalizeRawText(rawSource);
+const eventContent = extractLatestTagContent(source, "event");
+if (!eventContent) return [];
+return eventContent
+.split("\n")
+.map((line) => line.replace(/^[-*>\s]+/, "").trim())
+.filter(Boolean)
+.slice(-3)
+.reverse();
+}
+
+const PLACEHOLDER_PORTRAIT =
+"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 96 96'><rect width='96' height='96' fill='%23181716'/><circle cx='48' cy='40' r='18' fill='%23302a26'/><rect x='20' y='58' width='56' height='26' rx='13' fill='%2328211e'/></svg>";
+
+function getPortraitSrc(portraitRef, options = {}) {
+const allowPlaceholder = options.allowPlaceholder !== false;
+if (typeof portraitRef !== "string") return allowPlaceholder ? PLACEHOLDER_PORTRAIT : "";
+const trimmed = portraitRef.trim();
+if (!trimmed) return allowPlaceholder ? PLACEHOLDER_PORTRAIT : "";
+if (/^(data:|blob:)/i.test(trimmed)) return trimmed;
+if (/^https?:\/\//i.test(trimmed)) return trimmed;
+const tokenAliasMatch = trimmed.match(/^(?:token|tokens|dndtoken|dndtokens)\s*[:/]\s*(.+)$/i);
+if (tokenAliasMatch) {
+const tokenUrl = buildTokenAssetUrl(tokenAliasMatch[1]);
+if (tokenUrl) return tokenUrl;
+}
+if (trimmed.startsWith("/")) return trimmed;
+if (trimmed.includes("/")) return `/${trimmed}`;
+return `/p/${trimmed}`;
+}
+
+function resolveFaction(attitude) {
+if (attitude === 2) return "hostile";
+if (attitude === 1) return "neutral";
+return "friendly";
+}
+
+function applyTheme(themeKey) {
+const theme = themes[themeKey];
+if (!theme) return;
+state.theme = themeKey;
+panel.style.setProperty("--panel-bg", theme.panelBg);
+panel.style.setProperty("--panel-edge", theme.panelEdge);
+panel.style.setProperty("--panel-glow", theme.panelGlow);
+panel.style.setProperty("--terrain-base", theme.terrainBase);
+panel.style.setProperty("--terrain-rock", theme.terrainRock);
+panel.style.setProperty("--terrain-water", theme.terrainWater);
+panel.style.setProperty("--terrain-shadow", theme.terrainShadow);
+panel.style.setProperty("--grid-line", theme.gridLine);
+panel.style.setProperty("--accent", theme.accent);
+panel.style.setProperty("--accent-strong", theme.accentStrong);
+panel.style.setProperty("--token-glow", theme.tokenGlow || theme.accentStrong);
+renderThemeButtons();
+}
+
+function renderThemeButtons() {
+themeSwitch.innerHTML = "";
+Object.entries(themes).forEach(([key, theme]) => {
+const btn = document.createElement("button");
+btn.textContent = theme.label;
+btn.className = key === state.theme ? "active" : "";
+btn.addEventListener("click", () => {
+applyTheme(key);
+});
+themeSwitch.appendChild(btn);
+});
+}
+
+function computeBounds() {
+if (state.mapDims.cols > 0 && state.mapDims.rows > 0) {
+const preferredCenter = computePreferredCenter();
+const spanX = (state.mapDims.cols - 1) * state.gridFt;
+const spanY = (state.mapDims.rows - 1) * state.gridFt;
+const halfX = spanX / 2;
+const halfY = spanY / 2;
+const centerX = preferredCenter.x;
+const centerY = preferredCenter.y;
+return {
+minX: centerX - halfX,
+minY: centerY - halfY,
+maxX: centerX + halfX,
+maxY: centerY + halfY,
+fixed: true
+};
+}
+const xs = [];
+const ys = [];
+state.units.forEach((unit) => {
+xs.push(unit.pos[0]);
+ys.push(unit.pos[1]);
+});
+state.terrain.forEach((tile) => {
+xs.push(tile.pos[0]);
+ys.push(tile.pos[1]);
+xs.push(tile.pos[0] + tile.size[0]);
+ys.push(tile.pos[1] + tile.size[1]);
+});
+if (!xs.length || !ys.length) {
+const span = state.gridFt * 9;
+const max = span / 2;
+return {
+minX: -max,
+minY: -max,
+maxX: max,
+maxY: max,
+fixed: false
+};
+}
+let minX = Math.min(...xs) - state.paddingFt;
+let maxX = Math.max(...xs) + state.paddingFt;
+let minY = Math.min(...ys) - state.paddingFt;
+let maxY = Math.max(...ys) + state.paddingFt;
+minX = floorToGrid(minX);
+maxX = ceilToGrid(maxX);
+minY = floorToGrid(minY);
+maxY = ceilToGrid(maxY);
+return {
+minX,
+maxX,
+minY,
+maxY,
+fixed: false
+};
+}
+
+function getNextUnit() {
+return state.units.find((unit) => unit.next) || null;
+}
+
+function centerViewOnUnit(unit, bounds, viewportSize, scale, cell) {
+if (!unit || !Array.isArray(unit.pos) || unit.pos.length < 2) return;
+const tokenX = (unit.pos[0] - bounds.minX) * scale + (cell / 2);
+const tokenY = (unit.pos[1] - bounds.minY) * scale + (cell / 2);
+state.pan.x = (viewportSize.width / 2 - tokenX) / scale;
+state.pan.y = (viewportSize.height / 2 - tokenY) / scale;
+}
+
+function renderMap() {
+updateResponsiveMode();
+const bounds = computeBounds();
+let cols = Math.max(1, Math.floor((bounds.maxX - bounds.minX) / state.gridFt) + 1);
+let rows = Math.max(1, Math.floor((bounds.maxY - bounds.minY) / state.gridFt) + 1);
+const cell = state.baseCell * state.zoom;
+const scale = cell / state.gridFt;
+const mapWidth = cols * cell;
+const mapHeight = rows * cell;
+const viewportSize = getViewportSize(mapWidth, mapHeight);
+const boundsKey = `${bounds.minX}:${bounds.minY}:${bounds.maxX}:${bounds.maxY}:${cols}:${rows}`;
+if (boundsKey !== lastBoundsKey) {
+layoutDirty = true;
+lastBoundsKey = boundsKey;
+}
+mapEl.style.setProperty("--cell", `${cell}px`);
+mapEl.style.setProperty("--scale", `${scale}px`);
+mapEl.style.setProperty("--min-x", bounds.minX);
+mapEl.style.setProperty("--min-y", bounds.minY);
+mapEl.style.width = `${mapWidth}px`;
+mapEl.style.height = `${mapHeight}px`;
+mapViewport.style.width = `${viewportSize.width}px`;
+mapViewport.style.height = `${viewportSize.height}px`;
+panel.style.width = `${viewportSize.width}px`;
+panel.style.height = `${viewportSize.height}px`;
+if (pendingFocusUnitId) {
+const focusUnit = state.units.find((unit) => unit.id === pendingFocusUnitId) || getNextUnit();
+centerViewOnUnit(focusUnit, bounds, viewportSize, scale, cell);
+pendingFocusUnitId = "";
+}
+mapEl.style.transform = `translate(${state.pan.x * scale}px, ${state.pan.y * scale}px)`;
+syncContainerSize(viewportSize.width, viewportSize.height);
+const widthFt = cols * state.gridFt;
+const heightFt = rows * state.gridFt;
+mapSize.textContent = `${cols} cells × ${rows} cells (${widthFt}ft × ${heightFt}ft)`;
+const tickFt = pickTickFt(widthFt, heightFt);
+
+if (layoutDirty || tickFt !== lastTickFt) {
+const terrainFrag = document.createDocumentFragment();
+state.terrain.forEach((tile) => {
+const el = document.createElement("div");
+el.className = `terrain ${tile.type}`;
+el.style.setProperty("--x", tile.pos[0]);
+el.style.setProperty("--y", tile.pos[1]);
+el.style.setProperty("--w", tile.size[0]);
+el.style.setProperty("--h", tile.size[1]);
+terrainFrag.appendChild(el);
+});
+terrainLayer.replaceChildren(terrainFrag);
+
+const tokenFrag = document.createDocumentFragment();
+state.units.forEach((unit) => {
+const unitKey = normalizeUnitKey(unit.id);
+const token = document.createElement("div");
+token.className = `token ${unit.faction}`;
+token.dataset.unitId = unitKey;
+token.tabIndex = 0;
+if (unit.next) {
+token.classList.add("is-next");
+}
+const hpMax = Number.isFinite(unit?.hp?.max) && unit.hp.max > 0 ? unit.hp.max : 1;
+const hpCur = Number.isFinite(unit?.hp?.cur) ? unit.hp.cur : 0;
+const hpRatio = hpCur / hpMax;
+if (hpRatio <= 0.25) {
+token.classList.add("is-critical");
+} else if (hpRatio <= 0.5) {
+token.classList.add("is-bloodied");
+}
+token.style.setProperty("--x", unit.pos[0]);
+token.style.setProperty("--y", unit.pos[1]);
+const portraitSrc = getPortraitSrc(unit.portrait, { allowPlaceholder: false });
+if (portraitSrc) {
+const safeSrc = portraitSrc.replace(/"/g, "%22");
+token.style.setProperty("--portrait", `url("${safeSrc}")`);
+token.classList.add("has-portrait");
+} else {
+token.style.setProperty("--portrait", "none");
+}
+const stack = document.createElement("div");
+stack.className = "token__stack";
+const idEl = document.createElement("span");
+idEl.className = "token__id";
+idEl.textContent = (unit.id || "?").trim().toUpperCase();
+stack.appendChild(idEl);
+token.appendChild(stack);
+if (unit.status?.length) {
+const firstStatus = unit.status[0];
+const statusText = document.createElement("span");
+statusText.className = "token__status-text";
+statusText.textContent = formatStatusText(unit.status);
+statusText.style.borderColor = statusMeta[firstStatus]?.color || "rgba(255, 255, 255, 0.22)";
+statusText.title = unit.status.map((status) => getStatusLabel(status)).join("、");
+token.appendChild(statusText);
+}
+token.addEventListener("pointerenter", () => {
+if (dragState.active) return;
+setLinkedHoverUnit(unitKey);
+});
+token.addEventListener("pointerleave", () => {
+if (linkedHoverUnitId === unitKey) {
+setLinkedHoverUnit("");
+}
+});
+token.addEventListener("focus", () => {
+setLinkedHoverUnit(unitKey);
+});
+token.addEventListener("blur", () => {
+if (linkedHoverUnitId === unitKey) {
+setLinkedHoverUnit("");
+}
+});
+tokenFrag.appendChild(token);
+});
+tokenLayer.replaceChildren(tokenFrag);
+syncLinkedHoverState();
+
+const axisFrag = document.createDocumentFragment();
+for (let x = bounds.minX; x <= bounds.maxX; x += tickFt) {
+const label = document.createElement("div");
+label.className = "axis-label x";
+label.textContent = formatCoord(x);
+label.style.setProperty("--x", x);
+axisFrag.appendChild(label);
+}
+for (let y = bounds.minY; y <= bounds.maxY; y += tickFt) {
+const label = document.createElement("div");
+label.className = "axis-label y";
+label.textContent = formatCoord(y);
+label.style.setProperty("--y", y);
+axisFrag.appendChild(label);
+}
+axisLayer.replaceChildren(axisFrag);
+
+layoutDirty = false;
+lastTickFt = tickFt;
+}
+
+if (state.mapDims.cols > 0 && state.mapDims.rows > 0) {
+mapColsInput.value = state.mapDims.cols;
+mapRowsInput.value = state.mapDims.rows;
+} else {
+mapColsInput.value = "";
+mapRowsInput.value = "";
+}
+
+updateStatStripMode();
+updateHeight();
+}
+
+function renderStats() {
+const frag = document.createDocumentFragment();
+const ordered = [...state.units].sort((a, b) => b.init - a.init);
+ordered.forEach((unit) => {
+const unitKey = normalizeUnitKey(unit.id);
+const card = document.createElement("div");
+card.className = unit.next ? "stat-card is-next" : "stat-card";
+card.dataset.unitId = unitKey;
+card.tabIndex = 0;
+const name = document.createElement("strong");
+name.className = "stat-name";
+name.textContent = unit.id;
+const hpLabel = document.createElement("span");
+hpLabel.textContent = unit.next ? "Now" : "HP";
+const hp = document.createElement("strong");
+hp.textContent = `${unit.hp.cur}/${unit.hp.max}`;
+card.appendChild(name);
+card.appendChild(hpLabel);
+card.appendChild(hp);
+card.addEventListener("pointerenter", () => {
+if (statDragState.active) return;
+setLinkedHoverUnit(unitKey);
+});
+card.addEventListener("pointerleave", () => {
+if (linkedHoverUnitId === unitKey) {
+setLinkedHoverUnit("");
+}
+});
+card.addEventListener("focus", () => {
+setLinkedHoverUnit(unitKey);
+});
+card.addEventListener("blur", () => {
+if (linkedHoverUnitId === unitKey) {
+setLinkedHoverUnit("");
+}
+});
+frag.appendChild(card);
+});
+statStrip.replaceChildren(frag);
+syncLinkedHoverState();
+requestAnimationFrame(updateStatStripLayout);
+}
+
+function renderAll() {
+renderStats();
+renderEventFeed();
+renderMap();
+}
+
+function buildSourceFingerprint(candidates) {
+return candidates.map((item) => `${item.key}:${item.text}`).join("\n@@\n");
+}
+
+function syncBattleSnapshotFromDom(force = false) {
+const candidates = collectSourceCandidates();
+const sourceFingerprint = buildSourceFingerprint(candidates);
+if (!force && sourceFingerprint && sourceFingerprint === ingestState.lastSourceKey) {
+return false;
+}
+ingestState.lastSourceKey = sourceFingerprint;
+
+let synced = false;
+let parseIssues = [];
+let selectedEvents = [];
+let sourceName = "";
+
+for (const candidate of candidates) {
+const events = parseEventBlock(candidate.text);
+if (events.length) {
+selectedEvents = events;
+break;
+}
+}
+state.events = selectedEvents;
+
+for (const candidate of candidates) {
+const result = parseBattleBlock(candidate.text);
+const details = [
+...result.errors.map((line) => `${candidate.key}: ${line}`),
+...result.warnings.map((line) => `${candidate.key}: ${line}`)
+];
+if (details.length) {
+parseIssues = parseIssues.concat(details);
+}
+if (!result.units.length) {
+if (result.hasBattleTag) {
+parseIssues.push(`${candidate.key}: no units parsed from <battle>`);
+}
+continue;
+}
+state.units = cloneUnits(result.units);
+ingestState.lastGoodUnits = cloneUnits(result.units);
+layoutDirty = true;
+synced = true;
+sourceName = candidate.key;
+const nextUnit = getNextUnit() || state.units[0];
+pendingFocusUnitId = nextUnit ? nextUnit.id : "";
+break;
+}
+
+if (synced) {
+const issueCount = parseIssues.length;
+const compactIssues = parseIssues.slice(0, 10);
+if (issueCount) {
+setParseStatus("warn", `Synced ${state.units.length} units (${issueCount} recoverable issues)`, compactIssues);
+} else {
+setParseStatus("ok", `Synced ${state.units.length} units`, [`Source: ${sourceName}`]);
+}
+renderAll();
+return true;
+}
+
+if (ingestState.lastGoodUnits.length) {
+state.units = cloneUnits(ingestState.lastGoodUnits);
+layoutDirty = true;
+const fallbackIssues = parseIssues.length
+? parseIssues.slice(0, 10)
+: ["No usable <battle> snapshot detected"];
+setParseStatus("error", "Parse failed, using previous frame", fallbackIssues);
+renderAll();
+return false;
+}
+
+const noDataIssues = parseIssues.length ? parseIssues.slice(0, 10) : ["No usable <battle> snapshot detected"];
+setParseStatus("error", "No battle snapshot synced", noDataIssues);
+renderEventFeed();
+scheduleMapRender();
+return false;
+}
+
+function scheduleDomSync(force = false) {
+if (domSyncRafId) return;
+domSyncRafId = requestAnimationFrame(() => {
+domSyncRafId = 0;
+syncBattleSnapshotFromDom(force);
+});
+}
+
+function scheduleBootSyncRetries() {
+let attempts = 0;
+const maxAttempts = 24;
+const run = () => {
+bootSyncRetryId = 0;
+attempts += 1;
+const synced = syncBattleSnapshotFromDom(true);
+const hasSnapshot = !!state.units.length;
+if (synced || hasSnapshot || attempts >= maxAttempts) {
+return;
+}
+bootSyncRetryId = window.setTimeout(run, 250);
+};
+run();
+}
+
+function setSettingsOpen(isOpen) {
+settings.classList.toggle("settings--open", isOpen);
+settingsToggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+}
+
+settingsToggle.addEventListener("click", (event) => {
+event.stopPropagation();
+const isOpen = settings.classList.contains("settings--open");
+setSettingsOpen(!isOpen);
+});
+
+document.addEventListener("click", (event) => {
+if (!settings.contains(event.target)) {
+setSettingsOpen(false);
+}
+});
+
+settings.addEventListener("click", (event) => {
+if (!settings.classList.contains("settings--open")) return;
+if (settingsMenu.contains(event.target)) return;
+if (settingsToggle.contains(event.target)) return;
+setSettingsOpen(false);
+});
+
+document.addEventListener("keydown", (event) => {
+if (event.key === "Escape") {
+setSettingsOpen(false);
+}
+});
+
+function clampZoom(value) {
+return Math.min(zoomMax, Math.max(zoomMin, value));
+}
+
+function setZoom(value) {
+const nextZoom = clampZoom(value);
+if (Math.abs(nextZoom - state.zoom) < 0.001) return;
+state.zoom = nextZoom;
+scheduleMapRender();
+}
+
+function getScale() {
+return (state.baseCell * state.zoom) / state.gridFt;
+}
+
+function getDistance(a, b) {
+const dx = a.x - b.x;
+const dy = a.y - b.y;
+return Math.hypot(dx, dy);
+}
+
+function normalizeWheelDelta(event) {
+if (event.deltaMode === 1) return event.deltaY * 16;
+if (event.deltaMode === 2) return event.deltaY * 120;
+return event.deltaY;
+}
+
+function startDrag(event) {
+dragState.active = true;
+dragState.pointerId = event.pointerId;
+dragState.startX = event.clientX;
+dragState.startY = event.clientY;
+dragState.startPanX = state.pan.x;
+dragState.startPanY = state.pan.y;
+mapViewport.classList.add("is-grabbing");
+}
+
+function updateDrag(event) {
+if (!dragState.active || dragState.pointerId !== event.pointerId) return;
+const dx = event.clientX - dragState.startX;
+const dy = event.clientY - dragState.startY;
+const scale = getScale();
+state.pan.x = dragState.startPanX + dx / scale;
+state.pan.y = dragState.startPanY + dy / scale;
+scheduleMapRender();
+}
+
+function endDrag(event) {
+if (dragState.pointerId !== event.pointerId) return;
+dragState.active = false;
+dragState.pointerId = null;
+mapViewport.classList.remove("is-grabbing");
+}
+
+function startStatDrag(event) {
+if (event.pointerType === "mouse" && event.button !== 0) return;
+setLinkedHoverUnit("");
+statDragState.active = true;
+statDragState.pointerId = event.pointerId;
+statDragState.startX = event.clientX;
+statDragState.startScrollLeft = statStrip.scrollLeft;
+statDragState.moved = false;
+statStrip.classList.add("is-dragging");
+statStrip.setPointerCapture(event.pointerId);
+}
+
+function moveStatDrag(event) {
+if (!statDragState.active || statDragState.pointerId !== event.pointerId) return;
+const dx = event.clientX - statDragState.startX;
+if (Math.abs(dx) > 2) {
+statDragState.moved = true;
+}
+statStrip.scrollLeft = statDragState.startScrollLeft - dx;
+if (statDragState.moved) {
+event.preventDefault();
+}
+}
+
+function endStatDrag(event) {
+if (statDragState.pointerId !== event.pointerId) return;
+statDragState.active = false;
+statDragState.pointerId = null;
+statStrip.classList.remove("is-dragging");
+}
+
+mapViewport.addEventListener("wheel", (event) => {
+event.preventDefault();
+const delta = normalizeWheelDelta(event);
+const factor = Math.exp(-delta * 0.0016);
+setZoom(state.zoom * factor);
+}, { passive: false });
+
+mapViewport.addEventListener("pointerdown", (event) => {
+if (event.pointerType === "mouse" && event.button !== 0) return;
+event.preventDefault();
+if (event.pointerType === "touch") {
+activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+}
+mapViewport.setPointerCapture(event.pointerId);
+if (event.pointerType === "touch" && activePointers.size === 2) {
+const points = Array.from(activePointers.values());
+pinchStartDist = getDistance(points[0], points[1]);
+pinchStartZoom = state.zoom;
+if (dragState.active) {
+dragState.active = false;
+dragState.pointerId = null;
+mapViewport.classList.remove("is-grabbing");
+}
+return;
+}
+if (!dragState.active) {
+startDrag(event);
+}
+});
+
+mapViewport.addEventListener("pointermove", (event) => {
+if (event.pointerType === "touch" && activePointers.has(event.pointerId)) {
+activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+if (activePointers.size === 2 && pinchStartDist > 0) {
+const points = Array.from(activePointers.values());
+const dist = getDistance(points[0], points[1]);
+setZoom(pinchStartZoom * (dist / pinchStartDist));
+return;
+}
+}
+updateDrag(event);
+});
+
+function endPointer(event) {
+if (activePointers.has(event.pointerId)) {
+activePointers.delete(event.pointerId);
+if (activePointers.size < 2) {
+pinchStartDist = 0;
+}
+}
+endDrag(event);
+}
+
+mapViewport.addEventListener("pointerup", endPointer);
+mapViewport.addEventListener("pointercancel", endPointer);
+
+statStrip.addEventListener("pointerdown", startStatDrag);
+statStrip.addEventListener("pointermove", moveStatDrag);
+statStrip.addEventListener("pointerup", endStatDrag);
+statStrip.addEventListener("pointercancel", endStatDrag);
+
+fitBtn.addEventListener("click", () => {
+state.pan.x = 0;
+state.pan.y = 0;
+setZoom(1);
+});
+
+applySizeBtn.addEventListener("click", () => {
+const cols = parseInt(mapColsInput.value, 10);
+const rows = parseInt(mapRowsInput.value, 10);
+if (Number.isFinite(cols) && cols > 0 && Number.isFinite(rows) && rows > 0) {
+state.mapDims.cols = cols;
+state.mapDims.rows = rows;
+layoutDirty = true;
+renderMap();
+}
+});
+
+autoSizeBtn.addEventListener("click", () => {
+state.mapDims.cols = 0;
+state.mapDims.rows = 0;
+layoutDirty = true;
+renderMap();
+});
+
+applyTokenBaseBtn.addEventListener("click", () => {
+applyTokenBaseUrl(tokenBaseInput.value);
+});
+
+tokenBaseInput.addEventListener("keydown", (event) => {
+if (event.key === "Enter") {
+event.preventDefault();
+applyTokenBaseUrl(tokenBaseInput.value);
+}
+});
+
+tokenBaseInput.addEventListener("blur", () => {
+const normalized = normalizeTokenBaseUrl(tokenBaseInput.value);
+if (normalized !== state.tokenBaseUrl) {
+applyTokenBaseUrl(tokenBaseInput.value);
+} else {
+tokenBaseInput.value = state.tokenBaseUrl;
+}
+});
+
+if (tokenLibrarySearchInput) {
+tokenLibrarySearchInput.addEventListener("input", () => {
+tokenManifestState.query = tokenLibrarySearchInput.value || "";
+renderTokenLibrary();
+});
+}
+
+if (tokenManifestReloadBtn) {
+tokenManifestReloadBtn.addEventListener("click", () => {
+loadTokenManifest(state.tokenBaseUrl || root.dataset?.tokenBaseUrl || "/DNDtokens/", { force: true });
+});
+}
+
+function updateHeight() {
+const rect = root.getBoundingClientRect();
+const height = Math.ceil(rect.height);
+const width = Math.ceil(rect.width);
+if (window.parent && window.parent !== window) {
+window.parent.postMessage({ type: "resizeIframe", height, width }, "*");
+}
+}
+
+applyTokenBaseUrl(readStoredTokenBaseUrl() || root.dataset?.tokenBaseUrl || "/DNDtokens/", { persist: false });
+renderTokenLibrary();
+applyTheme(state.theme);
+updateResponsiveMode();
+setParseStatus("ok", "Waiting for battle snapshot");
+syncBattleSnapshotFromDom(true);
+scheduleBootSyncRetries();
+scheduleMapRender();
+
+window.addEventListener("resize", () => {
+updateHeight();
+scheduleMapRender();
+});
+const observer = new MutationObserver(updateHeight);
+observer.observe(root, { childList: true, subtree: true });
+const sourceObserver = new MutationObserver(() => {
+scheduleDomSync();
+});
+sourceObserver.observe(root, { attributes: true, attributeFilter: ["data-battle", "data-event"] });
+if (rawData) {
+sourceObserver.observe(rawData, { childList: true, subtree: true, characterData: true });
+if ("content" in rawData && rawData.content) {
+sourceObserver.observe(rawData.content, { childList: true, subtree: true, characterData: true });
+}
+}
+const liveBattleData = root.querySelector(".battle-data");
+if (liveBattleData) {
+sourceObserver.observe(liveBattleData, { childList: true, subtree: true, characterData: true, attributes: true });
+}
+if (window.ResizeObserver) {
+const panelObserver = new ResizeObserver(() => {
+updateHeight();
+scheduleMapRender();
+});
+panelObserver.observe(panel);
+}
+})();
+</script>
+</div>
+</body>
+</html>
+```

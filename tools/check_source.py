@@ -1,0 +1,40 @@
+"""Check the source-only publication boundary and component round trip."""
+import json
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+config = json.loads((ROOT / 'components.json').read_bytes())
+latest = json.loads((ROOT / 'latest.json').read_bytes())
+assert latest['version'] == config['version']
+expected = []
+ids = set()
+for group, kind in [('scripts', 'script'), ('regexes', 'regex')]:
+    for item in config[group]:
+        assert item['id'] not in ids
+        ids.add(item['id'])
+        path = item['source']
+        assert path.startswith('src/' + group + '/') and '..' not in path and '\\' not in path
+        text = (ROOT / path).read_text(encoding='utf-8')
+        assert '\ufffd' not in text, path
+        if kind == 'script':
+            result = subprocess.run(['node', '--input-type=module', '--check'], input=text, text=True, encoding='utf-8', capture_output=True)
+            assert result.returncode == 0, path + ': ' + result.stderr
+        expected.append({'kind': kind, 'id': item['id'], 'name': item.get('name', item.get('scriptName')), 'path': path})
+assert latest['components'] == expected
+permitted_root = {'.gitignore', 'README.md', 'latest.json', 'components.json'}
+for path in ROOT.rglob('*'):
+    if not path.is_file() or '.git' in path.relative_to(ROOT).parts:
+        continue
+    relative = path.relative_to(ROOT)
+    assert (len(relative.parts) == 1 and path.name in permitted_root) or relative.parts[0] in ['src', 'tools', 'tests'], str(relative)
+    assert path.suffix.lower() in ['.md', '.json', '.js', '.cjs', '.html', '.txt', '.py', ''] or path.name == '.gitignore', str(relative)
+    assert not path.name.startswith('DND-') and not path.name.startswith('.env'), str(relative)
+    text = path.read_text(encoding='utf-8')
+    assert not re.search(r'(?:github_pat_[A-Za-z0-9_]{30,}|gh[pousr]_[A-Za-z0-9]{25,}|-----BEGIN (?:RSA |OPENSSH )?PRIVATE KEY-----)', text), 'Credential-like content in ' + str(relative)
+    if path.suffix == '.json':
+        value = json.loads(text)
+        assert not (isinstance(value, dict) and (str(value.get('spec', '')).startswith('chara_card') or 'character_book' in value.get('data', {}))), 'Complete card is forbidden: ' + str(relative)
+print(f'PASS: {len(config["scripts"])} scripts, {len(config["regexes"])} regex sources; valid syntax, metadata/source mapping, no whole card or credential file.')

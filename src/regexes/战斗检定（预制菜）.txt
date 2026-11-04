@@ -1,0 +1,30 @@
+<style>
+.battle-check-panel{border:1px solid #c9a063;background:linear-gradient(135deg,#1a1a1a 0%,#2a2a2a 100%);padding:15px;margin:15px 0;font-family:'Cinzel','Noto Serif SC',serif;color:#e0e0e0;box-shadow:0 4px 15px rgba(0,0,0,.5);border-radius:4px;}
+.battle-check-header{border-bottom:1px solid #4a4a4a;padding-bottom:5px;margin-bottom:10px;font-size:.9em;color:#c9a063;display:flex;justify-content:space-between;gap:12px;align-items:flex-start;}
+.battle-check-header span:last-child{text-align:right;word-break:break-word;}
+.battle-check-body{font-size:.95em;line-height:1.5;}
+.battle-check-body > div{margin-bottom:4px;}
+.battle-check-body > div:last-child{margin-bottom:0;}
+.battle-check-detail{color:#4ec9b0;font-weight:bold;}
+.battle-result-tag{display:inline-block;padding:2px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.14);margin:0;box-shadow:none;}
+.battle-result-tag:empty{display:none !important;}
+.battle-result-tag.crit-success{color:#ffd700;text-shadow:0 0 5px #ffd700;background:rgba(255,215,0,.12);border-color:rgba(255,215,0,.35);}
+.battle-result-tag.success{color:#4cd137;background:rgba(76,209,55,.12);border-color:rgba(76,209,55,.24);}
+.battle-result-tag.failure{color:#ff9f43;background:rgba(255,159,67,.12);border-color:rgba(255,159,67,.24);}
+.battle-result-tag.crit-failure{color:#ff4444;text-shadow:0 0 5px rgba(255,68,68,.4);background:rgba(255,68,68,.12);border-color:rgba(255,68,68,.28);}
+.battle-check-flavor{font-size:.85em;color:#aaa;margin-top:5px;}
+@media (max-width:640px){.battle-check-header{flex-direction:column;}.battle-check-header span:last-child{text-align:left;}}
+</style>
+<div class="battle-check-panel">
+  <div class="battle-check-header">
+    <span>⚔ 战斗检定：$3</span>
+    <span>目标：$2</span>
+  </div>
+  <div class="battle-check-body">
+    <div><strong>发动者：</strong> $1</div>
+    <div><strong>检定类型：</strong> $4</div>
+    <div><strong>检定细节：</strong> <span class="battle-check-detail">$5</span></div>
+    <div><strong>判定结果：</strong> <span class="battle-result-tag crit-success">$6</span><span class="battle-result-tag crit-failure">$7</span><span class="battle-result-tag success">$8</span><span class="battle-result-tag failure">$9</span><span class="battle-result-tag">$10</span></div>
+    <div class="battle-check-flavor">$11</div>
+  </div>
+</div>
