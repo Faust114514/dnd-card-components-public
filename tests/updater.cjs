@@ -5,7 +5,8 @@ const http=require('node:http'),os=require('node:os'),{execFile}=require('node:c
 const root=path.resolve(__dirname,'..');
 const source=fs.readFileSync(path.join(root,'src/scripts/私有组件更新.js'),'utf8');
 const pure=source.split('// Runtime entry.')[0],context={structuredClone,Set,Error};vm.createContext(context);vm.runInContext(pure,context);
-const merge=context.buildDndComponentUpdate,config=JSON.parse(fs.readFileSync(path.join(root,'components.json'))),latest=JSON.parse(fs.readFileSync(path.join(root,'latest.json')));
+const updaterId='736c0e4e-67b4-4113-a021-b3890714ba28';
+const merge=(card,manifest,sources,id=updaterId)=>context.buildDndComponentUpdate(card,manifest,sources,id),config=JSON.parse(fs.readFileSync(path.join(root,'components.json'))),latest=JSON.parse(fs.readFileSync(path.join(root,'latest.json')));
 const sources=Object.fromEntries(latest.components.map(c=>[c.path,fs.readFileSync(path.join(root,c.path),'utf8')]));
 const items=(group,field)=>config[group].map(c=>{const {source,...meta}=c;return{...meta,[field]:sources[source]};});
 const original={avatar:'fixture.png',data:{character_version:'vf.0.3.0',description:'keep description',first_mes:'keep opening',character_book:{entries:[{content:'keep worldbook'}]},extensions:{world:'D&D 2024 vf.0.3.0',other:{keep:true},regex_scripts:items('regexes','replaceString'),tavern_helper:{scripts:items('scripts','content'),variables:{keep:9}}}}};
@@ -42,6 +43,16 @@ check(merge(connectedCard,latest,sources).changed.length===0,'reapplying legacy 
 const broken=structuredClone(legacy);broken.data.extensions.tavern_helper.scripts.shift();assert.throws(()=>merge(broken,latest,sources));checks.push('legacy exception does not invent other missing scripts');
 const unsupported=structuredClone(latest);delete unsupported.legacy_card_versions;assert.throws(()=>merge(legacy,unsupported,sources));checks.push('legacy card requires explicit release support');
 check(context.dndVersionIsNewer(latest.version,'vf.0.2.21')&&!context.dndVersionIsNewer(latest.version,latest.version)&&!context.dndVersionIsNewer('vf.0.3.2','vf.0.3.10'),'version comparison handles minor and multi-digit patch numbers');
+const imported=structuredClone(original),runningId='9f133e7a-6a69-4d8f-a566-112233445566';
+const self=imported.data.extensions.tavern_helper.scripts.find(s=>s.id===updaterId);
+self.id=runningId;self.name='renamed updater';self.content='old imported updater';self.data.keep='personal';
+imported.data.extensions.tavern_helper.scripts.push({...structuredClone(self),id:updaterId,enabled:false,content:'old inactive updater'});
+const importedResult=merge(imported,latest,sources,runningId);
+const updatedSelf=importedResult.extensions.tavern_helper.scripts.find(s=>s.id===runningId);
+check(updatedSelf.content===sources[latest.components.find(c=>c.id===updaterId).path]&&updatedSelf.id===runningId&&updatedSelf.name==='renamed updater'&&updatedSelf.data.keep==='personal','imported updater uses runtime ID and preserves ID/name/config');
+check(importedResult.extensions.tavern_helper.scripts.find(s=>s.id===updaterId).content==='old inactive updater','inactive old updater is not overwritten instead of running updater');
+assert.throws(()=>merge(imported,latest,sources,'not-in-current-card'));checks.push('runtime updater must belong to current card');
+const duplicateSelf=structuredClone(imported);duplicateSelf.data.extensions.tavern_helper.scripts.push(structuredClone(self));assert.throws(()=>merge(duplicateSelf,latest,sources,runningId));checks.push('duplicate runtime updater ID still rejected');
 const baselinePath=process.argv.slice(2).find(arg=>!arg.startsWith('--'));
 if(baselinePath){
  const actual=JSON.parse(fs.readFileSync(baselinePath,'utf8'));assert.equal(actual.data.character_version,'vf.0.2.21');
@@ -60,6 +71,8 @@ const fixtureSources=Object.fromEntries(selected.map(c=>[c.path,sources[c.path]]
 const fixture=structuredClone(original);fixture.data.extensions.tavern_helper.scripts=fixture.data.extensions.tavern_helper.scripts.filter(s=>selected.some(c=>c.id===s.id)||s.id==='user-added');
 fixture.data.extensions.tavern_helper.scripts[0].content='old DM';fixture.data.extensions.regex_scripts=fixture.data.extensions.regex_scripts.slice(0,1);
 if(process.argv.includes('--legacy')){fixture.data.character_version='vf.0.2.21';fixture.data.extensions.world='D&D 2024 vf.0.2.21';fixture.data.extensions.tavern_helper.scripts=fixture.data.extensions.tavern_helper.scripts.filter(s=>s.id!==orbId);}
+// Helper 4.12 import rewrites IDs before mounting the script iframe.
+fixture.data.extensions.tavern_helper.scripts.find(s=>s.id===updaterId).id=runningId;
 const jsJSON=value=>JSON.stringify(value).replaceAll('<','\\u003c');
 const setup=`
 window.fixtureCard=${jsJSON(fixture)};window.initialCard=structuredClone(fixtureCard);window.remoteManifest=${jsJSON(fixtureManifest)};window.remoteSources=${jsJSON(fixtureSources)};
@@ -113,6 +126,7 @@ addEventListener('DOMContentLoaded',async()=>{
   await check();await install();assert(saves===1&&reloads===1,'all sources saved in one native merge then verified before reload');
   assert(fixtureCard.data.extensions.dnd_component_updates.version===remoteManifest.version&&fixtureCard.data.character_version===initialCard.data.character_version,'component version updated without pretending whole card upgraded');
   assert(fixtureCard.data.extensions.tavern_helper.scripts.filter(s=>s.id==='480d6777-f90d-4eba-a811-64cb2f1ffb00').length===1,'one orb present after UI install');
+  assert(fixtureCard.data.extensions.tavern_helper.scripts.some(s=>s.id==='${runningId}')&&!fixtureCard.data.extensions.tavern_helper.scripts.some(s=>s.id==='${updaterId}'),'browser install preserves Helper-assigned updater ID');
   assert(fixtureCard.data.extensions.world===initialCard.data.extensions.world&&JSON.stringify(fixtureCard.data.character_book)===JSON.stringify(initialCard.data.character_book)&&fixtureCard.data.first_mes===initialCard.data.first_mes,'worldbook binding, content and opening preserved');
   assert(fixtureCard.data.extensions.regex_scripts[0].substituteRegex===7&&fixtureCard.data.extensions.regex_scripts[0].disabled,'raw regex settings preserved by actual UI operation');
   assert(!JSON.stringify(fixtureCard).includes('test-session-read-only')&&!localStorage.length&&!sessionStorage.length,'no credential or browser storage written');
@@ -122,8 +136,8 @@ addEventListener('DOMContentLoaded',async()=>{
  }catch(e){document.getElementById('fixture-result').textContent=JSON.stringify({passed:false,error:e.stack,checks,errors});}
 });`;
 const runtime=source.replace('host.location.reload();','host.__fixtureReload();');assert.notEqual(runtime,source);
-const html=`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Public updater isolated check</title><style>body{background:#111a18}</style><pre id="fixture-result" hidden>pending</pre><script>${setup.replaceAll('</script','<\/script')}${test}</script><iframe src="/helper" hidden></iframe>`;
-const helper=`<!doctype html><script>window.TavernHelper=parent.TavernHelper;${runtime.replaceAll('</script','<\/script')}</script>`;
+const html=`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Public updater isolated check</title><style>body{background:#111a18}</style><pre id="fixture-result" hidden>pending</pre><script>${setup.replaceAll('</script','<\/script')}${test}</script><iframe id="TH-script--character--${runningId}" src="/helper" hidden></iframe>`;
+const helper=`<!doctype html><script>window.TavernHelper=parent.TavernHelper;window.getScriptId=()=>window.frameElement.id.replace(/TH-script--.+--/,'');${runtime.replaceAll('</script','<\/script')}</script>`;
 (async()=>{
  const server=http.createServer((req,res)=>{res.setHeader('Content-Type','text/html; charset=utf-8');res.end(req.url==='/helper'?helper:html);});await new Promise(r=>server.listen(0,'127.0.0.1',r));
  try{

@@ -1,5 +1,5 @@
 // Only component source bodies are replaceable; configuration and game data stay local.
-function buildDndComponentUpdate(card, manifest, sources) {
+function buildDndComponentUpdate(card, manifest, sources, updaterId) {
   const allowed = new Set([
     '998cb3fe-cd53-44dd-a118-1437232659b6','fa7510ec-d99f-4d86-9ad5-18c6d625887b','785d4054-38d8-4f15-9edc-9954cbedea78',
     'e2a5bb3c-baa2-47dd-a306-494339a4b5fb','fbf175a5-3276-443f-9765-f16e3e843ada','28c1bd41-a967-4869-99d1-e8d935f62b3a',
@@ -26,7 +26,9 @@ function buildDndComponentUpdate(card, manifest, sources) {
     seen.add(item.id);
     const prefix = item.kind === 'script' ? 'src/scripts/' : 'src/regexes/';
     if (typeof item.path !== 'string' || !item.path.startsWith(prefix) || item.path.includes('..') || /[\\?#\x00-\x1f]/.test(item.path)) throw Error('组件路径无效');
-    const matches = (item.kind === 'script' ? scripts : regexes).filter(s => s.id === item.id);
+    // Helper imports assign a fresh ID. Locate this updater by its running ID.
+    const localId = item.kind === 'script' && item.id === '736c0e4e-67b4-4113-a021-b3890714ba28' ? updaterId : item.id;
+    const matches = (item.kind === 'script' ? scripts : regexes).filter(s => s.id === localId);
     const body = sources[item.path];
     if (typeof body !== 'string' || (item.kind === 'script' && !body.trim())) throw Error('组件源码缺失：' + item.name);
     // vf.0.2.21 predates the orb. This is the sole permitted missing component.
@@ -36,7 +38,8 @@ function buildDndComponentUpdate(card, manifest, sources) {
         button: {enabled: false, buttons: []}, data: {}, export_with: {data: true, button: true}};
       helper.scripts.push(orb); scripts.push(orb); changed.push('新增叙事悬浮开关'); continue;
     }
-    if (matches.length !== 1) throw Error('组件缺失或重复：' + item.name);
+    if (matches.length === 0) throw Error('未找到组件：' + item.name);
+    if (matches.length > 1) throw Error('组件 ID 重复：' + item.name);
     const field = item.kind === 'script' ? 'content' : 'replaceString';
     if (matches[0][field] !== body) {matches[0][field] = body; changed.push(item.name);}
   }
@@ -65,6 +68,7 @@ function dndVersionIsNewer(next, current) {
   };
   const avatar = ctx().characters[ctx().characterId]?.avatar;
   if (!avatar) throw Error('请在单人角色卡聊天中使用组件更新');
+  const updaterId = api('getScriptId')();
   const key = () => JSON.stringify([ctx().characters[ctx().characterId]?.avatar, ctx().groupId, ctx().getCurrentChatId?.() || ctx().chatId]);
   const current = () => ctx().characters[ctx().characterId];
   const installed = () => current().data.extensions.dnd_component_updates?.version || current().data.character_version;
@@ -136,7 +140,7 @@ function dndVersionIsNewer(next, current) {
       const candidate = JSON.parse(await github('latest.json', 'main')); guard(start);
       if (!candidate || !Array.isArray(candidate.components)) throw Error('更新清单格式无效');
       const placeholders = Object.fromEntries(candidate.components.map(item => [item.path, item.kind === 'script' ? '/* validate manifest */' : '']));
-      buildDndComponentUpdate(current(), candidate, placeholders);
+      buildDndComponentUpdate(current(), candidate, placeholders, updaterId);
       if (!Array.isArray(candidate.notes) || candidate.notes.some(note => typeof note !== 'string')) throw Error('版本说明格式无效');
       manifest = candidate;
       for (const text of manifest.notes) {const li = doc.createElement('li'); li.textContent = text; dialog.querySelector('.dpu-notes').append(li);}
@@ -156,7 +160,7 @@ function dndVersionIsNewer(next, current) {
       // Pinned release tag prevents mixing files from two successive publishes.
       for (const item of release.components) {sources[item.path] = await github(item.path, release.version); guard(start);}
       const card = await (await local('/api/characters/get', {avatar_url: avatar})).json(); guard(start);
-      const update = buildDndComponentUpdate(card, release, sources);
+      const update = buildDndComponentUpdate(card, release, sources, updaterId);
       status.textContent = '正在保存 ' + update.changed.length + ' 项代码更新…';
       // Native raw merge preserves substituteRegex and unknown fields that the
       // Helper 4.12 normalized regex conversion would otherwise discard.
@@ -164,7 +168,7 @@ function dndVersionIsNewer(next, current) {
       saved = true;
       const confirmed = await (await local('/api/characters/get', {avatar_url: avatar})).json();
       const receipt = confirmed.data.extensions.dnd_component_updates;
-      if (receipt?.version !== release.version || receipt?.repository !== REPOSITORY || buildDndComponentUpdate(confirmed, release, sources).changed.length) throw Error('保存后读回结果不一致');
+      if (receipt?.version !== release.version || receipt?.repository !== REPOSITORY || buildDndComponentUpdate(confirmed, release, sources, updaterId).changed.length) throw Error('保存后读回结果不一致');
       status.textContent = release.version + ' 已保存，正在刷新页面…';
       // A switched-away chat must not be reloaded by the old card's request.
       if (!disposed && key() === start) host.location.reload();
