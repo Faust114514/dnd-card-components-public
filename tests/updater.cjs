@@ -14,6 +14,8 @@ original.data.extensions.regex_scripts[0].substituteRegex=7;original.data.extens
 original.data.extensions.tavern_helper.scripts[0].enabled=false;original.data.extensions.tavern_helper.scripts[0].data.userConfig='keep';
 original.data.extensions.tavern_helper.scripts[0].content='old source';
 original.data.extensions.tavern_helper.scripts.push({id:'user-added',type:'script',content:'personal',enabled:true,data:{keep:true}});
+const archiveIds=['d7a9c17d-960e-4a56-9e17-0c77e86c71a8','1c6924c3-1308-430b-b62c-e2ce7e0d1814'];
+const archivePattern=String.raw`<char_info>((?:(?!<\/?char_info>)[\s\S])*)<\/char_info>`;
 const before=JSON.stringify(original),result=merge(original,latest,sources),checks=[];
 const check=(value,label)=>{assert.ok(value,label);checks.push(label);};
 check(JSON.stringify(original)===before,'core does not mutate its input');
@@ -22,6 +24,14 @@ check(Object.keys(result.extensions).sort().join(',')==='dnd_component_updates,r
 check(result.extensions.tavern_helper.scripts[0].enabled===false&&result.extensions.tavern_helper.scripts[0].data.userConfig==='keep','script switch and user configuration preserved');
 check(result.extensions.tavern_helper.scripts.at(-1).id==='user-added'&&result.extensions.tavern_helper.variables.keep===9,'personal script and helper variables preserved');
 assert.deepEqual(result.extensions.regex_scripts,original.data.extensions.regex_scripts);checks.push('all raw regex settings and unknown fields preserved');
+const customized=structuredClone(original);
+const [displayRule,hideRule]=archiveIds.map(id=>customized.data.extensions.regex_scripts.find(r=>r.id===id));
+displayRule.findRegex='my custom archive syntax';
+hideRule.findRegex=archivePattern;hideRule.disabled=true;hideRule.minDepth=7;
+const repaired=merge(customized,latest,sources).extensions.regex_scripts;
+assert.deepEqual(repaired.find(r=>r.id===displayRule.id),displayRule);
+assert.deepEqual(repaired.find(r=>r.id===hideRule.id),{...hideRule,findRegex:'/'+archivePattern+'/g'});
+checks.push('only shipped character pattern receives global flag; custom pattern, depth and switch survive');
 const nested=structuredClone(original);nested.data.extensions.tavern_helper.scripts=[{type:'folder',id:'folder',name:'personal grouping',enabled:false,scripts:nested.data.extensions.tavern_helper.scripts}];
 check(merge(nested,latest,sources).extensions.tavern_helper.scripts[0].enabled===false,'script folders and order preserved');
 for(const [label,modify] of [
@@ -59,17 +69,27 @@ if(baselinePath){
  const updater=items('scripts','content').find(s=>s.id==='736c0e4e-67b4-4113-a021-b3890714ba28');
  actual.data.extensions.tavern_helper.scripts.push(updater);const expected=structuredClone(actual);
  const patch=merge(actual,latest,sources);const applied=structuredClone(actual);Object.assign(applied.data.extensions,patch.extensions);
- check(patch.changed.length===2&&patch.changed.includes('DM人设选择')&&patch.changed.includes('新增叙事悬浮开关'),'real vf.0.2.21 needs only DM source update and orb insertion after updater import');
+ check(patch.changed.length===4&&['DM人设选择','新增叙事悬浮开关','角色生成美化 (性能)','角色生成隐藏@晚鸢尾'].every(name=>patch.changed.includes(name)),'real vf.0.2.21 receives DM, orb and the two archive rule fixes');
  const restored=structuredClone(applied);delete restored.data.extensions.dnd_component_updates;
  restored.data.extensions.tavern_helper.scripts=restored.data.extensions.tavern_helper.scripts.filter(s=>s.id!==orbId).map(s=>s.id==='c3c9ad44-9e9b-4c6e-ae93-f2b098a20125'?expected.data.extensions.tavern_helper.scripts.find(x=>x.id===s.id):s);
+ for(const id of archiveIds){
+  const oldRule=expected.data.extensions.regex_scripts.find(r=>r.id===id);
+  const appliedRule=restored.data.extensions.regex_scripts.find(r=>r.id===id);
+  assert.equal(appliedRule.findRegex,'/'+oldRule.findRegex+'/g');
+  assert.equal(appliedRule.replaceString,sources[latest.components.find(c=>c.id===id).path]);
+  appliedRule.findRegex=oldRule.findRegex;appliedRule.replaceString=oldRule.replaceString;
+ }
  assert.deepEqual(restored,expected);checks.push('real legacy card preserves every other field, worldbook and regex');
 }
 
-const selected=latest.components.filter(c=>['c3c9ad44-9e9b-4c6e-ae93-f2b098a20125','480d6777-f90d-4eba-a811-64cb2f1ffb00','736c0e4e-67b4-4113-a021-b3890714ba28','01c632e5-1071-4a08-aebd-6a0e5424ea99'].includes(c.id));
+const selected=latest.components.filter(c=>['c3c9ad44-9e9b-4c6e-ae93-f2b098a20125','480d6777-f90d-4eba-a811-64cb2f1ffb00','736c0e4e-67b4-4113-a021-b3890714ba28','01c632e5-1071-4a08-aebd-6a0e5424ea99',...archiveIds].includes(c.id));
 const fixtureManifest={...latest,components:selected};
 const fixtureSources=Object.fromEntries(selected.map(c=>[c.path,sources[c.path]]));
 const fixture=structuredClone(original);fixture.data.extensions.tavern_helper.scripts=fixture.data.extensions.tavern_helper.scripts.filter(s=>selected.some(c=>c.id===s.id)||s.id==='user-added');
-fixture.data.extensions.tavern_helper.scripts[0].content='old DM';fixture.data.extensions.regex_scripts=fixture.data.extensions.regex_scripts.slice(0,1);
+fixture.data.extensions.tavern_helper.scripts[0].content='old DM';fixture.data.extensions.regex_scripts=fixture.data.extensions.regex_scripts.filter(r=>selected.some(c=>c.id===r.id));
+for (const rule of fixture.data.extensions.regex_scripts.filter(r=>archiveIds.includes(r.id))) rule.findRegex=archivePattern;
+const sameVersionRepair=process.argv.includes('--repair');
+if(sameVersionRepair) fixture.data.extensions.dnd_component_updates={version:latest.version,repository:'Faust114514/dnd-card-components-public'};
 if(process.argv.includes('--legacy')){fixture.data.character_version='vf.0.2.21';fixture.data.extensions.world='D&D 2024 vf.0.2.21';fixture.data.extensions.tavern_helper.scripts=fixture.data.extensions.tavern_helper.scripts.filter(s=>s.id!==orbId);}
 // Helper 4.12 import rewrites IDs before mounting the script iframe.
 fixture.data.extensions.tavern_helper.scripts.find(s=>s.id===updaterId).id=runningId;
@@ -130,6 +150,13 @@ addEventListener('DOMContentLoaded',async()=>{
   assert(fixtureCard.data.extensions.world===initialCard.data.extensions.world&&JSON.stringify(fixtureCard.data.character_book)===JSON.stringify(initialCard.data.character_book)&&fixtureCard.data.first_mes===initialCard.data.first_mes,'worldbook binding, content and opening preserved');
   assert(fixtureCard.data.extensions.regex_scripts[0].substituteRegex===7&&fixtureCard.data.extensions.regex_scripts[0].disabled,'raw regex settings preserved by actual UI operation');
   assert(!JSON.stringify(fixtureCard).includes('test-session-read-only')&&!localStorage.length&&!sessionStorage.length,'no credential or browser storage written');
+  const archiveRules = fixtureCard.data.extensions.regex_scripts.filter(rule=>${jsJSON(archiveIds)}.includes(rule.id));
+  assert(archiveRules.length===2&&archiveRules.every(rule=>rule.findRegex===${jsJSON('/'+archivePattern+'/g')}),'both archive rules persist with global matching');
+  if(${sameVersionRepair}){
+    const files=new Set(calls.filter(call=>call.url.startsWith('https://')&&!call.url.endsWith('/latest.json')).map(call=>call.url));
+    assert(files.size===2&&[...files].every(file=>file.includes('/src/regexes/')),'same-version repair downloads only the two archive rules');
+  }
+  await check();assert(q('.dpu-install').disabled&&q('.dpu-status').textContent.includes('最新'),'next check reports current after saving the patterns');
   assert(errors.length===0,'no browser errors');
   assert(calls.filter(c=>c.url.startsWith('https://')).every(c=>c.method==='GET'&&!c.body),'remote server receives only GET requests without card data');
   document.getElementById('fixture-result').textContent=JSON.stringify({passed:true,checks});

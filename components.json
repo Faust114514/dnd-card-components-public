@@ -1,5 +1,5 @@
 {
-  "version": "vf.0.3.4",
+  "version": "vf.0.3.5",
   "scripts": [
     {
       "type": "script",
@@ -548,7 +548,7 @@
     },
     {
       "disabled": false,
-      "findRegex": "<char_info>((?:(?!<\\/?char_info>)[\\s\\S])*)<\\/char_info>",
+      "findRegex": "/<char_info>((?:(?!<\\/?char_info>)[\\s\\S])*)<\\/char_info>/g",
       "id": "d7a9c17d-960e-4a56-9e17-0c77e86c71a8",
       "markdownOnly": true,
       "maxDepth": 3,
@@ -565,7 +565,7 @@
     },
     {
       "disabled": false,
-      "findRegex": "<char_info>((?:(?!<\\/?char_info>)[\\s\\S])*)<\\/char_info>",
+      "findRegex": "/<char_info>((?:(?!<\\/?char_info>)[\\s\\S])*)<\\/char_info>/g",
       "id": "1c6924c3-1308-430b-b62c-e2ce7e0d1814",
       "markdownOnly": true,
       "maxDepth": null,

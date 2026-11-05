@@ -1,4 +1,10 @@
-// Only component source bodies are replaceable; configuration and game data stay local.
+// Only these two shipped patterns need the global flag. Keep custom patterns as entered.
+function hasOriginalCharacterPattern(rule) {
+  const isArchiveRule = rule.id === 'd7a9c17d-960e-4a56-9e17-0c77e86c71a8' ||
+    rule.id === '1c6924c3-1308-430b-b62c-e2ce7e0d1814';
+  return isArchiveRule && rule.findRegex === String.raw`<char_info>((?:(?!<\/?char_info>)[\s\S])*)<\/char_info>`;
+}
+
 function buildDndComponentUpdate(card, manifest, sources, updaterId) {
   const allowed = new Set([
     '998cb3fe-cd53-44dd-a118-1437232659b6','fa7510ec-d99f-4d86-9ad5-18c6d625887b','785d4054-38d8-4f15-9edc-9954cbedea78',
@@ -41,7 +47,13 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
     if (matches.length === 0) throw Error('未找到组件：' + item.name);
     if (matches.length > 1) throw Error('组件 ID 重复：' + item.name);
     const field = item.kind === 'script' ? 'content' : 'replaceString';
-    if (matches[0][field] !== body) {matches[0][field] = body; changed.push(item.name);}
+    const target = matches[0];
+    const fixPattern = item.kind === 'regex' && hasOriginalCharacterPattern(target) && dndVersionIsNewer(manifest.version, 'vf.0.3.4');
+    if (fixPattern) target.findRegex = '/' + target.findRegex + '/g';
+    if (target[field] !== body || fixPattern) {
+      target[field] = body;
+      changed.push(item.name);
+    }
   }
   return {changed, extensions: {
     tavern_helper: helper,
@@ -102,13 +114,14 @@ function dndVersionIsNewer(next, current) {
   const status = dialog.querySelector('.dpu-status');
   const checkButton = dialog.querySelector('.dpu-check'), installButton = dialog.querySelector('.dpu-install');
   const isGenerating = () => generating || !!doc.getElementById('mes_stop')?.getClientRects().length;
-  const newer = () => manifest && dndVersionIsNewer(manifest.version, installed());
+  const canInstall = () => manifest && (dndVersionIsNewer(manifest.version, installed()) ||
+    (manifest.version === installed() && manifest.components.length > 0));
   function announce(text) {host.dispatchEvent(new host.CustomEvent('dnd-private-update-status', {detail: text}));}
   function render() {
     if (disposed) return;
     dialog.querySelector('.dpu-version').textContent = '整卡 ' + current().data.character_version + ' · 组件 ' + installed();
     checkButton.disabled = busy || isGenerating();
-    installButton.disabled = busy || isGenerating() || !newer() || saved;
+    installButton.disabled = busy || isGenerating() || !canInstall() || saved;
     if (isGenerating() && !busy) status.textContent = '生成中，请结束后再更新。';
   }
   function guard(start) {
@@ -142,16 +155,23 @@ function dndVersionIsNewer(next, current) {
       const placeholders = Object.fromEntries(candidate.components.map(item => [item.path, item.kind === 'script' ? '/* validate manifest */' : '']));
       buildDndComponentUpdate(current(), candidate, placeholders, updaterId);
       if (!Array.isArray(candidate.notes) || candidate.notes.some(note => typeof note !== 'string')) throw Error('版本说明格式无效');
+      // Older updaters downloaded the bodies and recorded the version, but kept findRegex.
+      if (candidate.version === installed()) {
+        const pending = current().data.extensions.regex_scripts.filter(hasOriginalCharacterPattern);
+        candidate.components = candidate.components.filter(item => item.kind === 'regex' &&
+          dndVersionIsNewer(candidate.version, 'vf.0.3.4') && pending.some(rule => rule.id === item.id));
+      }
       manifest = candidate;
       for (const text of manifest.notes) {const li = doc.createElement('li'); li.textContent = text; dialog.querySelector('.dpu-notes').append(li);}
-      status.textContent = newer() ? '发现 ' + manifest.version + '，可安装下列更新。' : '当前组件已是最新版本。';
-      announce(newer() ? '有新版' : '已是最新');
+      status.textContent = !canInstall() ? '当前组件已是最新版本。' : manifest.version === installed() ?
+        '新版代码已就绪，请点击安装补齐人物显示规则。' : '发现 ' + manifest.version + '，可安装下列更新。';
+      announce(canInstall() ? '待安装' : '已是最新');
     } catch (error) {
       manifest = null; status.textContent = '检查失败：' + (error.name === 'AbortError' ? '连接已取消' : error.message); announce('检查失败');
     } finally {busy = false; render();}
   }
   async function install() {
-    if (busy || !newer()) return;
+    if (busy || !canInstall()) return;
     const start = key(), release = manifest;
     busy = true; status.textContent = '正在下载 ' + release.version + ' 的组件…'; render();
     try {
