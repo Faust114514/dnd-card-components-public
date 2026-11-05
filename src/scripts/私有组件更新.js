@@ -19,7 +19,9 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
   ]);
   const legacy = card.data.character_version === 'vf.0.2.21';
   if (!legacy && !/^vf\.0\.3\.\d+$/.test(card.data.character_version)) throw Error('本更新器支持 vf.0.2.21 与 vf.0.3.x 卡');
-  if (manifest.format !== 1 || !/^vf\.0\.3\.\d+$/.test(manifest.version) || manifest.minimum_card_version !== 'vf.0.3.0' || !Array.isArray(manifest.components) || !manifest.components.length) throw Error('更新清单不适用于本卡');
+  const emptyRegexes = manifest.empty_regexes ?? [];
+  if (!Array.isArray(emptyRegexes) || emptyRegexes.some(item => item?.kind !== 'regex')) throw Error('空替换规则清单无效');
+  if (manifest.format !== 1 || !/^vf\.0\.3\.\d+$/.test(manifest.version) || manifest.minimum_card_version !== 'vf.0.3.0' || !Array.isArray(manifest.components) || !(manifest.components.length || emptyRegexes.length)) throw Error('更新清单不适用于本卡');
   if (legacy && !manifest.legacy_card_versions?.includes('vf.0.2.21')) throw Error('此发布尚未提供 vf.0.2.21 接入支持');
   const current = card.data.extensions;
   const helper = structuredClone(current.tavern_helper), regexes = structuredClone(current.regex_scripts);
@@ -27,7 +29,7 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
   function walk(items) {for (const item of items) item.type === 'folder' ? walk(item.scripts) : scripts.push(item);}
   walk(helper.scripts);
   const changed = [], seen = new Set();
-  for (const item of manifest.components) {
+  for (const item of [...manifest.components, ...emptyRegexes]) {
     if (!allowed.has(item.id) || seen.has(item.id) || !['script','regex'].includes(item.kind)) throw Error('更新清单含未知或重复组件');
     seen.add(item.id);
     const prefix = item.kind === 'script' ? 'src/scripts/' : 'src/regexes/';
@@ -35,7 +37,7 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
     // Helper imports assign a fresh ID. Locate this updater by its running ID.
     const localId = item.kind === 'script' && item.id === '736c0e4e-67b4-4113-a021-b3890714ba28' ? updaterId : item.id;
     const matches = (item.kind === 'script' ? scripts : regexes).filter(s => s.id === localId);
-    const body = sources[item.path];
+    const body = emptyRegexes.includes(item) ? '' : sources[item.path];
     if (typeof body !== 'string' || (item.kind === 'script' && !body.trim())) throw Error('组件源码缺失：' + item.name);
     // vf.0.2.21 predates the orb. This is the sole permitted missing component.
     if (legacy && item.kind === 'script' && item.id === '480d6777-f90d-4eba-a811-64cb2f1ffb00' && matches.length === 0) {
@@ -115,7 +117,7 @@ function dndVersionIsNewer(next, current) {
   const checkButton = dialog.querySelector('.dpu-check'), installButton = dialog.querySelector('.dpu-install');
   const isGenerating = () => generating || !!doc.getElementById('mes_stop')?.getClientRects().length;
   const canInstall = () => manifest && (dndVersionIsNewer(manifest.version, installed()) ||
-    (manifest.version === installed() && manifest.components.length > 0));
+    (manifest.version === installed() && (manifest.components.length > 0 || manifest.empty_regexes?.length > 0)));
   function announce(text) {host.dispatchEvent(new host.CustomEvent('dnd-private-update-status', {detail: text}));}
   function render() {
     if (disposed) return;
@@ -134,7 +136,7 @@ function dndVersionIsNewer(next, current) {
       method: 'GET',
       credentials: 'omit', redirect: 'error', cache: 'no-store', signal: requests.signal,
     });
-    if (!response.ok) throw Error('公开文件下载失败（' + response.status + '），请检查网络和发布版本');
+    if (!response.ok) throw Error('公开文件下载失败（' + response.status + '）：' + ref + '/' + path);
     return response.text();
   }
   async function local(path, body) {
@@ -158,8 +160,9 @@ function dndVersionIsNewer(next, current) {
       // Older updaters downloaded the bodies and recorded the version, but kept findRegex.
       if (candidate.version === installed()) {
         const pending = current().data.extensions.regex_scripts.filter(hasOriginalCharacterPattern);
-        candidate.components = candidate.components.filter(item => item.kind === 'regex' &&
-          dndVersionIsNewer(candidate.version, 'vf.0.3.4') && pending.some(rule => rule.id === item.id));
+        const needsRepair = item => item.kind === 'regex' && dndVersionIsNewer(candidate.version, 'vf.0.3.4') && pending.some(rule => rule.id === item.id);
+        candidate.components = candidate.components.filter(needsRepair);
+        if (candidate.empty_regexes) candidate.empty_regexes = candidate.empty_regexes.filter(needsRepair);
       }
       manifest = candidate;
       for (const text of manifest.notes) {const li = doc.createElement('li'); li.textContent = text; dialog.querySelector('.dpu-notes').append(li);}

@@ -10,6 +10,7 @@ config = json.loads((ROOT / 'components.json').read_bytes())
 latest = json.loads((ROOT / 'latest.json').read_bytes())
 assert latest['version'] == config['version']
 expected = []
+expected_empty = []
 ids = set()
 for group, kind in [('scripts', 'script'), ('regexes', 'regex')]:
     for item in config[group]:
@@ -20,10 +21,13 @@ for group, kind in [('scripts', 'script'), ('regexes', 'regex')]:
         text = (ROOT / path).read_text(encoding='utf-8')
         assert '\ufffd' not in text, path
         if kind == 'script':
+            assert text.strip(), path
             result = subprocess.run(['node', '--input-type=module', '--check'], input=text, text=True, encoding='utf-8', capture_output=True)
             assert result.returncode == 0, path + ': ' + result.stderr
-        expected.append({'kind': kind, 'id': item['id'], 'name': item.get('name', item.get('scriptName')), 'path': path})
+        dest = expected_empty if kind == 'regex' and text == '' else expected
+        dest.append({'kind': kind, 'id': item['id'], 'name': item.get('name', item.get('scriptName')), 'path': path})
 assert latest['components'] == expected
+assert latest['empty_regexes'] == expected_empty
 permitted_root = {'.gitignore', 'README.md', 'latest.json', 'components.json'}
 for path in ROOT.rglob('*'):
     if not path.is_file() or '.git' in path.relative_to(ROOT).parts:

@@ -1,10 +1,10 @@
 {
   "format": 1,
-  "version": "vf.0.3.5",
+  "version": "vf.0.3.6",
   "minimum_card_version": "vf.0.3.0",
   "notes": [
-    "一条回复中的每份完整人物档案都生成独立面板，旧楼层逐份隐藏。",
-    "从旧更新器升级时，首次安装刷新后再点一次检查更新，按提示安装补齐人物规则。"
+    "修复旧版安装时下载空文件报 501。",
+    "从 vf.0.3.4 安装刷新后再检查一次，按提示补齐多人物面板规则。"
   ],
   "components": [
     {
@@ -99,27 +99,9 @@
     },
     {
       "kind": "regex",
-      "id": "4b31a3fe-d7df-4f51-ac2d-5e4efda6fbe5",
-      "name": "[不发送]去除变量更新",
-      "path": "src/regexes/[不发送]去除变量更新.txt"
-    },
-    {
-      "kind": "regex",
-      "id": "869d4177-a5a3-47b5-9b53-26ecd557d6f3",
-      "name": "骰子不发送",
-      "path": "src/regexes/骰子不发送.txt"
-    },
-    {
-      "kind": "regex",
       "id": "36bab6c1-2a4d-44de-b9a7-256c8a68c50d",
       "name": "dnnd-battle-panel",
       "path": "src/regexes/dnnd-battle-panel.html"
-    },
-    {
-      "kind": "regex",
-      "id": "c150cf94-b876-499f-a9e3-80ccc0e96ff0",
-      "name": "隐藏旧骰子",
-      "path": "src/regexes/隐藏旧骰子.txt"
     },
     {
       "kind": "regex",
@@ -132,12 +114,6 @@
       "id": "0d8967e6-d2e8-4afb-9770-d22e332c301c",
       "name": "dnd-levelup-panel",
       "path": "src/regexes/dnd-levelup-panel.html"
-    },
-    {
-      "kind": "regex",
-      "id": "918ecc02-7af0-4700-89c5-cbf05735c7e9",
-      "name": "隐藏",
-      "path": "src/regexes/隐藏.txt"
     },
     {
       "kind": "regex",
@@ -159,12 +135,6 @@
     },
     {
       "kind": "regex",
-      "id": "1c6924c3-1308-430b-b62c-e2ce7e0d1814",
-      "name": "角色生成隐藏@晚鸢尾",
-      "path": "src/regexes/角色生成隐藏@晚鸢尾.txt"
-    },
-    {
-      "kind": "regex",
       "id": "b179c655-147d-4572-a6ea-1c0326363009",
       "name": "创建页面",
       "path": "src/regexes/创建页面.html"
@@ -172,5 +142,37 @@
   ],
   "legacy_card_versions": [
     "vf.0.2.21"
+  ],
+  "empty_regexes": [
+    {
+      "kind": "regex",
+      "id": "4b31a3fe-d7df-4f51-ac2d-5e4efda6fbe5",
+      "name": "[不发送]去除变量更新",
+      "path": "src/regexes/[不发送]去除变量更新.txt"
+    },
+    {
+      "kind": "regex",
+      "id": "869d4177-a5a3-47b5-9b53-26ecd557d6f3",
+      "name": "骰子不发送",
+      "path": "src/regexes/骰子不发送.txt"
+    },
+    {
+      "kind": "regex",
+      "id": "c150cf94-b876-499f-a9e3-80ccc0e96ff0",
+      "name": "隐藏旧骰子",
+      "path": "src/regexes/隐藏旧骰子.txt"
+    },
+    {
+      "kind": "regex",
+      "id": "918ecc02-7af0-4700-89c5-cbf05735c7e9",
+      "name": "隐藏",
+      "path": "src/regexes/隐藏.txt"
+    },
+    {
+      "kind": "regex",
+      "id": "1c6924c3-1308-430b-b62c-e2ce7e0d1814",
+      "name": "角色生成隐藏@晚鸢尾",
+      "path": "src/regexes/角色生成隐藏@晚鸢尾.txt"
+    }
   ]
 }

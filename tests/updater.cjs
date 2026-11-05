@@ -8,7 +8,7 @@ const pure=source.split('// Runtime entry.')[0],context={structuredClone,Set,Err
 const updaterId='736c0e4e-67b4-4113-a021-b3890714ba28';
 const merge=(card,manifest,sources,id=updaterId)=>context.buildDndComponentUpdate(card,manifest,sources,id),config=JSON.parse(fs.readFileSync(path.join(root,'components.json'))),latest=JSON.parse(fs.readFileSync(path.join(root,'latest.json')));
 const sources=Object.fromEntries(latest.components.map(c=>[c.path,fs.readFileSync(path.join(root,c.path),'utf8')]));
-const items=(group,field)=>config[group].map(c=>{const {source,...meta}=c;return{...meta,[field]:sources[source]};});
+const items=(group,field)=>config[group].map(c=>{const {source,...meta}=c;return{...meta,[field]:fs.readFileSync(path.join(root,source),'utf8')};});
 const original={avatar:'fixture.png',data:{character_version:'vf.0.3.0',description:'keep description',first_mes:'keep opening',character_book:{entries:[{content:'keep worldbook'}]},extensions:{world:'D&D 2024 vf.0.3.0',other:{keep:true},regex_scripts:items('regexes','replaceString'),tavern_helper:{scripts:items('scripts','content'),variables:{keep:9}}}}};
 original.data.extensions.regex_scripts[0].substituteRegex=7;original.data.extensions.regex_scripts[0].disabled=true;original.data.extensions.regex_scripts[0].unknown={keep:1};
 original.data.extensions.tavern_helper.scripts[0].enabled=false;original.data.extensions.tavern_helper.scripts[0].data.userConfig='keep';
@@ -32,11 +32,19 @@ const repaired=merge(customized,latest,sources).extensions.regex_scripts;
 assert.deepEqual(repaired.find(r=>r.id===displayRule.id),displayRule);
 assert.deepEqual(repaired.find(r=>r.id===hideRule.id),{...hideRule,findRegex:'/'+archivePattern+'/g'});
 checks.push('only shipped character pattern receives global flag; custom pattern, depth and switch survive');
+const hideOnly={...latest,components:[],empty_regexes:latest.empty_regexes.filter(item=>item.id===hideRule.id)};
+const oldHideCard=structuredClone(customized);
+oldHideCard.data.extensions.regex_scripts.find(rule=>rule.id===hideRule.id).replaceString='old replacement';
+const hideOnlyResult=merge(oldHideCard,hideOnly,{});
+assert.deepEqual(hideOnlyResult.extensions.regex_scripts.find(rule=>rule.id===hideRule.id),{...hideRule,findRegex:'/'+archivePattern+'/g',replaceString:''});
+check(hideOnlyResult.changed.length===1,'empty-only repair applies the literal empty string and fixes the hide pattern without a file');
 const nested=structuredClone(original);nested.data.extensions.tavern_helper.scripts=[{type:'folder',id:'folder',name:'personal grouping',enabled:false,scripts:nested.data.extensions.tavern_helper.scripts}];
 check(merge(nested,latest,sources).extensions.tavern_helper.scripts[0].enabled===false,'script folders and order preserved');
 for(const [label,modify] of [
  ['unknown component',m=>m.components[0].id='user-added'],
  ['duplicate component',m=>m.components.push(m.components[0])],
+ ['duplicate empty rule',m=>m.components.push(m.empty_regexes[0])],
+ ['script declared empty',m=>m.empty_regexes.push(m.components[0])],
  ['path traversal',m=>m.components[0].path='src/scripts/../../private'],
  ['external URL',m=>m.components[0].path='https://example.org/steal'],
  ['unsupported version',m=>m.version='vf.0.4.0'],
@@ -76,17 +84,17 @@ if(baselinePath){
   const oldRule=expected.data.extensions.regex_scripts.find(r=>r.id===id);
   const appliedRule=restored.data.extensions.regex_scripts.find(r=>r.id===id);
   assert.equal(appliedRule.findRegex,'/'+oldRule.findRegex+'/g');
-  assert.equal(appliedRule.replaceString,sources[latest.components.find(c=>c.id===id).path]);
+  assert.equal(appliedRule.replaceString,original.data.extensions.regex_scripts.find(rule=>rule.id===id).replaceString);
   appliedRule.findRegex=oldRule.findRegex;appliedRule.replaceString=oldRule.replaceString;
  }
  assert.deepEqual(restored,expected);checks.push('real legacy card preserves every other field, worldbook and regex');
 }
 
 const selected=latest.components.filter(c=>['c3c9ad44-9e9b-4c6e-ae93-f2b098a20125','480d6777-f90d-4eba-a811-64cb2f1ffb00','736c0e4e-67b4-4113-a021-b3890714ba28','01c632e5-1071-4a08-aebd-6a0e5424ea99',...archiveIds].includes(c.id));
-const fixtureManifest={...latest,components:selected};
+const fixtureManifest={...latest,components:selected,empty_regexes:latest.empty_regexes.filter(c=>archiveIds.includes(c.id))};
 const fixtureSources=Object.fromEntries(selected.map(c=>[c.path,sources[c.path]]));
 const fixture=structuredClone(original);fixture.data.extensions.tavern_helper.scripts=fixture.data.extensions.tavern_helper.scripts.filter(s=>selected.some(c=>c.id===s.id)||s.id==='user-added');
-fixture.data.extensions.tavern_helper.scripts[0].content='old DM';fixture.data.extensions.regex_scripts=fixture.data.extensions.regex_scripts.filter(r=>selected.some(c=>c.id===r.id));
+fixture.data.extensions.tavern_helper.scripts[0].content='old DM';fixture.data.extensions.regex_scripts=fixture.data.extensions.regex_scripts.filter(r=>selected.some(c=>c.id===r.id)||archiveIds.includes(r.id));
 for (const rule of fixture.data.extensions.regex_scripts.filter(r=>archiveIds.includes(r.id))) rule.findRegex=archivePattern;
 const sameVersionRepair=process.argv.includes('--repair');
 if(sameVersionRepair) fixture.data.extensions.dnd_component_updates={version:latest.version,repository:'Faust114514/dnd-card-components-public'};
@@ -113,7 +121,8 @@ window.fetch=async(url,options={})=>{
   if(file==='latest.json'){if(ref!=='main')throw Error('wrong manifest ref');if(failure==='manifest'){failure=null;return new Response('not found',{status:404});}return new Response(JSON.stringify(remoteManifest));}
   if(ref!==remoteManifest.version)throw Error('unversioned source request');
   if(delayNext){const pending=delayNext;delayNext=null;await pending;}
-  if(failure==='download'){failure=null;return new Response('failure',{status:500});}
+  if(!(file in remoteSources))throw Error('Unexpected download: '+file);
+  if(failure==='download'){failure=null;return new Response('failure',{status:501});}
   return new Response(remoteSources[file]);
  }
  const payload=JSON.parse(options.body);
@@ -140,6 +149,7 @@ addEventListener('DOMContentLoaded',async()=>{
   failure='manifest';await check();assert(q('.dpu-install').disabled&&q('.dpu-status').textContent.includes('404'),'manifest download failure prevents installation');
   await check();assert(!q('.dpu-install').disabled,'anonymous version check enables installation');
   const initial=JSON.stringify(fixtureCard);failure='download';await install();assert(saves===0&&JSON.stringify(fixtureCard)===initial,'failed component download makes no local write');
+  assert(q('.dpu-status').textContent.includes('501')&&q('.dpu-status').textContent.includes(decodeURIComponent(calls.at(-1).url.split('/').at(-1))),'failed nonempty download reports status and filename');
   let release;delayNext=new Promise(r=>release=r);q('.dpu-install').click();await tick();context.chatId='b';emit('chat');release();await wait(()=>!q('.dpu-check').disabled,'cancel switched chat');assert(saves===0,'chat switch during download cancels before save');context.chatId='a';emit('chat');
   emit('start','normal',{},false);assert(q('.dpu-install').disabled&&q('.dpu-check').disabled,'generation disables update actions');emit('end');
   failure='save';await install();assert(saves===0&&JSON.stringify(fixtureCard)===initial&&reloads===0,'save failure does not claim success or reload');
@@ -154,7 +164,7 @@ addEventListener('DOMContentLoaded',async()=>{
   assert(archiveRules.length===2&&archiveRules.every(rule=>rule.findRegex===${jsJSON('/'+archivePattern+'/g')}),'both archive rules persist with global matching');
   if(${sameVersionRepair}){
     const files=new Set(calls.filter(call=>call.url.startsWith('https://')&&!call.url.endsWith('/latest.json')).map(call=>call.url));
-    assert(files.size===2&&[...files].every(file=>file.includes('/src/regexes/')),'same-version repair downloads only the two archive rules');
+    assert(files.size===1&&[...files].every(file=>file.includes('/src/regexes/')),'same-version repair downloads the display template only');
   }
   await check();assert(q('.dpu-install').disabled&&q('.dpu-status').textContent.includes('最新'),'next check reports current after saving the patterns');
   assert(errors.length===0,'no browser errors');
