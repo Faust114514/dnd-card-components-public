@@ -1,5 +1,5 @@
 {
-  "version": "vf.0.3.6",
+  "version": "vf.0.3.8",
   "scripts": [
     {
       "type": "script",
@@ -485,7 +485,7 @@
         1,
         2
       ],
-      "promptOnly": true,
+      "promptOnly": false,
       "runOnEdit": true,
       "scriptName": "dnd-levelup-panel",
       "substituteRegex": 0,
@@ -496,7 +496,7 @@
       "disabled": false,
       "findRegex": "levelup",
       "id": "918ecc02-7af0-4700-89c5-cbf05735c7e9",
-      "markdownOnly": true,
+      "markdownOnly": false,
       "maxDepth": null,
       "minDepth": null,
       "placement": [
@@ -592,12 +592,48 @@
         1,
         2
       ],
-      "promptOnly": true,
+      "promptOnly": false,
       "runOnEdit": true,
       "scriptName": "创建页面",
       "substituteRegex": 0,
       "trimStrings": [],
       "source": "src/regexes/创建页面.html"
+    },
+    {
+      "id": "dnd-clean-old-battlecheck",
+      "scriptName": "[不发送]旧战斗检定清理",
+      "findRegex": "/<battlecheck>[\\s\\S]*?<\\/battlecheck>/g",
+      "trimStrings": [],
+      "placement": [
+        1,
+        2
+      ],
+      "disabled": false,
+      "markdownOnly": false,
+      "promptOnly": true,
+      "runOnEdit": true,
+      "substituteRegex": 0,
+      "minDepth": 2,
+      "maxDepth": null,
+      "source": "src/regexes/[不发送]旧战斗检定清理.txt"
+    },
+    {
+      "id": "dnd-clean-old-battle-map",
+      "scriptName": "[不发送]旧战斗面板清理",
+      "findRegex": "/<battle>[\\s\\S]*?<\\/battle>/g",
+      "trimStrings": [],
+      "placement": [
+        1,
+        2
+      ],
+      "disabled": false,
+      "markdownOnly": false,
+      "promptOnly": true,
+      "runOnEdit": true,
+      "substituteRegex": 0,
+      "minDepth": 2,
+      "maxDepth": null,
+      "source": "src/regexes/[不发送]旧战斗面板清理.txt"
     }
   ]
 }

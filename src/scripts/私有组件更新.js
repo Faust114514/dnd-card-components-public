@@ -21,7 +21,7 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
   if (!legacy && !/^vf\.0\.3\.\d+$/.test(card.data.character_version)) throw Error('本更新器支持 vf.0.2.21 与 vf.0.3.x 卡');
   const emptyRegexes = manifest.empty_regexes ?? [];
   if (!Array.isArray(emptyRegexes) || emptyRegexes.some(item => item?.kind !== 'regex')) throw Error('空替换规则清单无效');
-  if (manifest.format !== 1 || !/^vf\.0\.3\.\d+$/.test(manifest.version) || manifest.minimum_card_version !== 'vf.0.3.0' || !Array.isArray(manifest.components) || !(manifest.components.length || emptyRegexes.length)) throw Error('更新清单不适用于本卡');
+  if (manifest.format !== 1 || !/^vf\.0\.3\.\d+$/.test(manifest.version) || manifest.minimum_card_version !== 'vf.0.3.0' || !Array.isArray(manifest.components)) throw Error('更新清单不适用于本卡');
   if (legacy && !manifest.legacy_card_versions?.includes('vf.0.2.21')) throw Error('此发布尚未提供 vf.0.2.21 接入支持');
   const current = card.data.extensions;
   const helper = structuredClone(current.tavern_helper), regexes = structuredClone(current.regex_scripts);
@@ -57,11 +57,44 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
       changed.push(item.name);
     }
   }
+  if (manifest.added_regexes) {
+    const newIds = new Set(['dnd-clean-old-battlecheck', 'dnd-clean-old-battle-map']);
+    for (const rule of manifest.added_regexes) {
+      if (!newIds.delete(rule.id) || rule.replaceString !== '' || typeof rule.findRegex !== 'string') throw Error('新增规则清单无效');
+      const matches = regexes.filter(entry => entry.id === rule.id);
+      if (matches.length > 1) throw Error('新增规则 ID 重复：' + rule.scriptName);
+      if (!matches.length) {regexes.push(structuredClone(rule)); changed.push(rule.scriptName);}
+    }
+    // Apply these shipped display/prompt fixes once, then respect later user settings.
+    if (current.dnd_component_updates?.rules_version !== 'vf.0.3.8') {
+      for (const [id, field] of [
+        ['0d8967e6-d2e8-4afb-9770-d22e332c301c', 'promptOnly'],
+        ['b179c655-147d-4572-a6ea-1c0326363009', 'promptOnly'],
+        ['918ecc02-7af0-4700-89c5-cbf05735c7e9', 'markdownOnly'],
+      ]) {
+        const target = regexes.find(rule => rule.id === id);
+        if (!target) throw Error('未找到显示／发送规则：' + id);
+        if (target[field]) {target[field] = false; changed.push(target.scriptName + '设置');}
+      }
+    }
+  }
   return {changed, extensions: {
     tavern_helper: helper,
     regex_scripts: regexes,
-    dnd_component_updates: {...current.dnd_component_updates, version: manifest.version, repository: 'Faust114514/dnd-card-components-public'},
+    dnd_component_updates: {...current.dnd_component_updates, version: manifest.version, repository: 'Faust114514/dnd-card-components-public',
+      ...(manifest.added_regexes ? {rules_version: 'vf.0.3.8'} : {})},
   }};
+}
+
+function planDndWorldbook(book, patches, kept = []) {
+  const allowed = new Set([18, 643316, 781421]);
+  return patches.map(patch => {
+    if (!allowed.delete(patch.uid) || typeof patch.previous !== 'string' || typeof patch.content !== 'string' || !patch.content.trim()) throw Error('世界书更新条目无效');
+    const entry = book.entries[patch.uid];
+    if (!entry || entry.uid !== patch.uid || typeof entry.content !== 'string') throw Error('绑定世界书缺少规则：' + patch.name);
+    const action = entry.content === patch.content ? 'current' : kept.includes(patch.uid) ? 'keep' : entry.content === patch.previous ? 'replace' : '';
+    return {...patch, before: entry.content, action};
+  });
 }
 
 function dndVersionIsNewer(next, current) {
@@ -87,7 +120,7 @@ function dndVersionIsNewer(next, current) {
   const current = () => ctx().characters[ctx().characterId];
   const installed = () => current().data.extensions.dnd_component_updates?.version || current().data.character_version;
   const REPOSITORY = 'Faust114514/dnd-card-components-public';
-  let busy = false, generating = false, disposed = false, manifest = null, saved = false;
+  let busy = false, generating = false, disposed = false, manifest = null, saved = false, bookPlan = null;
   const requests = new AbortController();
   const removers = [];
   const dialog = doc.createElement('dialog');
@@ -104,31 +137,37 @@ function dndVersionIsNewer(next, current) {
     #dnd-private-update .dpu-install{background:#d4bb83;color:#1b251e;border-color:#d4bb83;flex:1}
     #dnd-private-update .dpu-status{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;color:#decda9;margin-top:14px;min-height:22px}
     #dnd-private-update ul{padding-left:22px;font-size:13px}#dnd-private-update [hidden]{display:none!important}
+    #dnd-private-update select{max-width:100%;padding:6px;background:#27352e;color:#eee9dc}
+    #dnd-private-update pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto;font-size:12px}
+    #dnd-private-update details{margin:8px 0}
   </style>
   <div class="dpu-heading"><h2>组件更新</h2><button class="dpu-close" type="button" aria-label="关闭">×</button></div>
   <p>公开下载 · 无需登录或令牌<br><span class="dpu-version"></span></p>
   <div class="dpu-actions"><button class="dpu-check" type="button">检查更新</button></div>
   <div class="dpu-status" role="status" aria-live="polite">检查版本后，选择是否安装。</div>
   <ul class="dpu-notes"></ul>
-  <p>安装会覆盖指定组件的源码，保留开关和配置。不会更新世界书、预设、人物或聊天数据。</p>
+  <div class="dpu-worldbook"></div>
+  <p>安装更新组件源码及列出的世界书规则。手动修改过的规则请先选择保留或覆盖。</p>
   <div class="dpu-actions"><button class="dpu-install" type="button" disabled>安装并刷新页面</button></div>`;
   doc.body.append(dialog);
   const status = dialog.querySelector('.dpu-status');
   const checkButton = dialog.querySelector('.dpu-check'), installButton = dialog.querySelector('.dpu-install');
   const isGenerating = () => generating || !!doc.getElementById('mes_stop')?.getClientRects().length;
   const canInstall = () => manifest && (dndVersionIsNewer(manifest.version, installed()) ||
-    (manifest.version === installed() && (manifest.components.length > 0 || manifest.empty_regexes?.length > 0)));
+    (manifest.version === installed() && (manifest.components.length > 0 || manifest.empty_regexes?.length > 0 ||
+      manifest.added_regexes || bookPlan?.pending)));
   function announce(text) {host.dispatchEvent(new host.CustomEvent('dnd-private-update-status', {detail: text}));}
   function render() {
     if (disposed) return;
     dialog.querySelector('.dpu-version').textContent = '整卡 ' + current().data.character_version + ' · 组件 ' + installed();
     checkButton.disabled = busy || isGenerating();
-    installButton.disabled = busy || isGenerating() || !canInstall() || saved;
+    installButton.disabled = busy || isGenerating() || !canInstall() || saved || !!bookPlan?.entries.some(entry => !entry.action);
     if (isGenerating() && !busy) status.textContent = '生成中，请结束后再更新。';
   }
   function guard(start) {
     if (disposed || key() !== start) throw Error('聊天已切换，已停止更新');
     if (isGenerating()) throw Error('正在生成，已停止更新');
+    if (bookPlan && api('getCharWorldbookNames')('current').primary !== bookPlan.name) throw Error('绑定世界书已切换，请重新检查更新');
   }
   async function github(path, ref) {
     const encoded = path.split('/').map(encodeURIComponent).join('/');
@@ -145,10 +184,45 @@ function dndVersionIsNewer(next, current) {
     return response;
   }
   function open() {if (!dialog.open) dialog.showModal(); render();}
+  async function inspectWorldbook(candidate, start) {
+    if (!candidate.worldbook_path) return;
+    if (candidate.worldbook_path !== 'src/worldbook/updates.json') throw Error('世界书更新路径无效');
+    if (typeof ctx().loadWorldInfo !== 'function' || typeof ctx().saveWorldInfo !== 'function') throw Error('宿主缺少世界书读写接口');
+    const name = api('getCharWorldbookNames')('current').primary;
+    if (!name) throw Error('当前卡尚未绑定主世界书');
+    const patches = JSON.parse(await github(candidate.worldbook_path, candidate.version)); guard(start);
+    const book = await ctx().loadWorldInfo(name); guard(start);
+    if (api('getCharWorldbookNames')('current').primary !== name) throw Error('绑定世界书已切换，请重新检查更新');
+    const receipt = current().data.extensions.dnd_component_updates?.worldbook;
+    const same = receipt?.name === name && receipt.version === candidate.version;
+    const entries = planDndWorldbook(book, patches, same ? receipt.kept : []);
+    bookPlan = {name, entries, pending: !same || entries.some(entry => entry.action === 'replace' || !entry.action)};
+    const box = dialog.querySelector('.dpu-worldbook'), title = doc.createElement('p');
+    title.textContent = '世界书 · ' + name; box.append(title);
+    for (const entry of entries) {
+      const row = doc.createElement('div');
+      row.textContent = entry.name + ' · ' + ({current:'已同步', keep:'沿用个人修改', replace:'更新正文'}[entry.action] || '发现个人修改');
+      box.append(row);
+      if (entry.action) continue;
+      const details = doc.createElement('details'), summary = doc.createElement('summary');
+      summary.textContent = '查看当前与新版正文'; details.append(summary);
+      for (const [label, content] of [['当前', entry.before], ['新版', entry.content]]) {
+        const heading = doc.createElement('p'), text = doc.createElement('pre');
+        heading.textContent = label; text.textContent = content; details.append(heading, text);
+      }
+      const select = doc.createElement('select'); select.setAttribute('aria-label', entry.name + '更新方式');
+      for (const [value, label] of [['','请选择处理方式'], ['keep','保留个人修改'], ['replace','使用新版正文']]) {
+        const option = doc.createElement('option'); option.value = value; option.textContent = label; select.append(option);
+      }
+      select.addEventListener('change', () => {entry.action = select.value; render();});
+      row.append(details, select);
+    }
+  }
   async function check() {
     if (busy) return;
     const start = key();
-    busy = true; manifest = null; saved = false; dialog.querySelector('.dpu-notes').replaceChildren();
+    busy = true; manifest = null; saved = false; bookPlan = null; dialog.querySelector('.dpu-notes').replaceChildren();
+    dialog.querySelector('.dpu-worldbook').replaceChildren();
     status.textContent = '正在检查公开版本…'; render();
     try {
       guard(start);
@@ -157,26 +231,30 @@ function dndVersionIsNewer(next, current) {
       const placeholders = Object.fromEntries(candidate.components.map(item => [item.path, item.kind === 'script' ? '/* validate manifest */' : '']));
       buildDndComponentUpdate(current(), candidate, placeholders, updaterId);
       if (!Array.isArray(candidate.notes) || candidate.notes.some(note => typeof note !== 'string')) throw Error('版本说明格式无效');
+      await inspectWorldbook(candidate, start); guard(start);
       // Older updaters downloaded the bodies and recorded the version, but kept findRegex.
       if (candidate.version === installed()) {
         const pending = current().data.extensions.regex_scripts.filter(hasOriginalCharacterPattern);
         const needsRepair = item => item.kind === 'regex' && dndVersionIsNewer(candidate.version, 'vf.0.3.4') && pending.some(rule => rule.id === item.id);
         candidate.components = candidate.components.filter(needsRepair);
         if (candidate.empty_regexes) candidate.empty_regexes = candidate.empty_regexes.filter(needsRepair);
+        if (current().data.extensions.dnd_component_updates?.rules_version === 'vf.0.3.8') delete candidate.added_regexes;
       }
       manifest = candidate;
       for (const text of manifest.notes) {const li = doc.createElement('li'); li.textContent = text; dialog.querySelector('.dpu-notes').append(li);}
       status.textContent = !canInstall() ? '当前组件已是最新版本。' : manifest.version === installed() ?
-        '新版代码已就绪，请点击安装补齐人物显示规则。' : '发现 ' + manifest.version + '，可安装下列更新。';
+        '新版代码已就绪，请安装补齐世界书与规则设置。' : '发现 ' + manifest.version + '，可安装下列更新。';
       announce(canInstall() ? '待安装' : '已是最新');
     } catch (error) {
       manifest = null; status.textContent = '检查失败：' + (error.name === 'AbortError' ? '连接已取消' : error.message); announce('检查失败');
     } finally {busy = false; render();}
   }
   async function install() {
-    if (busy || !canInstall()) return;
+    if (busy || !canInstall() || bookPlan?.entries.some(entry => !entry.action)) return;
     const start = key(), release = manifest;
+    let bookAttempted = false;
     busy = true; status.textContent = '正在下载 ' + release.version + ' 的组件…'; render();
+    dialog.querySelectorAll('select').forEach(select => {select.disabled = true;});
     try {
       guard(start);
       const sources = {};
@@ -184,6 +262,22 @@ function dndVersionIsNewer(next, current) {
       for (const item of release.components) {sources[item.path] = await github(item.path, release.version); guard(start);}
       const card = await (await local('/api/characters/get', {avatar_url: avatar})).json(); guard(start);
       const update = buildDndComponentUpdate(card, release, sources, updaterId);
+      if (bookPlan) {
+        const live = await ctx().loadWorldInfo(bookPlan.name); guard(start);
+        const next = structuredClone(live);
+        for (const entry of bookPlan.entries) {
+          if (next.entries[entry.uid]?.content !== entry.before) throw Error('规则已被修改，请重新检查：' + entry.name);
+          if (entry.action === 'replace') next.entries[entry.uid].content = entry.content;
+        }
+        if (bookPlan.pending) {
+          bookAttempted = true;
+          await ctx().saveWorldInfo(bookPlan.name, next, true); guard(start);
+          const verified = await (await local('/api/worldinfo/get', {name: bookPlan.name})).json(); guard(start);
+          for (const entry of bookPlan.entries) if (verified.entries[entry.uid]?.content !== next.entries[entry.uid].content) throw Error('世界书保存后读回不一致：' + entry.name);
+        }
+        update.extensions.dnd_component_updates.worldbook = {name: bookPlan.name, version: release.version,
+          kept: bookPlan.entries.filter(entry => entry.action === 'keep').map(entry => entry.uid)};
+      }
       status.textContent = '正在保存 ' + update.changed.length + ' 项代码更新…';
       // Native raw merge preserves substituteRegex and unknown fields that the
       // Helper 4.12 normalized regex conversion would otherwise discard.
@@ -192,12 +286,16 @@ function dndVersionIsNewer(next, current) {
       const confirmed = await (await local('/api/characters/get', {avatar_url: avatar})).json();
       const receipt = confirmed.data.extensions.dnd_component_updates;
       if (receipt?.version !== release.version || receipt?.repository !== REPOSITORY || buildDndComponentUpdate(confirmed, release, sources, updaterId).changed.length) throw Error('保存后读回结果不一致');
+      if (receipt.rules_version !== update.extensions.dnd_component_updates.rules_version ||
+          JSON.stringify(receipt.worldbook) !== JSON.stringify(update.extensions.dnd_component_updates.worldbook)) throw Error('规则更新记录保存不完整');
       status.textContent = release.version + ' 已保存，正在刷新页面…';
       // A switched-away chat must not be reloaded by the old card's request.
       if (!disposed && key() === start) host.location.reload();
     } catch (error) {
-      status.textContent = (saved ? '已提交保存，但复核未完成：' : '更新未完成：') + error.message + (saved ? '。请刷新页面核对组件版本。' : '。请核对状态后再试。');
-    } finally {busy = false; render();}
+      status.textContent = (saved ? '已提交保存，但复核未完成：' : '更新未完成：') + error.message +
+        (saved || bookAttempted ? '。世界书可能已保存，请重新检查更新以补齐剩余部分。' : '。请核对状态后再试。');
+      if (bookAttempted) manifest = null;
+    } finally {busy = false; dialog.querySelectorAll('select').forEach(select => {select.disabled = false;}); render();}
   }
   function listen(target, name, fn) {target.addEventListener(name, fn); removers.push(() => target.removeEventListener(name, fn));}
   listen(dialog.querySelector('.dpu-close'), 'click', () => dialog.close());

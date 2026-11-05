@@ -11,6 +11,7 @@ latest = json.loads((ROOT / 'latest.json').read_bytes())
 assert latest['version'] == config['version']
 expected = []
 expected_empty = []
+expected_added = []
 ids = set()
 for group, kind in [('scripts', 'script'), ('regexes', 'regex')]:
     for item in config[group]:
@@ -24,10 +25,19 @@ for group, kind in [('scripts', 'script'), ('regexes', 'regex')]:
             assert text.strip(), path
             result = subprocess.run(['node', '--input-type=module', '--check'], input=text, text=True, encoding='utf-8', capture_output=True)
             assert result.returncode == 0, path + ': ' + result.stderr
+        if item['id'] in ['dnd-clean-old-battlecheck', 'dnd-clean-old-battle-map']:
+            assert kind == 'regex' and text == ''
+            expected_added.append({k: v for k, v in item.items() if k != 'source'} | {'replaceString': text})
+            continue
         dest = expected_empty if kind == 'regex' and text == '' else expected
         dest.append({'kind': kind, 'id': item['id'], 'name': item.get('name', item.get('scriptName')), 'path': path})
 assert latest['components'] == expected
 assert latest['empty_regexes'] == expected_empty
+assert latest['added_regexes'] == expected_added
+assert latest['worldbook_path'] == 'src/worldbook/updates.json'
+patches = json.loads((ROOT / latest['worldbook_path']).read_bytes())
+assert [p['uid'] for p in patches] == [18, 643316, 781421]
+assert all(isinstance(p['previous'], str) and isinstance(p['content'], str) and p['content'].strip() for p in patches)
 permitted_root = {'.gitignore', 'README.md', 'latest.json', 'components.json'}
 for path in ROOT.rglob('*'):
     if not path.is_file() or '.git' in path.relative_to(ROOT).parts:

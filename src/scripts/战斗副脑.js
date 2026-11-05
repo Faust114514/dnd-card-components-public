@@ -75,7 +75,7 @@ function shouldAssistCombat(action, snapshot, job) {
   const recent=(snapshot.history||[]).filter(m=>m.role==='assistant').slice(-1).map(m=>m.text).join('\n');
   const clean=recent.replace(/<(?:update_?variable|analysis|thinking)>[\s\S]*?<\/(?:update_?variable|analysis|thinking)>/gi,'');
   const ended=/战斗(?:已经|已|正式)?结束|脱离战斗|结束战斗|combat\s+(?:ended|over)/i.test(clean);
-  const explicit=/(?:攻击|射击|斩击|挥剑|开弓|(?:砍|刺|射|砸|打|冲)(?:向|中|击|他|她|它|敌|怪|哥布林|兽人)|投掷.*(?:敌|怪)|施放|施展|释放.*(?:术|法球)|反击|借机攻击|擒抱|推撞|疾走|撤离|闪避|准备动作|attack\b|cast\b|grapple\b|dodge\b)/i.test(text);
+  const explicit=/(?:攻击|射击|斩击|挥剑|开弓|(?:砍|刺|射|砸|打|冲)(?:向|中|击|他|她|它|敌|怪|哥布林|兽人)|投掷.*(?:敌|怪)|反击|借机攻击|擒抱|推撞|attack\b|grapple\b)/i.test(text) || /(?:施放|施展|释放).*(?:火球|飞弹|魔能爆|震荡|雷鸣|闪电|灼热|冰霜|酸液|射线|定身|催眠|恐惧|致盲|衰弱|诅咒|灵体武器|精神武器|护盾术)|\bcast\b.*\b(?:fireball|magic missile|eldritch blast|lightning bolt)\b/i.test(text);
   if(explicit&&!/(?:讨论|研究|讲解|解释|学习).*(?:攻击|法术|施放)/.test(text))return true;
   if(ended)return false;
   if(/<battle\b|<battlecheck\b|战斗开始|进入战斗|轮到你.*(?:行动|回合)|你的回合|进行先攻/i.test(clean))return true;
@@ -86,7 +86,7 @@ function shouldAssistCombat(action, snapshot, job) {
 }
 
 function selectCombatStoryHistory(history){
-  return history.filter(m=>!m.hidden).slice(-10).map(m=>({role:m.role,text:String(m.text||'').replace(/<(?:update_?variable|analysis|thinking)\b[^>]*>[\s\S]*?<\/(?:update_?variable|analysis|thinking)>/gi,'').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'').trim()}));
+  return history.filter(m=>!m.hidden).slice(-10).map(m=>({role:m.role,text:String(m.text||'').replace(/<(?:update_?variable|analysis|thinking|dices?|char_info)\b[^>]*>[\s\S]*?<\/(?:update_?variable|analysis|thinking|dices?|char_info)>/gi,'').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'').trim()}));
 }
 function buildCombatStoryPrompts(job,rules,stage){
   const priority=`【正文优先 · 事实来源】
@@ -435,7 +435,7 @@ function mountCombatBrain(rules, createEngine) {
       const match=(key,text)=>{if(typeof key!=='string'||!key.trim())return false;return text.toLowerCase().includes(key.toLowerCase());};
       const picked=entries.filter(e=>e.enabled!==false&&e.disable!==true).filter(e=>{
         const title=String(e.name||e.comment||'');
-        if(/^\[mvu_update\]|变量输出|显示数据/.test(title))return false;
+        if(/^\[mvu_update\]|变量输出|显示数据|战斗面板|战斗检定UI|掷骰检定UI|血量描写/.test(title))return false;
         return selected.some(k=>title.includes(k))||(e.strategy?.keys||e.keys||e.key||[]).some(k=>match(k,scan));
       });
       const characters=Object.fromEntries(Object.entries(chars).map(([name,char])=>[name,Object.fromEntries(Object.entries(char).filter(([k])=>!['档案','外貌','个性','笔记','头像','玩家名'].includes(k)))]));
@@ -479,6 +479,25 @@ function mountCombatBrain(rules, createEngine) {
   observe('GENERATION_STOPPED',id=>{if(canceling||id&&id===requestId)return;if(!autoRunning&&!uninject&&!['awaiting_host','host_running'].includes(engine.job?.stage))return;++autoEpoch;clearInjection();void engine.stop().catch(()=>{});status('战斗推演已停止');});
   async function restore(){clearInjection();try{await engine.recover(api('getVariables')({type:'chat'})[STORE]?.job);}catch{await engine.recover(null);}}
   observe('CHAT_CHANGED',()=>{++autoEpoch;clearInjection();if(banner)banner.hidden=true;ready=engine.stop().finally(restore);});
+  observe('WORLDINFO_ENTRIES_LOADED',payload=>{
+    if(disposed||!config.enabled||!payload||typeof payload!=='object')return;
+    try{
+      const snap=snapshot();
+      const inputVal=String(doc.querySelector('#send_textarea')?.value||'').trim();
+      const lastMsg=snap.history.at(-1);
+      const actionText=inputVal||(lastMsg?.role==='user'?String(lastMsg.text||'').trim():'');
+      const recentText=snap.history.slice(-2).map(m=>m.text).join('\n');
+      const inOrNearCombat=shouldAssistCombat(actionText,snap,engine.job)||/(?:战斗|先攻|袭击|伏击|拔剑|亮出武器|冲过来|扑过来|杀气|敌意|包围|触发陷阱|攻击|迎战|备战|受袭|刺客|强盗|哥布林|兽人|骷髅|丧尸|巨龙|恶魔|魔物|<battle\b|<battlecheck\b)/i.test(actionText+'\n'+recentText);
+      if(inOrNearCombat)return;
+      for(const list of Object.values(payload)){
+        if(!Array.isArray(list))continue;
+        for(let i=list.length-1;i>=0;i--){
+          const title=String(list[i]?.comment||list[i]?.name||'').trim();
+          if(list[i]?.world===api('getCharWorldbookNames')('current')?.primary&&(title==='战斗面板'||title==='⚔战斗检定UI'))list.splice(i,1);
+        }
+      }
+    }catch{}
+  });
   let ready=restore();
   async function beforeGeneration(type,options={},dryRun=false){
     if(disposed||!config.enabled||requestId||dryRun||options.quiet_prompt||!['normal','generate',undefined].includes(type))return;

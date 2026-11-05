@@ -1,10 +1,11 @@
 {
   "format": 1,
-  "version": "vf.0.3.6",
+  "version": "vf.0.3.8",
   "minimum_card_version": "vf.0.3.0",
   "notes": [
-    "修复旧版安装时下载空文件报 501。",
-    "从 vf.0.3.4 安装刷新后再检查一次，按提示补齐多人物面板规则。"
+    "整合 vf.0.3.7 的状态栏、短休、扣位施法和检定改进。",
+    "同步当前卡绑定世界书的三条骰子／检定规则，个人修改可选择保留。",
+    "首次从旧更新器安装后，请刷新再检查一次，按提示补齐世界书与规则设置。"
   ],
   "components": [
     {
@@ -174,5 +175,44 @@
       "name": "角色生成隐藏@晚鸢尾",
       "path": "src/regexes/角色生成隐藏@晚鸢尾.txt"
     }
-  ]
+  ],
+  "added_regexes": [
+    {
+      "id": "dnd-clean-old-battlecheck",
+      "scriptName": "[不发送]旧战斗检定清理",
+      "findRegex": "/<battlecheck>[\\s\\S]*?<\\/battlecheck>/g",
+      "trimStrings": [],
+      "placement": [
+        1,
+        2
+      ],
+      "disabled": false,
+      "markdownOnly": false,
+      "promptOnly": true,
+      "runOnEdit": true,
+      "substituteRegex": 0,
+      "minDepth": 2,
+      "maxDepth": null,
+      "replaceString": ""
+    },
+    {
+      "id": "dnd-clean-old-battle-map",
+      "scriptName": "[不发送]旧战斗面板清理",
+      "findRegex": "/<battle>[\\s\\S]*?<\\/battle>/g",
+      "trimStrings": [],
+      "placement": [
+        1,
+        2
+      ],
+      "disabled": false,
+      "markdownOnly": false,
+      "promptOnly": true,
+      "runOnEdit": true,
+      "substituteRegex": 0,
+      "minDepth": 2,
+      "maxDepth": null,
+      "replaceString": ""
+    }
+  ],
+  "worldbook_path": "src/worldbook/updates.json"
 }

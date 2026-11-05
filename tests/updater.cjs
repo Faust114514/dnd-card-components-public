@@ -71,27 +71,63 @@ check(updatedSelf.content===sources[latest.components.find(c=>c.id===updaterId).
 check(importedResult.extensions.tavern_helper.scripts.find(s=>s.id===updaterId).content==='old inactive updater','inactive old updater is not overwritten instead of running updater');
 assert.throws(()=>merge(imported,latest,sources,'not-in-current-card'));checks.push('runtime updater must belong to current card');
 const duplicateSelf=structuredClone(imported);duplicateSelf.data.extensions.tavern_helper.scripts.push(structuredClone(self));assert.throws(()=>merge(duplicateSelf,latest,sources,runningId));checks.push('duplicate runtime updater ID still rejected');
+const patches=JSON.parse(fs.readFileSync(path.join(root,latest.worldbook_path)));
+const book={entries:Object.fromEntries(patches.map(p=>[p.uid,{uid:p.uid,content:p.previous,disable:true,extra:{keep:true}}]))};
+const plan=context.planDndWorldbook(book,patches);
+check(plan.every(p=>p.action==='replace'),'untouched shipped worldbook entries can update');
+book.entries[18].content='personal edit';
+check(context.planDndWorldbook(book,patches)[0].action==='','personal edit requires a choice');
+check(context.planDndWorldbook(book,patches,[18])[0].action==='keep','saved keep choice is respected');
+book.entries[18].content=patches[0].content;
+check(context.planDndWorldbook(book,patches)[0].action==='current','already updated entry is recognized');
+const wrongBook=structuredClone(book);delete wrongBook.entries[18];
+assert.throws(()=>context.planDndWorldbook(wrongBook,patches));checks.push('wrong or incomplete bound worldbook stops update');
+assert.throws(()=>context.planDndWorldbook(book,[...patches,patches[0]]));checks.push('duplicate worldbook patch rejected');
+const previousRules=structuredClone(original);
+previousRules.data.extensions.regex_scripts=previousRules.data.extensions.regex_scripts.filter(r=>!r.id.startsWith('dnd-clean-'));
+for(const [id,field] of [['0d8967e6-d2e8-4afb-9770-d22e332c301c','promptOnly'],['b179c655-147d-4572-a6ea-1c0326363009','promptOnly'],['918ecc02-7af0-4700-89c5-cbf05735c7e9','markdownOnly']])previousRules.data.extensions.regex_scripts.find(r=>r.id===id)[field]=true;
+const configured=merge(previousRules,latest,sources);
+check(configured.extensions.regex_scripts.filter(r=>r.id.startsWith('dnd-clean-')).length===2,'old card receives the two new cleanup rules');
+check(configured.changed.length===6,'old card receives the three settings changes and one changed source');
+const configuredCard=structuredClone(previousRules);Object.assign(configuredCard.data.extensions,configured.extensions);
+configuredCard.data.extensions.regex_scripts.find(r=>r.id==='918ecc02-7af0-4700-89c5-cbf05735c7e9').markdownOnly=true;
+check(merge(configuredCard,latest,sources).changed.length===0,'repeated update respects settings changed after migration');
 const baselinePath=process.argv.slice(2).find(arg=>!arg.startsWith('--'));
 if(baselinePath){
  const actual=JSON.parse(fs.readFileSync(baselinePath,'utf8'));assert.equal(actual.data.character_version,'vf.0.2.21');
  const updater=items('scripts','content').find(s=>s.id==='736c0e4e-67b4-4113-a021-b3890714ba28');
  actual.data.extensions.tavern_helper.scripts.push(updater);const expected=structuredClone(actual);
  const patch=merge(actual,latest,sources);const applied=structuredClone(actual);Object.assign(applied.data.extensions,patch.extensions);
- check(patch.changed.length===4&&['DM人设选择','新增叙事悬浮开关','角色生成美化 (性能)','角色生成隐藏@晚鸢尾'].every(name=>patch.changed.includes(name)),'real vf.0.2.21 receives DM, orb and the two archive rule fixes');
+ check(['DM人设选择','新增叙事悬浮开关','角色生成美化 (性能)','角色生成隐藏@晚鸢尾'].every(name=>patch.changed.includes(name)),'real vf.0.2.21 receives DM, orb and the archive rule fixes');
  const restored=structuredClone(applied);delete restored.data.extensions.dnd_component_updates;
- restored.data.extensions.tavern_helper.scripts=restored.data.extensions.tavern_helper.scripts.filter(s=>s.id!==orbId).map(s=>s.id==='c3c9ad44-9e9b-4c6e-ae93-f2b098a20125'?expected.data.extensions.tavern_helper.scripts.find(x=>x.id===s.id):s);
+ restored.data.extensions.tavern_helper.scripts=restored.data.extensions.tavern_helper.scripts.filter(s=>s.id!==orbId);
+ for(const script of restored.data.extensions.tavern_helper.scripts){
+  assert.equal(script.content,items('scripts','content').find(s=>s.id===script.id).content);
+  script.content=expected.data.extensions.tavern_helper.scripts.find(s=>s.id===script.id).content;
+ }
  for(const id of archiveIds){
   const oldRule=expected.data.extensions.regex_scripts.find(r=>r.id===id);
   const appliedRule=restored.data.extensions.regex_scripts.find(r=>r.id===id);
   assert.equal(appliedRule.findRegex,'/'+oldRule.findRegex+'/g');
   assert.equal(appliedRule.replaceString,original.data.extensions.regex_scripts.find(rule=>rule.id===id).replaceString);
-  appliedRule.findRegex=oldRule.findRegex;appliedRule.replaceString=oldRule.replaceString;
+  appliedRule.findRegex=oldRule.findRegex;
  }
- assert.deepEqual(restored,expected);checks.push('real legacy card preserves every other field, worldbook and regex');
+ restored.data.extensions.regex_scripts=restored.data.extensions.regex_scripts.filter(rule=>!rule.id.startsWith('dnd-clean-'));
+ for(const rule of restored.data.extensions.regex_scripts){
+  const old=expected.data.extensions.regex_scripts.find(r=>r.id===rule.id);
+  assert.equal(rule.replaceString,items('regexes','replaceString').find(r=>r.id===rule.id).replaceString);
+  rule.replaceString=old.replaceString;
+  if(['0d8967e6-d2e8-4afb-9770-d22e332c301c','b179c655-147d-4572-a6ea-1c0326363009'].includes(rule.id)){assert.equal(rule.promptOnly,false);rule.promptOnly=old.promptOnly;}
+  if(rule.id==='918ecc02-7af0-4700-89c5-cbf05735c7e9'){assert.equal(rule.markdownOnly,false);rule.markdownOnly=old.markdownOnly;}
+ }
+ assert.deepEqual(restored,expected);checks.push('real legacy card preserves metadata outside the released sources and settings changes');
 }
 
 const selected=latest.components.filter(c=>['c3c9ad44-9e9b-4c6e-ae93-f2b098a20125','480d6777-f90d-4eba-a811-64cb2f1ffb00','736c0e4e-67b4-4113-a021-b3890714ba28','01c632e5-1071-4a08-aebd-6a0e5424ea99',...archiveIds].includes(c.id));
 const fixtureManifest={...latest,components:selected,empty_regexes:latest.empty_regexes.filter(c=>archiveIds.includes(c.id))};
+// Worldbook and newly added rules are exercised by worldbook-updater.cjs.
+delete fixtureManifest.added_regexes;
+delete fixtureManifest.worldbook_path;
 const fixtureSources=Object.fromEntries(selected.map(c=>[c.path,sources[c.path]]));
 const fixture=structuredClone(original);fixture.data.extensions.tavern_helper.scripts=fixture.data.extensions.tavern_helper.scripts.filter(s=>selected.some(c=>c.id===s.id)||s.id==='user-added');
 fixture.data.extensions.tavern_helper.scripts[0].content='old DM';fixture.data.extensions.regex_scripts=fixture.data.extensions.regex_scripts.filter(r=>selected.some(c=>c.id===r.id)||archiveIds.includes(r.id));
