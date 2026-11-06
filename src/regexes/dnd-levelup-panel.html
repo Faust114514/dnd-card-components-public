@@ -2118,6 +2118,22 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 </script>
+
+<style id="dnd-choice-search-style">
+.dnd-choice-search{display:flex;align-items:stretch;min-width:0;width:100%;position:relative}
+.dnd-choice-source{display:none!important}
+.dnd-choice-search input{box-sizing:border-box;width:100%;min-width:0;min-height:44px;padding:10px 44px 10px 12px;border:1px solid var(--border,#444);border-radius:6px;background:var(--bg-alt,#191b22);color:var(--text,#eee);font:inherit;font-size:16px}
+.dnd-choice-search input:focus{outline:2px solid var(--accent,#cbb17b);outline-offset:1px}
+.dnd-choice-search button{position:absolute;right:0;top:0;bottom:0;width:40px;min-width:0;margin:0;padding:0;border:0;background:transparent;color:inherit;cursor:pointer}
+.dnd-choice-list{position:fixed;z-index:2147483000;box-sizing:border-box;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;border:1px solid var(--accent,#cbb17b);border-radius:6px;background:#1b1d24;color:#eee;box-shadow:0 8px 24px #0008;font-size:15px;line-height:1.5}
+.dnd-choice-list[hidden]{display:none}
+.dnd-choice-list [role=option],.dnd-choice-empty{box-sizing:border-box;padding:10px 12px;min-height:44px;overflow-wrap:anywhere;cursor:pointer}
+.dnd-choice-list [role=option]:hover,.dnd-choice-list [data-active]{background:#38332a}
+.dnd-choice-list [aria-disabled=true]{color:#a3a3aa;cursor:not-allowed}
+.dnd-choice-list [data-selected]{box-shadow:inset 3px 0 var(--accent,#cbb17b)}
+.dnd-choice-empty{color:#bbb;cursor:default}
+@media(max-width:600px){.field.dnd-choice-field{grid-column:1/-1}}
+</style>
 </head>
 <body>
   <div class="vtt-dialog">
@@ -11996,7 +12012,7 @@ function bookPlan(plan,pending){
   }
   if(bookEnabled.has('ravenloft')){
     const gifts=bookAllFeats.filter(f=>f.category==='黑暗赠礼'&&!arcanaHas(f.name));
-    plan.req.push({id:'book_dark_gift',kind:'single',label:'DM已授予的黑暗赠礼（不是免费自选专长）',options:[{value:NO_CHANGE_VALUE,label:'不添加'},...gifts.map(f=>({value:f.name,label:f.name}))]});
+    plan.req.push({id:'book_dark_gift',kind:'single',label:'DM已授予的黑暗赠礼（不是免费自选专长）',options:[{value:NO_CHANGE_VALUE,label:'不添加'},...gifts.map(f=>({value:f.name,label:f.name+' '+f.nameEN+'（先决条件：'+(f.prerequisite||'无')+'）'}))]});
   }
   return plan;
 }
@@ -14429,7 +14445,7 @@ function featDuplicateCheck(name) {
           const reason=o.reason?`（${o.reason}）`:"";
           return `<option value="${esc(o.value)}" ${(state.pending[req.id]===o.value)?"selected":""} ${o.disabled?"disabled":""}>${esc(o.label)}${esc(reason)}</option>`;
         }).join("");
-        return `<div class="req-card"><label>${esc(req.label)}</label><select id="${req.id}" ${req.rebuild?"data-rebuild='1'":""}>${opts}</select></div>`;
+        return `<div class="req-card"><label>${esc(req.label)}</label><select id="${req.id}" ${req.id==='book_dark_gift'?'data-dnd-name-search':''} ${req.rebuild?"data-rebuild='1'":""}>${opts}</select></div>`;
       }
       if(req.kind==="multi"){
         const picked=new Set(state.pending[req.id]||[]);
@@ -14455,9 +14471,9 @@ function featDuplicateCheck(name) {
         const featOptions=req.options.map((f)=>{
           const check=featPrecheck(f.name,state.plan?.totalTo||state.level,targetSub);
           const suffix=check.ok?"":`（${check.reason}）`;
-          return `<option value="${esc(f.name)}" ${cur.feat===f.name?"selected":""} ${check.ok?"":"disabled"}>${esc(f.name)}（${esc(f.prerequisite)}）${esc(suffix)}</option>`;
+          return `<option value="${esc(f.name)}" ${cur.feat===f.name?"selected":""} ${check.ok?"":"disabled"}>${esc(f.name)}（先决条件：${esc(f.prerequisite||"无")}）${esc(suffix)}</option>`;
         }).join("");
-        return `<div class="req-card"><label>${esc(req.label)}</label><select id="${req.id}_mode"><option value="asi" ${cur.mode==="asi"?"selected":""}>属性值提升</option><option value="feat" ${cur.mode==="feat"?"selected":""}>通用专长</option></select><div id="${req.id}_feat" style="margin-top:8px;display:${cur.mode==="feat"?"block":"none"}"><select id="${req.id}_feat_sel">${featOptions}</select></div>${renderAbilityAllocationPanel(req.id)}<div class="hint">按PHB 2024校验常见先决条件与属性上限。</div></div>`;
+        return `<div class="req-card"><label>${esc(req.label)}</label><select id="${req.id}_mode"><option value="asi" ${cur.mode==="asi"?"selected":""}>属性值提升</option><option value="feat" ${cur.mode==="feat"?"selected":""}>通用专长</option></select><div id="${req.id}_feat" style="margin-top:8px;display:${cur.mode==="feat"?"block":"none"}"><select id="${req.id}_feat_sel" data-dnd-name-search>${featOptions}</select></div>${renderAbilityAllocationPanel(req.id)}<div class="hint">按PHB 2024校验常见先决条件与属性上限。</div></div>`;
       }
       if(req.kind==="feat_pick"){
         const cur=state.pending[req.id]||{};
@@ -14465,9 +14481,9 @@ function featDuplicateCheck(name) {
         const opts=req.options.map((f)=>{
           const check=featPrecheck(f.name,state.plan?.totalTo||state.level,targetSub);
           const suffix=check.ok?"":`（${check.reason}）`;
-          return `<option value="${esc(f.name)}" ${cur.feat===f.name?"selected":""} ${check.ok?"":"disabled"}>[${esc(f.cat)}] ${esc(f.name)}（${esc(f.prerequisite)}）${esc(suffix)}</option>`;
+          return `<option value="${esc(f.name)}" ${cur.feat===f.name?"selected":""} ${check.ok?"":"disabled"}>${esc(f.name)}（先决条件：${esc(f.prerequisite||"无")}）${esc(suffix)}</option>`;
         }).join("");
-        return `<div class="req-card"><label>${esc(req.label)}</label><select id="${req.id}_feat_sel">${opts}</select>${renderAbilityAllocationPanel(req.id)}<div class="hint">若所选通用专长带属性值提升，会在下方显示分配面板。</div></div>`;
+        return `<div class="req-card"><label>${esc(req.label)}</label><select id="${req.id}_feat_sel" data-dnd-name-search>${opts}</select>${renderAbilityAllocationPanel(req.id)}<div class="hint">若所选通用专长带属性值提升，会在下方显示分配面板。</div></div>`;
       }
       return "";
     }
@@ -14707,6 +14723,7 @@ function featDuplicateCheck(name) {
       btn.disabled=false; btn.textContent=state.targetLevel>state.plan.totalTo?"确认这一级并继续":"确认升级"; setStatus(state.isDemo?"Demo 数据已就绪":"数据已就绪");
       bindDynamic();
       growthRenderMode();
+      dndChoiceSearch();
     }
 
     function collect(strict){
@@ -15650,6 +15667,98 @@ renderBookLibrary=function(){ebOldLibrary();let el=document.getElementById('eb-r
         }
       },100);
     }
+
+
+// Display-only searchable selects. Original option values and change handlers own the draft.
+const dndChoiceSearch = (() => {
+  const popup=document.createElement('div');
+  popup.id='dnd-name-options';popup.className='dnd-choice-list';popup.hidden=true;
+  popup.setAttribute('role','listbox');document.body.append(popup);
+  let active=null,rows=[],cursor=-1;
+  const selectedText=select=>select.selectedOptions[0]?.textContent||'';
+  function close(){
+    popup.hidden=true;
+    if(active){active.input.value=selectedText(active.select);active.input.setAttribute('aria-expanded','false');active.input.removeAttribute('aria-activedescendant');}
+    active=null;rows=[];cursor=-1;
+  }
+  function highlight(index){
+    cursor=index;
+    for(const row of rows){row.toggleAttribute('data-active',row===rows[cursor]);row.setAttribute('aria-selected',String(row===rows[cursor]));}
+    if(rows[cursor]){active.input.setAttribute('aria-activedescendant',rows[cursor].id);rows[cursor].scrollIntoView({block:'nearest'});}
+    else active.input.removeAttribute('aria-activedescendant');
+  }
+  function draw(){
+    const query=active.input.value.normalize('NFKC').trim().toLowerCase();
+    popup.replaceChildren();rows=[];cursor=-1;active.input.removeAttribute('aria-activedescendant');
+    for(const option of active.select.options){
+      const name=option.textContent.split(/[（(]\s*先决条件\s*[:：]/u,1)[0];
+      if(query&&!name.normalize('NFKC').toLowerCase().includes(query))continue;
+      const row=document.createElement('div');row.id='dnd-name-option-'+option.index;
+      row.setAttribute('role','option');row.setAttribute('aria-selected','false');row.setAttribute('aria-disabled',String(option.disabled));
+      row.toggleAttribute('data-selected',option.selected);row.dataset.index=option.index;row.textContent=option.textContent;
+      popup.append(row);rows.push(row);
+    }
+    if(!rows.length){const empty=document.createElement('div');empty.className='dnd-choice-empty';empty.textContent='没有匹配的名称';popup.append(empty);}
+    popup.scrollTop=0;popup.hidden=false;
+    const box=active.input.getBoundingClientRect(),view=window.visualViewport;
+    const top=view?.offsetTop||0,bottom=top+(view?.height||innerHeight),below=bottom-box.bottom-8,above=box.top-top-8;
+    const up=below<180&&above>below,space=Math.max(44,Math.min(320,up?above:below));
+    popup.style.width=Math.min(Math.max(active.wrap.getBoundingClientRect().width,320),innerWidth-16)+'px';
+    popup.style.left=Math.max(8,Math.min(box.left,innerWidth-popup.offsetWidth-8))+'px';
+    popup.style.maxHeight=space+'px';popup.style.top=(up?box.top-popup.offsetHeight-4:box.bottom+4)+'px';
+    popup.setAttribute('aria-label',active.input.getAttribute('aria-label'));
+  }
+  function open(record){
+    if(active===record)return;
+    close();active=record;record.input.value='';record.input.setAttribute('aria-expanded','true');draw();
+  }
+  function choose(row){
+    if(!active||!row)return;
+    const record=active,option=record.select.options[Number(row.dataset.index)];
+    if(option.disabled)return;
+    record.select.value=option.value;close();
+    record.select.dispatchEvent(new Event('change',{bubbles:true}));
+    requestAnimationFrame(()=>document.getElementById(record.input.id)?.focus({preventScroll:true}));
+  }
+  popup.addEventListener('mousedown',e=>e.preventDefault());
+  popup.addEventListener('click',e=>choose(e.target.closest('[role=option]')));
+  const outside=e=>{if(active&&!active.wrap.contains(e.target)&&!popup.contains(e.target))close();};
+  document.addEventListener('pointerdown',outside);document.addEventListener('focusin',outside);
+  document.addEventListener('scroll',e=>{if(active&&!popup.contains(e.target))close();},true);
+  window.addEventListener('resize',close);window.visualViewport?.addEventListener('resize',close);
+  return function(){
+    if(active&&!active.select.isConnected)close();
+    for(const select of document.querySelectorAll('select[data-dnd-name-search]')){
+      if(select.dndSearch){if(active!==select.dndSearch)select.dndSearch.input.value=selectedText(select);continue;}
+      const wrap=document.createElement('div'),input=document.createElement('input'),button=document.createElement('button');
+      if(select.parentElement.classList.contains('field'))select.parentElement.classList.add('dnd-choice-field');
+      wrap.className='dnd-choice-search';input.type='text';input.id=select.id+'-search';input.autocomplete='off';input.spellcheck=false;
+      input.placeholder='输入中文或英文名称';input.setAttribute('role','combobox');input.setAttribute('aria-autocomplete','list');
+      input.setAttribute('aria-controls',popup.id);input.setAttribute('aria-expanded','false');
+      const labels=[...select.labels],label=labels[0]||select.closest('.field,.req-card')?.querySelector('label')||select.parentElement.parentElement.querySelector('label');
+      input.setAttribute('aria-label',select.dataset.dndNameSearch||label?.textContent.trim()||'选项名称');
+      for(const label of labels)label.htmlFor=input.id;
+      button.type='button';button.tabIndex=-1;button.textContent='▾';button.setAttribute('aria-label','展开或收起选项');
+      select.classList.add('dnd-choice-source');select.hidden=true;select.after(wrap);wrap.append(input,button);
+      const record={select,wrap,input};select.dndSearch=record;input.value=selectedText(select);
+      input.addEventListener('focus',()=>input.select());
+      input.addEventListener('click',()=>open(record));
+      input.addEventListener('input',()=>{if(active!==record){const query=input.value;open(record);input.value=query;}draw();});
+      button.addEventListener('click',()=>{if(active===record)close();else{input.focus({preventScroll:true});open(record);}});
+      input.addEventListener('keydown',e=>{
+        if(e.isComposing)return;
+        if(e.key==='Escape'){if(active===record){e.preventDefault();e.stopPropagation();close();}return;}
+        if(e.key==='Tab'){if(active===record)close();return;}
+        if(e.key==='Enter'&&active===record){e.preventDefault();choose(rows[cursor]);return;}
+        if(!['ArrowDown','ArrowUp'].includes(e.key))return;
+        e.preventDefault();open(record);
+        const step=e.key==='ArrowDown'?1:-1;let next=cursor<0?(step>0?0:rows.length-1):cursor+step;
+        while(next>=0&&next<rows.length&&rows[next].getAttribute('aria-disabled')==='true')next+=step;
+        if(next>=0&&next<rows.length)highlight(next);
+      });
+    }
+  };
+})();
 
     if(document.readyState==="loading"){
       document.addEventListener("DOMContentLoaded", startApp, { once:true });

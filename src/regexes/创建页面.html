@@ -3336,6 +3336,22 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 </script>
+
+<style id="dnd-choice-search-style">
+.dnd-choice-search{display:flex;align-items:stretch;min-width:0;width:100%;position:relative}
+.dnd-choice-source{display:none!important}
+.dnd-choice-search input{box-sizing:border-box;width:100%;min-width:0;min-height:44px;padding:10px 44px 10px 12px;border:1px solid var(--border,#444);border-radius:6px;background:var(--bg-alt,#191b22);color:var(--text,#eee);font:inherit;font-size:16px}
+.dnd-choice-search input:focus{outline:2px solid var(--accent,#cbb17b);outline-offset:1px}
+.dnd-choice-search button{position:absolute;right:0;top:0;bottom:0;width:40px;min-width:0;margin:0;padding:0;border:0;background:transparent;color:inherit;cursor:pointer}
+.dnd-choice-list{position:fixed;z-index:2147483000;box-sizing:border-box;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;border:1px solid var(--accent,#cbb17b);border-radius:6px;background:#1b1d24;color:#eee;box-shadow:0 8px 24px #0008;font-size:15px;line-height:1.5}
+.dnd-choice-list[hidden]{display:none}
+.dnd-choice-list [role=option],.dnd-choice-empty{box-sizing:border-box;padding:10px 12px;min-height:44px;overflow-wrap:anywhere;cursor:pointer}
+.dnd-choice-list [role=option]:hover,.dnd-choice-list [data-active]{background:#38332a}
+.dnd-choice-list [aria-disabled=true]{color:#a3a3aa;cursor:not-allowed}
+.dnd-choice-list [data-selected]{box-shadow:inset 3px 0 var(--accent,#cbb17b)}
+.dnd-choice-empty{color:#bbb;cursor:default}
+@media(max-width:600px){.field.dnd-choice-field{grid-column:1/-1}}
+</style>
 </head>
 <body class="creator-awaiting-basics">
     <div class="creator-page">
@@ -3369,7 +3385,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                     <div class="field">
                         <label for="char-species">物种 (Species)</label>
-                        <select id="char-species"></select>
+                        <select id="char-species" data-dnd-name-search></select>
                     </div>
                     <div class="field">
                         <label for="char-class">职业 (Class)</label>
@@ -3377,7 +3393,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                     <div class="field">
                         <label for="char-background">背景 (Background)</label>
-                        <select id="char-background"></select>
+                        <select id="char-background" data-dnd-name-search></select>
                     </div>
                 </div>
                 <div id="lineage-selector" style="margin-top: 16px;"></div>
@@ -3427,7 +3443,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="grid">
                         <div class="field">
                             <label for="custom-bg-feat">起源专长</label>
-                            <select id="custom-bg-feat"></select>
+                            <select id="custom-bg-feat" data-dnd-name-search></select>
                         </div>
                         <div class="field">
                             <label>技能 (选择 2 项)</label>
@@ -5596,11 +5612,21 @@ function setupSectionCollapse() {
     });
 }
 
+function creatorChoiceLabel(name, english, prerequisite='无') {
+    return name+' '+english+(name==='自定义'?'':'（先决条件：'+(prerequisite||'无')+'）');
+}
+function creatorFeatLabel(key) {
+    const extra=ebFeat(key),info=ORIGIN_FEATS[key];
+    if(extra)return creatorChoiceLabel(extra.name,extra.nameEN,extra.prerequisite);
+    if(!info)return key;
+    const name=/[A-Za-z]/.test(info.name)?info.name:info.name+' '+key;
+    return name+'（先决条件：无）';
+}
 function populateSelects() {
     elements.class.innerHTML = '<option value="">请选择</option>' + Object.keys(CLASSES).map(c => `<option value="${c}">${c}</option>`).join('');
-    elements.background.innerHTML = '<option value="">请选择</option>' + ['自定义', ...Object.keys(BACKGROUNDS).filter(b => b !== '自定义')].map(b => `<option value="${b}">${b}</option>`).join('');
-    elements.species.innerHTML = '<option value="">请选择</option>' + ['自定义', ...Object.keys(SPECIES).filter(s => s !== '自定义')].map(s => `<option value="${s}">${s}</option>`).join('');
-    elements.customBgFeat.innerHTML = '<option value="">请选择</option>' + Object.keys(ORIGIN_FEATS).map(f => `<option value="${f}" ${state.customBg.feat === f ? 'selected' : ''}>${ORIGIN_FEATS[f].name}${ebFeat(f)?.category==='黑暗赠礼'?'（黑暗赠礼，须DM许可）':''}</option>`).join('');
+    elements.background.innerHTML = '<option value="">请选择</option>' + ['自定义', ...Object.keys(BACKGROUNDS).filter(b => b !== '自定义')].map(b => `<option value="${b}">${ebEscape(creatorChoiceLabel(b,BACKGROUNDS[b].name))}</option>`).join('');
+    elements.species.innerHTML = '<option value="">请选择</option>' + ['自定义', ...Object.keys(SPECIES).filter(s => s !== '自定义')].map(s => `<option value="${s}">${ebEscape(creatorChoiceLabel(s,SPECIES[s].name))}</option>`).join('');
+    elements.customBgFeat.innerHTML = '<option value="">请选择</option>' + Object.keys(ORIGIN_FEATS).map(f => `<option value="${f}" ${state.customBg.feat === f ? 'selected' : ''}>${ebEscape(creatorFeatLabel(f))}</option>`).join('');
 
     // 设置select元素的当前值
     elements.class.value = state.class;
@@ -7717,15 +7743,14 @@ function renderHumanFeat() {
 
     const selectedInfo = ORIGIN_FEATS[state.humanFeat] || { name: state.humanFeat || '未选择', desc: '' };
     const optionsHtml = availableFeats.map(feat => {
-        const info = ORIGIN_FEATS[feat] || { name: feat };
         const selected = state.humanFeat === feat ? 'selected' : '';
-        return `<option value="${feat}" ${selected}>${info.name}${ebFeat(feat)?.category==='黑暗赠礼'?'（黑暗赠礼，须DM许可）':''}</option>`;
+        return `<option value="${feat}" ${selected}>${ebEscape(creatorFeatLabel(feat))}</option>`;
     }).join('');
 
     elements.humanFeatSelector.innerHTML = `
         <div class="field">
             <label for="human-feat-select">种族额外起源专长</label>
-            <select id="human-feat-select" onchange="state.humanFeat=this.value; requestRender();">
+            <select id="human-feat-select" data-dnd-name-search onchange="state.humanFeat=this.value; requestRender();">
                 <option value="">请选择</option>${optionsHtml}
             </select>
         </div>
@@ -11597,7 +11622,8 @@ function renderEberronCreator(){
     const previous=choices[d.key]||[];
     choices[d.key]=Array.from({length:d.count},(_,i)=>vals.includes(previous[i])?previous[i]:'');
     html+='<div style="margin:12px 0"><label>'+ebEscape(d.label)+'（选 '+d.count+'）</label><div style="display:flex;gap:12px;flex-wrap:wrap">';
-    for(let n=0;n<d.count;n++)html+='<select style="min-width:150px;max-width:100%" data-eb="'+ebEscape(d.key)+'" data-index="'+n+'"><option value="">请选择</option>'+vals.map(v=>'<option'+(choices[d.key][n]===v?' selected':'')+'>'+ebEscape(v)+'</option>').join('')+'</select>';
+    const featChoice=['rv_background_feat','eb_dhakaani_background'].includes(d.key);
+    for(let n=0;n<d.count;n++)html+='<select'+(featChoice?' id="'+d.key+'-'+n+'" data-dnd-name-search="'+ebEscape(d.label)+'"':'')+' style="min-width:150px;max-width:100%" data-eb="'+ebEscape(d.key)+'" data-index="'+n+'"><option value="">请选择</option>'+vals.map(v=>'<option value="'+ebEscape(v)+'"'+(choices[d.key][n]===v?' selected':'')+'>'+ebEscape(featChoice?creatorFeatLabel(v):v)+'</option>').join('')+'</select>';
     html+='</div></div>';
   }
   for(const f of owned.map(ebFeat).filter(Boolean))html+='<details><summary>'+ebEscape(f.name)+' · '+ebBook(f.sourceBook)+'</summary><p>'+ebEscape(f.description)+'</p></details>';
@@ -11611,6 +11637,7 @@ const ebCreatorRender=render;
 render=function(){
   ebCreatorRender();
   if(creatorBasicsReady()) renderEberronCreator();
+  dndChoiceSearch();
   renderValidation();
   renderSummary();
 };
@@ -11705,6 +11732,98 @@ function applyEberronCreator(c){
   ravenApplyTraits(c);
   return c;
 }
+
+
+// Display-only searchable selects. Original option values and change handlers own the draft.
+const dndChoiceSearch = (() => {
+  const popup=document.createElement('div');
+  popup.id='dnd-name-options';popup.className='dnd-choice-list';popup.hidden=true;
+  popup.setAttribute('role','listbox');document.body.append(popup);
+  let active=null,rows=[],cursor=-1;
+  const selectedText=select=>select.selectedOptions[0]?.textContent||'';
+  function close(){
+    popup.hidden=true;
+    if(active){active.input.value=selectedText(active.select);active.input.setAttribute('aria-expanded','false');active.input.removeAttribute('aria-activedescendant');}
+    active=null;rows=[];cursor=-1;
+  }
+  function highlight(index){
+    cursor=index;
+    for(const row of rows){row.toggleAttribute('data-active',row===rows[cursor]);row.setAttribute('aria-selected',String(row===rows[cursor]));}
+    if(rows[cursor]){active.input.setAttribute('aria-activedescendant',rows[cursor].id);rows[cursor].scrollIntoView({block:'nearest'});}
+    else active.input.removeAttribute('aria-activedescendant');
+  }
+  function draw(){
+    const query=active.input.value.normalize('NFKC').trim().toLowerCase();
+    popup.replaceChildren();rows=[];cursor=-1;active.input.removeAttribute('aria-activedescendant');
+    for(const option of active.select.options){
+      const name=option.textContent.split(/[（(]\s*先决条件\s*[:：]/u,1)[0];
+      if(query&&!name.normalize('NFKC').toLowerCase().includes(query))continue;
+      const row=document.createElement('div');row.id='dnd-name-option-'+option.index;
+      row.setAttribute('role','option');row.setAttribute('aria-selected','false');row.setAttribute('aria-disabled',String(option.disabled));
+      row.toggleAttribute('data-selected',option.selected);row.dataset.index=option.index;row.textContent=option.textContent;
+      popup.append(row);rows.push(row);
+    }
+    if(!rows.length){const empty=document.createElement('div');empty.className='dnd-choice-empty';empty.textContent='没有匹配的名称';popup.append(empty);}
+    popup.scrollTop=0;popup.hidden=false;
+    const box=active.input.getBoundingClientRect(),view=window.visualViewport;
+    const top=view?.offsetTop||0,bottom=top+(view?.height||innerHeight),below=bottom-box.bottom-8,above=box.top-top-8;
+    const up=below<180&&above>below,space=Math.max(44,Math.min(320,up?above:below));
+    popup.style.width=Math.min(Math.max(active.wrap.getBoundingClientRect().width,320),innerWidth-16)+'px';
+    popup.style.left=Math.max(8,Math.min(box.left,innerWidth-popup.offsetWidth-8))+'px';
+    popup.style.maxHeight=space+'px';popup.style.top=(up?box.top-popup.offsetHeight-4:box.bottom+4)+'px';
+    popup.setAttribute('aria-label',active.input.getAttribute('aria-label'));
+  }
+  function open(record){
+    if(active===record)return;
+    close();active=record;record.input.value='';record.input.setAttribute('aria-expanded','true');draw();
+  }
+  function choose(row){
+    if(!active||!row)return;
+    const record=active,option=record.select.options[Number(row.dataset.index)];
+    if(option.disabled)return;
+    record.select.value=option.value;close();
+    record.select.dispatchEvent(new Event('change',{bubbles:true}));
+    requestAnimationFrame(()=>document.getElementById(record.input.id)?.focus({preventScroll:true}));
+  }
+  popup.addEventListener('mousedown',e=>e.preventDefault());
+  popup.addEventListener('click',e=>choose(e.target.closest('[role=option]')));
+  const outside=e=>{if(active&&!active.wrap.contains(e.target)&&!popup.contains(e.target))close();};
+  document.addEventListener('pointerdown',outside);document.addEventListener('focusin',outside);
+  document.addEventListener('scroll',e=>{if(active&&!popup.contains(e.target))close();},true);
+  window.addEventListener('resize',close);window.visualViewport?.addEventListener('resize',close);
+  return function(){
+    if(active&&!active.select.isConnected)close();
+    for(const select of document.querySelectorAll('select[data-dnd-name-search]')){
+      if(select.dndSearch){if(active!==select.dndSearch)select.dndSearch.input.value=selectedText(select);continue;}
+      const wrap=document.createElement('div'),input=document.createElement('input'),button=document.createElement('button');
+      if(select.parentElement.classList.contains('field'))select.parentElement.classList.add('dnd-choice-field');
+      wrap.className='dnd-choice-search';input.type='text';input.id=select.id+'-search';input.autocomplete='off';input.spellcheck=false;
+      input.placeholder='输入中文或英文名称';input.setAttribute('role','combobox');input.setAttribute('aria-autocomplete','list');
+      input.setAttribute('aria-controls',popup.id);input.setAttribute('aria-expanded','false');
+      const labels=[...select.labels],label=labels[0]||select.closest('.field,.req-card')?.querySelector('label')||select.parentElement.parentElement.querySelector('label');
+      input.setAttribute('aria-label',select.dataset.dndNameSearch||label?.textContent.trim()||'选项名称');
+      for(const label of labels)label.htmlFor=input.id;
+      button.type='button';button.tabIndex=-1;button.textContent='▾';button.setAttribute('aria-label','展开或收起选项');
+      select.classList.add('dnd-choice-source');select.hidden=true;select.after(wrap);wrap.append(input,button);
+      const record={select,wrap,input};select.dndSearch=record;input.value=selectedText(select);
+      input.addEventListener('focus',()=>input.select());
+      input.addEventListener('click',()=>open(record));
+      input.addEventListener('input',()=>{if(active!==record){const query=input.value;open(record);input.value=query;}draw();});
+      button.addEventListener('click',()=>{if(active===record)close();else{input.focus({preventScroll:true});open(record);}});
+      input.addEventListener('keydown',e=>{
+        if(e.isComposing)return;
+        if(e.key==='Escape'){if(active===record){e.preventDefault();e.stopPropagation();close();}return;}
+        if(e.key==='Tab'){if(active===record)close();return;}
+        if(e.key==='Enter'&&active===record){e.preventDefault();choose(rows[cursor]);return;}
+        if(!['ArrowDown','ArrowUp'].includes(e.key))return;
+        e.preventDefault();open(record);
+        const step=e.key==='ArrowDown'?1:-1;let next=cursor<0?(step>0?0:rows.length-1):cursor+step;
+        while(next>=0&&next<rows.length&&rows[next].getAttribute('aria-disabled')==='true')next+=step;
+        if(next>=0&&next<rows.length)highlight(next);
+      });
+    }
+  };
+})();
 
 document.addEventListener('DOMContentLoaded', init);
 </script>
