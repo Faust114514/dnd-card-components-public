@@ -3340,17 +3340,19 @@ document.addEventListener('DOMContentLoaded', () => {
 <style id="dnd-choice-search-style">
 .dnd-choice-search{display:flex;align-items:stretch;min-width:0;width:100%;position:relative}
 .dnd-choice-source{display:none!important}
-.dnd-choice-search input{box-sizing:border-box;width:100%;min-width:0;min-height:44px;padding:10px 44px 10px 12px;border:1px solid var(--border,#444);border-radius:6px;background:var(--bg-alt,#191b22);color:var(--text,#eee);font:inherit;font-size:16px}
-.dnd-choice-search input:focus{outline:2px solid var(--accent,#cbb17b);outline-offset:1px}
-.dnd-choice-search button{position:absolute;right:0;top:0;bottom:0;width:40px;min-width:0;margin:0;padding:0;border:0;background:transparent;color:inherit;cursor:pointer}
-.dnd-choice-list{position:fixed;z-index:2147483000;box-sizing:border-box;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;border:1px solid var(--accent,#cbb17b);border-radius:6px;background:#1b1d24;color:#eee;box-shadow:0 8px 24px #0008;font-size:15px;line-height:1.5}
+.dnd-choice-search input{width:100%;min-width:0;cursor:text}
+select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-height:normal;appearance:none;color-scheme:dark;padding-right:36px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 4L6 8L10 4' fill='none' stroke='%23e8e2d4' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-position:right 12px center;background-size:12px 12px;background-repeat:no-repeat}
+.dnd-choice-search button,.dnd-choice-search button:hover:not(:disabled){position:absolute;right:0;top:0;bottom:0;width:36px;min-width:0;margin:0;padding:0;border:0;background:transparent;box-shadow:none;transform:none;cursor:pointer}
+.dnd-choice-list{color-scheme:dark;position:fixed;z-index:2147483000;box-sizing:border-box;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;border:1px solid var(--border);border-radius:6px;background:#0f1216;color:var(--ink);box-shadow:0 8px 24px #0008;font-family:inherit;font-size:14px;line-height:1.5}
 .dnd-choice-list[hidden]{display:none}
 .dnd-choice-list [role=option],.dnd-choice-empty{box-sizing:border-box;padding:10px 12px;min-height:44px;overflow-wrap:anywhere;cursor:pointer}
-.dnd-choice-list [role=option]:hover,.dnd-choice-list [data-active]{background:#38332a}
+.dnd-choice-list [role=option]:hover,.dnd-choice-list [data-active]{background:var(--accent-glow)}
 .dnd-choice-list [aria-disabled=true]{color:#a3a3aa;cursor:not-allowed}
-.dnd-choice-list [data-selected]{box-shadow:inset 3px 0 var(--accent,#cbb17b)}
+.dnd-choice-list [data-selected]{box-shadow:inset 3px 0 var(--accent)}
 .dnd-choice-empty{color:#bbb;cursor:default}
 @media(max-width:600px){.field.dnd-choice-field{grid-column:1/-1}}
+.field>input[type="text"]{height:44px}
+@media(max-width:760px){.dnd-choice-list{font-size:16px}}
 </style>
 </head>
 <body class="creator-awaiting-basics">
@@ -11803,7 +11805,7 @@ const dndChoiceSearch = (() => {
       const labels=[...select.labels],label=labels[0]||select.closest('.field,.req-card')?.querySelector('label')||select.parentElement.parentElement.querySelector('label');
       input.setAttribute('aria-label',select.dataset.dndNameSearch||label?.textContent.trim()||'选项名称');
       for(const label of labels)label.htmlFor=input.id;
-      button.type='button';button.tabIndex=-1;button.textContent='▾';button.setAttribute('aria-label','展开或收起选项');
+      button.type='button';button.tabIndex=-1;button.setAttribute('aria-label','展开或收起选项');
       select.classList.add('dnd-choice-source');select.hidden=true;select.after(wrap);wrap.append(input,button);
       const record={select,wrap,input};select.dndSearch=record;input.value=selectedText(select);
       input.addEventListener('focus',()=>input.select());
