@@ -4741,7 +4741,13 @@ async function loadFaerunData() {
         try {
             const res = await fetch(path, { cache: 'no-store' });
             if (!res.ok) return '';
-            return await res.text();
+            const text = await res.text();
+            if (/\b(?:text\/html|application\/xhtml\+xml)\b/i.test(res.headers.get('content-type') || '')
+                || /^\s*(?:<!--[\s\S]*?-->\s*)*<(?:!doctype\s+html|html|head|body)\b/i.test(text)) {
+                console.warn(`忽略 ${path}：返回的是 HTML 页面，不是背景或专长数据。`);
+                return '';
+            }
+            return text;
         } catch (e) {
             console.warn(`加载 ${path} 失败:`, e);
             return '';
