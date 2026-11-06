@@ -5612,15 +5612,15 @@ function setupSectionCollapse() {
     });
 }
 
-function creatorChoiceLabel(name, english, prerequisite='无') {
-    return name+' '+english+(name==='自定义'?'':'（先决条件：'+(prerequisite||'无')+'）');
+function creatorChoiceLabel(name, english, prerequisite='') {
+    return name+' '+english+(prerequisite&&prerequisite!=='无'?'（先决条件：'+prerequisite+'）':'');
 }
 function creatorFeatLabel(key) {
     const extra=ebFeat(key),info=ORIGIN_FEATS[key];
     if(extra)return creatorChoiceLabel(extra.name,extra.nameEN,extra.prerequisite);
     if(!info)return key;
     const name=/[A-Za-z]/.test(info.name)?info.name:info.name+' '+key;
-    return name+'（先决条件：无）';
+    return name;
 }
 function populateSelects() {
     elements.class.innerHTML = '<option value="">请选择</option>' + Object.keys(CLASSES).map(c => `<option value="${c}">${c}</option>`).join('');

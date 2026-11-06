@@ -12012,7 +12012,7 @@ function bookPlan(plan,pending){
   }
   if(bookEnabled.has('ravenloft')){
     const gifts=bookAllFeats.filter(f=>f.category==='黑暗赠礼'&&!arcanaHas(f.name));
-    plan.req.push({id:'book_dark_gift',kind:'single',label:'DM已授予的黑暗赠礼（不是免费自选专长）',options:[{value:NO_CHANGE_VALUE,label:'不添加'},...gifts.map(f=>({value:f.name,label:f.name+' '+f.nameEN+'（先决条件：'+(f.prerequisite||'无')+'）'}))]});
+    plan.req.push({id:'book_dark_gift',kind:'single',label:'DM已授予的黑暗赠礼（不是免费自选专长）',options:[{value:NO_CHANGE_VALUE,label:'不添加'},...gifts.map(f=>({value:f.name,label:f.name+' '+f.nameEN+(f.prerequisite&&f.prerequisite!=='无'?'（先决条件：'+f.prerequisite+'）':'')}))]});
   }
   return plan;
 }
@@ -14471,7 +14471,7 @@ function featDuplicateCheck(name) {
         const featOptions=req.options.map((f)=>{
           const check=featPrecheck(f.name,state.plan?.totalTo||state.level,targetSub);
           const suffix=check.ok?"":`（${check.reason}）`;
-          return `<option value="${esc(f.name)}" ${cur.feat===f.name?"selected":""} ${check.ok?"":"disabled"}>${esc(f.name)}（先决条件：${esc(f.prerequisite||"无")}）${esc(suffix)}</option>`;
+          return `<option value="${esc(f.name)}" data-search-name="${esc(f.name)}" ${cur.feat===f.name?"selected":""} ${check.ok?"":"disabled"}>${esc(f.name)}${f.prerequisite&&f.prerequisite!=="无"?`（先决条件：${esc(f.prerequisite)}）`:""}${esc(suffix)}</option>`;
         }).join("");
         return `<div class="req-card"><label>${esc(req.label)}</label><select id="${req.id}_mode"><option value="asi" ${cur.mode==="asi"?"selected":""}>属性值提升</option><option value="feat" ${cur.mode==="feat"?"selected":""}>通用专长</option></select><div id="${req.id}_feat" style="margin-top:8px;display:${cur.mode==="feat"?"block":"none"}"><select id="${req.id}_feat_sel" data-dnd-name-search>${featOptions}</select></div>${renderAbilityAllocationPanel(req.id)}<div class="hint">按PHB 2024校验常见先决条件与属性上限。</div></div>`;
       }
@@ -14481,7 +14481,7 @@ function featDuplicateCheck(name) {
         const opts=req.options.map((f)=>{
           const check=featPrecheck(f.name,state.plan?.totalTo||state.level,targetSub);
           const suffix=check.ok?"":`（${check.reason}）`;
-          return `<option value="${esc(f.name)}" ${cur.feat===f.name?"selected":""} ${check.ok?"":"disabled"}>${esc(f.name)}（先决条件：${esc(f.prerequisite||"无")}）${esc(suffix)}</option>`;
+          return `<option value="${esc(f.name)}" data-search-name="${esc(f.name)}" ${cur.feat===f.name?"selected":""} ${check.ok?"":"disabled"}>${esc(f.name)}${f.prerequisite&&f.prerequisite!=="无"?`（先决条件：${esc(f.prerequisite)}）`:""}${esc(suffix)}</option>`;
         }).join("");
         return `<div class="req-card"><label>${esc(req.label)}</label><select id="${req.id}_feat_sel" data-dnd-name-search>${opts}</select>${renderAbilityAllocationPanel(req.id)}<div class="hint">若所选通用专长带属性值提升，会在下方显示分配面板。</div></div>`;
       }
@@ -15691,7 +15691,7 @@ const dndChoiceSearch = (() => {
     const query=active.input.value.normalize('NFKC').trim().toLowerCase();
     popup.replaceChildren();rows=[];cursor=-1;active.input.removeAttribute('aria-activedescendant');
     for(const option of active.select.options){
-      const name=option.textContent.split(/[（(]\s*先决条件\s*[:：]/u,1)[0];
+      const name=option.dataset.searchName??option.textContent.split(/[（(]\s*先决条件\s*[:：]/u,1)[0];
       if(query&&!name.normalize('NFKC').toLowerCase().includes(query))continue;
       const row=document.createElement('div');row.id='dnd-name-option-'+option.index;
       row.setAttribute('role','option');row.setAttribute('aria-selected','false');row.setAttribute('aria-disabled',String(option.disabled));
