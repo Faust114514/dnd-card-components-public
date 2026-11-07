@@ -911,7 +911,39 @@ const MvuLite = (() => {
   }
   const targets = {'ac.bonus':'AC','initiative.bonus':'先攻','speed.bonus':'速度','hp.max':'生命上限','save.all':'所有豁免','skill.all':'所有技能','spell.attack':'法术攻击','spell.dc':'法术DC','weapon.attack':'武器攻击','weapon.damage':'武器伤害','weapon.damage.dice':'武器额外伤害'};
   const tags = { ac_plus_1:'AC+1',save_plus_1:'所有豁免+1',skill_plus_1:'所有技能+1',hp_plus_5:'生命上限+5',spell_dc_plus_1:'法术DC+1',spell_attack_plus_1:'法术攻击+1',weapon_attack_plus_1:'武器攻击+1',weapon_damage_plus_1:'武器伤害+1',weapon_damage_d4:'武器额外伤害1d4' };
+  // Quoted field values preserve semicolons, line breaks and literal field labels.
+  // The persisted field remains text; older labelled/free-form text is also readable.
+  function formatBiography(raw) {
+    if (!object(raw)) return raw;
+    return entries(raw).filter(([,v])=>v!=='' && v!==null && v!==undefined)
+      .map(([k,v])=>`${k}：${JSON.stringify(v)}`).join('；');
+  }
+  function parseBiography(raw, fields, fallback) {
+    if (object(raw)) return clone(raw);
+    const text=String(raw ?? '');
+    const labels=fields.join('|');
+    const pattern=new RegExp('(?:^|[；;\\r\\n]+)\\s*('+labels+')\\s*[:：]\\s*("(?:\\\\.|[^"\\\\])*"|[\\s\\S]*?(?=(?:[；;\\r\\n]+)\\s*(?:'+labels+')\\s*[:：]|$))','g');
+    const out={}, remaining=[];
+    let cursor=0;
+    for (const match of text.matchAll(pattern)) {
+      if (text.slice(cursor,match.index).trim()) remaining.push(text.slice(cursor,match.index));
+      let value=match[2];
+      if (/^"(?:\\.|[^"\\])*"$/.test(value)) {
+        try { value=JSON.parse(value); } catch { /* Preserve malformed legacy text verbatim. */ }
+      } else value=value.trim();
+      if (Object.hasOwn(out,match[1])) remaining.push(`${match[1]}：${out[match[1]]}`);
+      out[match[1]]=value;
+      cursor=match.index+match[0].length;
+    }
+    if (text.slice(cursor).trim()) remaining.push(text.slice(cursor));
+    if (remaining.length) out[fallback]=[...remaining,out[fallback]].filter(v=>v!==undefined && v!=='').join('\n');
+    return out;
+  }
   function parseProfile(raw) {
+    if (object(raw)) return clone(raw);
+    if (/^(?:性别|年龄|身高|体重|眼睛|皮肤|发色|外观描述)："/.test(String(raw ?? ''))) {
+      return parseBiography(raw,['性别','年龄','身高','体重','眼睛','皮肤','发色','外观描述'],'外观描述');
+    }
     const fields=['性别','年龄','身高','体重','眼睛','皮肤','发色'];
     const out={};
     const descriptions=[];
@@ -1122,8 +1154,8 @@ function enrichSpellVariables(variables) {
 
     if (c.无甲防御 !== false) delete c.无甲防御;
     for (const k of ['玩家名','头像','数值覆盖','笔记']) delete c[k];
-    c.档案 = prose(parseProfile(c.档案 ?? c.外貌)); delete c.外貌;
-    c.个性 = prose(c.个性);
+    c.档案 = typeof c.档案==='string' ? c.档案 : formatBiography(parseProfile(c.档案 ?? c.外貌)); delete c.外貌;
+    c.个性 = formatBiography(c.个性);
     if (object(c.护甲等级)) {
       if (c.护甲等级.描述) c.护甲说明 = c.护甲等级.描述;
       c.护甲等级 = c.护甲等级.总值;
@@ -1209,7 +1241,7 @@ function enrichSpellVariables(variables) {
     }
     if (c.档案!==undefined || c.外貌!==undefined) c.外貌=parseProfile(c.档案 ?? c.外貌);
     delete c.档案;
-    if (typeof c.个性==='string') c.个性={个性特征:c.个性};
+    if (typeof c.个性==='string') c.个性=parseBiography(c.个性,['理想','牵绊','缺点','个性特征','传记'],'个性特征');
     if (typeof c.护甲等级==='number' || typeof c.护甲等级==='string') c.护甲等级={总值:c.护甲等级,描述:c.护甲说明||''};
     if (typeof c.先攻==='number' || typeof c.先攻==='string') c.先攻={加值:c.先攻,描述:c.先攻说明||''};
     // Stored numbers are bases; the status panel adds structured effects only in its derived view.
@@ -1246,6 +1278,8 @@ function enrichSpellVariables(variables) {
     original=clone(original);
     normalizeDndRootEffects({角色列表:{角色:original}});
     const out={...original,...current};
+    if (object(current.外貌)) delete out.档案;
+    if (object(current.个性)) out.个性={...parseBiography(original.个性,['理想','牵绊','缺点','个性特征','传记'],'个性特征'),...current.个性};
     const recordMerge=(old,now)=>Object.fromEntries(entries(now).map(([k,v])=>[k,object(v)?{...(object(old?.[k])?old[k]:{}),...v}:v]));
     for (const k of ['生命值','熟练配置','施法']) if (object(current[k])) out[k]={...original[k],...current[k]};
     if (object(current.生命值?.生命骰)) out.生命值.生命骰={...original.生命值?.生命骰,...current.生命值.生命骰};

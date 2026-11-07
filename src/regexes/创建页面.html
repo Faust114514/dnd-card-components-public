@@ -912,7 +912,39 @@ const MvuLite = (() => {
   }
   const targets = {'ac.bonus':'AC','initiative.bonus':'先攻','speed.bonus':'速度','hp.max':'生命上限','save.all':'所有豁免','skill.all':'所有技能','spell.attack':'法术攻击','spell.dc':'法术DC','weapon.attack':'武器攻击','weapon.damage':'武器伤害','weapon.damage.dice':'武器额外伤害'};
   const tags = { ac_plus_1:'AC+1',save_plus_1:'所有豁免+1',skill_plus_1:'所有技能+1',hp_plus_5:'生命上限+5',spell_dc_plus_1:'法术DC+1',spell_attack_plus_1:'法术攻击+1',weapon_attack_plus_1:'武器攻击+1',weapon_damage_plus_1:'武器伤害+1',weapon_damage_d4:'武器额外伤害1d4' };
+  // Quoted field values preserve semicolons, line breaks and literal field labels.
+  // The persisted field remains text; older labelled/free-form text is also readable.
+  function formatBiography(raw) {
+    if (!object(raw)) return raw;
+    return entries(raw).filter(([,v])=>v!=='' && v!==null && v!==undefined)
+      .map(([k,v])=>`${k}：${JSON.stringify(v)}`).join('；');
+  }
+  function parseBiography(raw, fields, fallback) {
+    if (object(raw)) return clone(raw);
+    const text=String(raw ?? '');
+    const labels=fields.join('|');
+    const pattern=new RegExp('(?:^|[；;\\r\\n]+)\\s*('+labels+')\\s*[:：]\\s*("(?:\\\\.|[^"\\\\])*"|[\\s\\S]*?(?=(?:[；;\\r\\n]+)\\s*(?:'+labels+')\\s*[:：]|$))','g');
+    const out={}, remaining=[];
+    let cursor=0;
+    for (const match of text.matchAll(pattern)) {
+      if (text.slice(cursor,match.index).trim()) remaining.push(text.slice(cursor,match.index));
+      let value=match[2];
+      if (/^"(?:\\.|[^"\\])*"$/.test(value)) {
+        try { value=JSON.parse(value); } catch { /* Preserve malformed legacy text verbatim. */ }
+      } else value=value.trim();
+      if (Object.hasOwn(out,match[1])) remaining.push(`${match[1]}：${out[match[1]]}`);
+      out[match[1]]=value;
+      cursor=match.index+match[0].length;
+    }
+    if (text.slice(cursor).trim()) remaining.push(text.slice(cursor));
+    if (remaining.length) out[fallback]=[...remaining,out[fallback]].filter(v=>v!==undefined && v!=='').join('\n');
+    return out;
+  }
   function parseProfile(raw) {
+    if (object(raw)) return clone(raw);
+    if (/^(?:性别|年龄|身高|体重|眼睛|皮肤|发色|外观描述)："/.test(String(raw ?? ''))) {
+      return parseBiography(raw,['性别','年龄','身高','体重','眼睛','皮肤','发色','外观描述'],'外观描述');
+    }
     const fields=['性别','年龄','身高','体重','眼睛','皮肤','发色'];
     const out={};
     const descriptions=[];
@@ -1123,8 +1155,8 @@ function enrichSpellVariables(variables) {
 
     if (c.无甲防御 !== false) delete c.无甲防御;
     for (const k of ['玩家名','头像','数值覆盖','笔记']) delete c[k];
-    c.档案 = prose(parseProfile(c.档案 ?? c.外貌)); delete c.外貌;
-    c.个性 = prose(c.个性);
+    c.档案 = typeof c.档案==='string' ? c.档案 : formatBiography(parseProfile(c.档案 ?? c.外貌)); delete c.外貌;
+    c.个性 = formatBiography(c.个性);
     if (object(c.护甲等级)) {
       if (c.护甲等级.描述) c.护甲说明 = c.护甲等级.描述;
       c.护甲等级 = c.护甲等级.总值;
@@ -1210,7 +1242,7 @@ function enrichSpellVariables(variables) {
     }
     if (c.档案!==undefined || c.外貌!==undefined) c.外貌=parseProfile(c.档案 ?? c.外貌);
     delete c.档案;
-    if (typeof c.个性==='string') c.个性={个性特征:c.个性};
+    if (typeof c.个性==='string') c.个性=parseBiography(c.个性,['理想','牵绊','缺点','个性特征','传记'],'个性特征');
     if (typeof c.护甲等级==='number' || typeof c.护甲等级==='string') c.护甲等级={总值:c.护甲等级,描述:c.护甲说明||''};
     if (typeof c.先攻==='number' || typeof c.先攻==='string') c.先攻={加值:c.先攻,描述:c.先攻说明||''};
     // Stored numbers are bases; the status panel adds structured effects only in its derived view.
@@ -1247,6 +1279,8 @@ function enrichSpellVariables(variables) {
     original=clone(original);
     normalizeDndRootEffects({角色列表:{角色:original}});
     const out={...original,...current};
+    if (object(current.外貌)) delete out.档案;
+    if (object(current.个性)) out.个性={...parseBiography(original.个性,['理想','牵绊','缺点','个性特征','传记'],'个性特征'),...current.个性};
     const recordMerge=(old,now)=>Object.fromEntries(entries(now).map(([k,v])=>[k,object(v)?{...(object(old?.[k])?old[k]:{}),...v}:v]));
     for (const k of ['生命值','熟练配置','施法']) if (object(current[k])) out[k]={...original[k],...current[k]};
     if (object(current.生命值?.生命骰)) out.生命值.生命骰={...original.生命值?.生命骰,...current.生命值.生命骰};
@@ -3354,6 +3388,20 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
 .field>input[type="text"]{height:44px}
 @media(max-width:760px){.dnd-choice-list{font-size:16px}}
 </style>
+<style>
+.creator-biography{min-width:0;margin:24px 0 8px;padding:18px 0 0;border:0;border-top:1px solid var(--border)}
+.creator-biography legend{padding-right:12px;color:var(--gold);font-size:1.1rem;font-weight:700}
+.biography-hint{margin:0 0 18px;color:var(--text-secondary);font-size:.9rem;line-height:1.6}
+.biography-facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.biography-prose{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:18px}
+.biography-wide{grid-column:1 / -1}
+.creator-biography .field{min-width:0}.creator-biography input,.creator-biography textarea{box-sizing:border-box;width:100%;min-width:0}
+.creator-biography textarea{resize:vertical;line-height:1.6;padding:10px 12px;font:inherit;background:var(--bg-alt);color:var(--ink);border:1px solid var(--border);border-radius:6px}
+.creator-biography [aria-invalid=true]{border-color:#e6a19a;outline:1px solid #e6a19a}
+.creator-biography label span{color:var(--gold)}
+@media(max-width:800px){.biography-facts{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){.biography-prose{grid-template-columns:minmax(0,1fr)}.biography-facts{gap:12px}.creator-biography{margin-top:20px}}
+</style>
 </head>
 <body class="creator-awaiting-basics">
     <div class="creator-page">
@@ -3453,6 +3501,40 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
                         </div>
                     </div>
                 </div>
+                <fieldset id="creator-biography" class="creator-biography">
+                    <legend>传记</legend>
+                    <p class="biography-hint">可以先填写其他选项，再回来补齐。以下栏目与上方性别均为必填，创建角色时检查，不限字数。</p>
+                    <div class="biography-facts">
+                        <div class="field"><label for="bio-playerName">玩家名 <span aria-hidden="true">*</span></label><input type="text" id="bio-playerName" data-biography="playerName" aria-required="true" placeholder="玩家称呼，与角色姓名分开"></div>
+                        <div class="field"><label for="bio-alignment">阵营 <span aria-hidden="true">*</span></label><input type="text" id="bio-alignment" data-biography="alignment" aria-required="true" list="biography-alignments"></div>
+                        <div class="field"><label for="bio-age">年龄 <span aria-hidden="true">*</span></label><input type="text" id="bio-age" data-biography="age" aria-required="true" placeholder="例如：28 岁"></div>
+                        <div class="field"><label for="bio-height">身高 <span aria-hidden="true">*</span></label><input type="text" id="bio-height" data-biography="height" aria-required="true"></div>
+                        <div class="field"><label for="bio-weight">体重 <span aria-hidden="true">*</span></label><input type="text" id="bio-weight" data-biography="weight" aria-required="true"></div>
+                        <div class="field"><label for="bio-eyes">眼睛 <span aria-hidden="true">*</span></label><input type="text" id="bio-eyes" data-biography="eyes" aria-required="true"></div>
+                        <div class="field"><label for="bio-skin">皮肤 <span aria-hidden="true">*</span></label><input type="text" id="bio-skin" data-biography="skin" aria-required="true"></div>
+                        <div class="field"><label for="bio-hair">发色 <span aria-hidden="true">*</span></label><input type="text" id="bio-hair" data-biography="hair" aria-required="true"></div>
+                    </div>
+                    <datalist id="biography-alignments">
+                        <option value="守序善良"></option>
+                        <option value="中立善良"></option>
+                        <option value="混乱善良"></option>
+                        <option value="守序中立"></option>
+                        <option value="绝对中立"></option>
+                        <option value="混乱中立"></option>
+                        <option value="守序邪恶"></option>
+                        <option value="中立邪恶"></option>
+                        <option value="混乱邪恶"></option>
+                    </datalist>
+                    <div class="biography-prose">
+                        <div class="field biography-wide"><label for="bio-description">外观描述 <span aria-hidden="true">*</span></label><textarea id="bio-description" data-biography="description" aria-required="true" rows="3"></textarea></div>
+                        <div class="field"><label for="bio-ideal">理想 <span aria-hidden="true">*</span></label><textarea id="bio-ideal" data-biography="ideal" aria-required="true" rows="3"></textarea></div>
+                        <div class="field"><label for="bio-bond">牵绊 <span aria-hidden="true">*</span></label><textarea id="bio-bond" data-biography="bond" aria-required="true" rows="3"></textarea></div>
+                        <div class="field"><label for="bio-flaw">缺点 <span aria-hidden="true">*</span></label><textarea id="bio-flaw" data-biography="flaw" aria-required="true" rows="3"></textarea></div>
+                        <div class="field"><label for="bio-trait">个性特征 <span aria-hidden="true">*</span></label><textarea id="bio-trait" data-biography="trait" aria-required="true" rows="3"></textarea></div>
+                        <div class="field biography-wide"><label for="bio-biography">传记 <span aria-hidden="true">*</span></label><textarea id="bio-biography" data-biography="biography" aria-required="true" rows="5"></textarea></div>
+                    </div>
+                    <p id="biography-error" class="section-validation" role="alert"></p>
+                </fieldset>
                 <div id="info-boxes"></div>
                 <div class="section-validation" id="validation-basics"></div>
             </div>
@@ -5402,7 +5484,10 @@ const autoPreparedLookup = {
 };
 
 // ========== 状态管理 ==========
+const BIOGRAPHY_FIELDS = [["playerName", "玩家名"], ["alignment", "阵营"], ["age", "年龄"], ["height", "身高"], ["weight", "体重"], ["eyes", "眼睛"], ["skin", "皮肤"], ["hair", "发色"], ["description", "外观描述"], ["ideal", "理想"], ["bond", "牵绊"], ["flaw", "缺点"], ["trait", "个性特征"], ["biography", "传记"]];
+
 const state = {
+    biography: Object.fromEntries(BIOGRAPHY_FIELDS.map(([key])=>[key,''])),
     name: '',
     gender: '',
     class: '',
@@ -5981,6 +6066,10 @@ function applyClassDefaults() {
     state.equipmentPresetIndex = null;
     state.equipmentSelected = [];
 }
+function missingBiographyFields() {
+    return BIOGRAPHY_FIELDS.filter(([key])=>!state.biography[key].trim());
+}
+
 function creatorBasicsReady() {
     return !!(state.class && state.background && state.species);
 }
@@ -8672,7 +8761,7 @@ function renderSummary() {
 
     elements.summaryBox.innerHTML = `
         <p>
-            <strong>${state.name}</strong>，一位 ${state.gender} ${speciesText} ${state.class}，曾是一名 ${backgroundName}。<br>
+            <strong>${ebEscape(state.name)}</strong>，一位 ${ebEscape(state.gender)} ${speciesText} ${state.class}，曾是一名 ${backgroundName}。<br>
             <strong>生命值:</strong> ${hp} |
             <strong>护甲等级:</strong> ${ac} | <strong>金币:</strong> ${goldLeft}/${budget} GP | <strong>移速:</strong> ${species.speed}尺 | <strong>熟练加值:</strong> +2<br>
             <strong>属性:</strong> 
@@ -8688,6 +8777,7 @@ function renderSummary() {
             ${spellText}
             <strong>职业特性:</strong> ${classFeatures}
         </p>
+        <details style="margin-top:16px"><summary>传记预览</summary><dl style="white-space:pre-wrap;overflow-wrap:anywhere">${BIOGRAPHY_FIELDS.map(([key,label])=>`<dt style="color:var(--gold);margin-top:12px">${label}</dt><dd style="margin:4px 0">${ebEscape(state.biography[key] || '待填写')}</dd>`).join('')}</dl></details>
     `;
 }
 
@@ -8695,6 +8785,15 @@ function renderSummary() {
 function setupEventListeners() {
     elements.name.addEventListener('input', e => { state.name = e.target.value; requestRender(); });
     elements.gender.addEventListener('change', e => { state.gender = e.target.value; requestRender(); });
+    for (const [key] of BIOGRAPHY_FIELDS) {
+        document.getElementById('bio-'+key).addEventListener('input', e => {
+            state.biography[key]=e.target.value;
+            e.target.removeAttribute('aria-invalid');
+            document.getElementById('biography-error').textContent='';
+            renderSummary();
+        });
+    }
+
     
     elements.class.addEventListener('change', e => {
         const oldBackground = state.background;
@@ -9847,28 +9946,28 @@ function buildMvuCharacterSheet() {
     const sheet = {
         姓名: state.name,
         头像: '',
-        玩家名: '',
+        玩家名: state.biography.playerName,
         职业: className,
         种族: displaySpecies,
         背景: backgroundName,
-        阵营: '',
+        阵营: state.biography.alignment,
         英雄激励: false,
         外貌: {
             性别: state.gender || '',
-            年龄: '',
-            身高: '',
-            体重: '',
-            眼睛: '',
-            皮肤: '',
-            发色: '',
-            外观描述: ''
+            年龄: state.biography.age,
+            身高: state.biography.height,
+            体重: state.biography.weight,
+            眼睛: state.biography.eyes,
+            皮肤: state.biography.skin,
+            发色: state.biography.hair,
+            外观描述: state.biography.description
         },
         个性: {
-            理想: '',
-            牵绊: '',
-            缺点: '',
-            个性特征: '',
-            传记: '<p>暂无传记</p>'
+            理想: state.biography.ideal,
+            牵绊: state.biography.bond,
+            缺点: state.biography.flaw,
+            个性特征: state.biography.trait,
+            传记: state.biography.biography
         },
         等级: level,
         熟练加值: proficiencyBonus,
@@ -9931,7 +10030,6 @@ function buildMvuCharacterSheet() {
         笔记: {}
     };
 
-    delete sheet.个性;
     applyEberronCreator(sheet);
     return MvuLite.compactCharacter(sheet);
 }
@@ -10148,6 +10246,10 @@ async function writeVariables(payload) {
     // Persist the current floor first; a stale open creator must never target its opening floor.
     for (const [scope,stored] of [[messageScope,message],[chatScope,chat]]) {
         const next = {...stored,stat_data:snapshot(packed)};
+        if (payload.mvu_lite_ui) {
+            next.mvu_lite_ui={...stored.mvu_lite_ui};
+            for (const [name,prefs] of Object.entries(payload.mvu_lite_ui)) next.mvu_lite_ui[name]={...next.mvu_lite_ui[name],...prefs};
+        }
       delete next.mvu_lite_backup;
       delete next.spell_metadata_backup;
       next.mvu_lite_ui=Object.fromEntries(Object.entries(next.mvu_lite_ui || {}).map(([name,prefs])=>[name,Object.fromEntries(Object.entries(prefs || {}).filter(([key,value])=>['头像','玩家名'].includes(key) && typeof value==='string' && value.trim() && value!=='systems/dnd5e/icons/svg/actors/character.svg'))]).filter(([,prefs])=>Object.keys(prefs).length));
@@ -10181,6 +10283,16 @@ async function saveCharacter() {
     renderValidation();
     if (elements.saveBtn.disabled) {
         alert('请完成所有必填项后再创建角色。');
+        return;
+    }
+    const missingBiography = missingBiographyFields();
+    if (missingBiography.length) {
+        const section=document.querySelector('.section[data-step="basics"]');
+        if (section.querySelector('h2').classList.contains('collapsed')) section.querySelector('h2').click();
+        document.getElementById('biography-error').textContent='创建前请补齐：'+missingBiography.map(([,label])=>label).join('、')+'。';
+        for (const [key] of missingBiography) document.getElementById('bio-'+key).setAttribute('aria-invalid','true');
+        const first=document.getElementById('bio-'+missingBiography[0][0]);
+        first.scrollIntoView({block:'center',behavior:'instant'}); first.focus({preventScroll:true});
         return;
     }
     // 验证法术选择
@@ -10278,7 +10390,8 @@ async function saveCharacter() {
                 角色列表: allChars
             }
         };
-        const finalPayload = {stat_data:MvuLite.compactRoot(statDataPayload.stat_data)};
+        const finalPayload = {stat_data:MvuLite.compactRoot(statDataPayload.stat_data),
+            mvu_lite_ui:{[charName]:{玩家名:state.biography.playerName}}};
 
         await writeVariables(cleanupPayload);
         await writeVariables(finalPayload);
