@@ -286,8 +286,11 @@ function dndVersionIsNewer(next, current) {
       const confirmed = await (await local('/api/characters/get', {avatar_url: avatar})).json();
       const receipt = confirmed.data.extensions.dnd_component_updates;
       if (receipt?.version !== release.version || receipt?.repository !== REPOSITORY || buildDndComponentUpdate(confirmed, release, sources, updaterId).changed.length) throw Error('保存后读回结果不一致');
-      if (receipt.rules_version !== update.extensions.dnd_component_updates.rules_version ||
-          JSON.stringify(receipt.worldbook) !== JSON.stringify(update.extensions.dnd_component_updates.worldbook)) throw Error('规则更新记录保存不完整');
+      const expected = update.extensions.dnd_component_updates;
+      // Native saves may reorder object keys. Compare the stored values, not key order.
+      if (receipt.rules_version !== expected.rules_version ||
+          receipt.worldbook?.name !== expected.worldbook?.name || receipt.worldbook?.version !== expected.worldbook?.version ||
+          JSON.stringify(receipt.worldbook?.kept) !== JSON.stringify(expected.worldbook?.kept)) throw Error('规则更新记录保存不完整');
       status.textContent = release.version + ' 已保存，正在刷新页面…';
       // A switched-away chat must not be reloaded by the old card's request.
       if (!disposed && key() === start) host.location.reload();

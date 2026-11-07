@@ -125,28 +125,33 @@ if(baselinePath){
 
 const selected=latest.components.filter(c=>['c3c9ad44-9e9b-4c6e-ae93-f2b098a20125','480d6777-f90d-4eba-a811-64cb2f1ffb00','736c0e4e-67b4-4113-a021-b3890714ba28','01c632e5-1071-4a08-aebd-6a0e5424ea99',...archiveIds].includes(c.id));
 const fixtureManifest={...latest,components:selected,empty_regexes:latest.empty_regexes.filter(c=>archiveIds.includes(c.id))};
-// Worldbook and newly added rules are exercised by worldbook-updater.cjs.
+const withWorldbook=process.argv.includes('--worldbook');
 delete fixtureManifest.added_regexes;
-delete fixtureManifest.worldbook_path;
+if(!withWorldbook)delete fixtureManifest.worldbook_path;
 const fixtureSources=Object.fromEntries(selected.map(c=>[c.path,sources[c.path]]));
+if(withWorldbook)fixtureSources[latest.worldbook_path]=JSON.stringify(patches);
 const fixture=structuredClone(original);fixture.data.extensions.tavern_helper.scripts=fixture.data.extensions.tavern_helper.scripts.filter(s=>selected.some(c=>c.id===s.id)||s.id==='user-added');
 fixture.data.extensions.tavern_helper.scripts[0].content='old DM';fixture.data.extensions.regex_scripts=fixture.data.extensions.regex_scripts.filter(r=>selected.some(c=>c.id===r.id)||archiveIds.includes(r.id));
 for (const rule of fixture.data.extensions.regex_scripts.filter(r=>archiveIds.includes(r.id))) rule.findRegex=archivePattern;
 const sameVersionRepair=process.argv.includes('--repair');
 if(sameVersionRepair) fixture.data.extensions.dnd_component_updates={version:latest.version,repository:'Faust114514/dnd-card-components-public'};
 if(process.argv.includes('--legacy')){fixture.data.character_version='vf.0.2.21';fixture.data.extensions.world='D&D 2024 vf.0.2.21';fixture.data.extensions.tavern_helper.scripts=fixture.data.extensions.tavern_helper.scripts.filter(s=>s.id!==orbId);}
+fixture.data.extensions.dnd_component_updates={...fixture.data.extensions.dnd_component_updates,rules_version:'vf.0.3.8'};
 // Helper 4.12 import rewrites IDs before mounting the script iframe.
 fixture.data.extensions.tavern_helper.scripts.find(s=>s.id===updaterId).id=runningId;
 const jsJSON=value=>JSON.stringify(value).replaceAll('<','\\u003c');
 const setup=`
 window.fixtureCard=${jsJSON(fixture)};window.initialCard=structuredClone(fixtureCard);window.remoteManifest=${jsJSON(fixtureManifest)};window.remoteSources=${jsJSON(fixtureSources)};
+window.fixtureBook=${jsJSON(book)};fixtureBook.entries[18].content='personal edit';
 window.errors=[];window.calls=[];window.saves=0;window.reloads=0;window.failure=null;window.delayNext=null;window.frozenCalls=[];
 addEventListener('error',e=>errors.push(e.message));addEventListener('unhandledrejection',e=>errors.push(String(e.reason)));
 const listeners=new Map();window.events={on:(e,f)=>{if(!listeners.has(e))listeners.set(e,new Set());listeners.get(e).add(f);},removeListener:(e,f)=>listeners.get(e)?.delete(f)};
 window.emit=(e,...args)=>{for(const f of [...(listeners.get(e)||[])])f(...args);};
 window.context={characterId:0,groupId:null,chatId:'a',characters:[fixtureCard],getCurrentChatId:()=>context.chatId,getRequestHeaders:()=>({'Content-Type':'application/json','X-CSRF-Token':'fixture-local'}),eventSource:events,event_types:{CHAT_CHANGED:'chat',GENERATION_STARTED:'start',GENERATION_ENDED:'end',GENERATION_STOPPED:'stop'}};
 window.SillyTavern={getContext:()=>context};window.__fixtureReload=()=>{reloads++;};
-window.TavernHelper={getButtonEvent:()=> 'update-button',eventOn:(name,fn)=>{events.on(name,fn);return{stop:()=>events.removeListener(name,fn)};}};
+context.loadWorldInfo=async()=>structuredClone(fixtureBook);
+context.saveWorldInfo=async(name,data)=>{fixtureBook=structuredClone(data);};
+window.TavernHelper={getCharWorldbookNames:()=>({primary:fixtureCard.data.extensions.world}),getButtonEvent:()=> 'update-button',eventOn:(name,fn)=>{events.on(name,fn);return{stop:()=>events.removeListener(name,fn)};}};
 window.fetch=async(url,options={})=>{
  calls.push({url,method:options.method,body:options.body});
  if(url.startsWith('https://raw.githubusercontent.com/')){
@@ -164,10 +169,20 @@ window.fetch=async(url,options={})=>{
  const payload=JSON.parse(options.body);
  if(JSON.stringify(payload).includes('test-session-read-only'))throw Error('credential leaked into local save');
  if(url==='/api/characters/get'){if(payload.avatar_url!=='fixture.png')throw Error('wrong avatar');return new Response(JSON.stringify(fixtureCard));}
+ if(url==='/api/worldinfo/get')return new Response(JSON.stringify(fixtureBook));
  if(url==='/api/characters/merge-attributes'){
   if(failure==='save'){failure=null;return new Response('failure',{status:500});}
   if(Object.keys(payload).join(',')!=='avatar,data'||Object.keys(payload.data).join(',')!=='extensions')throw Error('wide update');
-  fixtureCard={...fixtureCard,data:{...fixtureCard.data,extensions:{...fixtureCard.data.extensions,...payload.data.extensions}}};context.characters[0]=fixtureCard;saves++;return new Response('OK');
+  fixtureCard={...fixtureCard,data:{...fixtureCard.data,extensions:{...fixtureCard.data.extensions,...payload.data.extensions}}};
+  const receipt=fixtureCard.data.extensions.dnd_component_updates;
+  // Observed native saved order differs from the request's name/version/kept order.
+  if(receipt.worldbook)receipt.worldbook=Object.fromEntries(Object.entries(receipt.worldbook).sort(([a],[b])=>a.localeCompare(b)));
+  if(failure==='missing-record')delete receipt.worldbook;
+  if(failure==='wrong-name')receipt.worldbook.name='another book';
+  if(failure==='wrong-version')receipt.worldbook.version='vf.0.3.0';
+  if(failure==='lost-keep')receipt.worldbook.kept=[];
+  if(failure==='missing-rules')delete receipt.rules_version;
+  failure=null;context.characters[0]=fixtureCard;saves++;return new Response('OK');
  }
  throw Error('unexpected request '+url);
 };`;
@@ -176,7 +191,7 @@ addEventListener('DOMContentLoaded',async()=>{
  const checks=[],tick=()=>new Promise(r=>setTimeout(r,20)),q=s=>document.querySelector(s);
  const assert=(v,label)=>{if(!v)throw Error(label);checks.push(label);};
  const wait=async(f,label)=>{for(let i=0;i<300;i++){if(f())return;await tick();}throw Error(label+' / '+q('.dpu-status')?.textContent);};
- async function check(){q('.dpu-check').click();await wait(()=>!q('.dpu-check').disabled,'check complete');}
+ async function check(){q('.dpu-check').click();await wait(()=>!q('.dpu-check').disabled,'check complete');for(const select of document.querySelectorAll('.dpu-worldbook select')){select.value='keep';select.dispatchEvent(new Event('change'));}}
  async function install(){q('.dpu-install').click();await wait(()=>!q('.dpu-check').disabled,'install complete');}
  try{
   await wait(()=>window.__dndPrivateUpdates,'mounted');assert(calls.length===0&&saves===0,'mount performs no download or mutation');
@@ -189,7 +204,20 @@ addEventListener('DOMContentLoaded',async()=>{
   let release;delayNext=new Promise(r=>release=r);q('.dpu-install').click();await tick();context.chatId='b';emit('chat');release();await wait(()=>!q('.dpu-check').disabled,'cancel switched chat');assert(saves===0,'chat switch during download cancels before save');context.chatId='a';emit('chat');
   emit('start','normal',{},false);assert(q('.dpu-install').disabled&&q('.dpu-check').disabled,'generation disables update actions');emit('end');
   failure='save';await install();assert(saves===0&&JSON.stringify(fixtureCard)===initial&&reloads===0,'save failure does not claim success or reload');
-  await check();await install();assert(saves===1&&reloads===1,'all sources saved in one native merge then verified before reload');
+  if(${withWorldbook}){
+   for(const fault of ['missing-record','wrong-name','wrong-version','lost-keep','missing-rules']){
+    await check();failure=fault;await install();
+    assert(reloads===0&&q('.dpu-status').textContent.includes('规则更新记录保存不完整'),'actual incomplete receipt prevents success: '+fault);
+    fixtureCard=structuredClone(initialCard);context.characters[0]=fixtureCard;saves=0;
+   }
+  }
+  await check();await install();assert(saves===1&&reloads===1,'all sources saved in one native merge then verified before reload / '+q('.dpu-status').textContent);
+  if(${withWorldbook}){
+   const receipt=fixtureCard.data.extensions.dnd_component_updates.worldbook;
+   assert(Object.keys(receipt).join(',')==='kept,name,version','native reordered receipt accepted without false failure');
+   assert(receipt.kept.length===1&&receipt.kept[0]===18&&fixtureBook.entries[18].content==='personal edit','personal worldbook choice preserved in receipt');
+   assert(fixtureBook.entries[643316].content===JSON.parse(remoteSources[remoteManifest.worldbook_path]).find(p=>p.uid===643316).content,'shipped worldbook content saved and verified');
+  }
   assert(fixtureCard.data.extensions.dnd_component_updates.version===remoteManifest.version&&fixtureCard.data.character_version===initialCard.data.character_version,'component version updated without pretending whole card upgraded');
   assert(fixtureCard.data.extensions.tavern_helper.scripts.filter(s=>s.id==='480d6777-f90d-4eba-a811-64cb2f1ffb00').length===1,'one orb present after UI install');
   assert(fixtureCard.data.extensions.tavern_helper.scripts.some(s=>s.id==='${runningId}')&&!fixtureCard.data.extensions.tavern_helper.scripts.some(s=>s.id==='${updaterId}'),'browser install preserves Helper-assigned updater ID');
