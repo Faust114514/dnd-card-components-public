@@ -16,6 +16,7 @@
   const features = [
     {key: 'module', name: '玩模组', uid: 12, tag: '模组主持规则', prompt: 'dnd-cot-module-v01'},
     {key: 'combat', name: '战斗检查', uid: 781428, tag: '战斗准则', prompt: 'dnd-cot-combat-v01'},
+    {key: 'battlemap', name: '战场生成', rules: [{uid: 2, tag: '战斗面板规则'}, {uid: 781429, tag: '战场生成规则'}], prompt: 'dnd-cot-battle-map-v01'},
     {key: 'dnj', name: 'DNJ 风格', uid: 8, tag: 'DNJ风格规则'},
     {key: 'opening', name: '开团流程', uid: 5, tag: '开局流程'},
   ];
@@ -56,7 +57,7 @@
     <svg viewBox="0 0 32 32" fill="none" stroke="#e2c58b" stroke-width="1.4" aria-hidden="true"><path d="M16 2 29 10v13L16 30 3 23V10Z M16 2 9 20h14L16 2M3 10l6 10-6 3m26-13-6 10 6 3M9 20l7 10 7-10M3 10h26"/></svg>
   </button>
   <section class="dnc-panel" id="dnc-panel" role="dialog" aria-labelledby="dnc-title" hidden>
-    <div class="dnc-head"><div><div class="dnc-version">DND · VF.0.4.2</div><h2 id="dnc-title">冒险开关</h2></div><button class="dnc-close" type="button" aria-label="关闭面板">×</button></div>
+    <div class="dnc-head"><div><div class="dnc-version">DND · VF.0.4.3</div><h2 id="dnc-title">冒险开关</h2></div><button class="dnc-close" type="button" aria-label="关闭面板">×</button></div>
     <div class="dnc-badge"></div>
     ${features.map(f => `<div class="dnc-row" data-feature="${f.key}"><div class="dnc-line"><span class="dnc-label">${f.name}</span><div class="dnc-options" role="group" aria-label="${f.name}">${(f.key === 'opening' ? [['auto','自动'],['on','开'],['off','关']] : [['on','开'],['off','关']]).map(([v,t]) => `<button type="button" data-value="${v}" aria-pressed="false" disabled>${t}</button>`).join('')}</div></div><div class="dnc-detail">读取中…</div></div>`).join('')}
     <p class="dnc-note">联动修改当前预设；长期保留请在酒馆保存预设。世界书开关会影响共用它的聊天。</p>
@@ -88,9 +89,9 @@
     const locked = writing || isGenerating() || !state;
     root.querySelector('.dnc-badge').textContent = isGenerating() ? '生成中 · 暂停修改' : state ? (state.preset ? '预设联动 · ' + state.name : '仅世界书 · 当前预设不参与联动') : '暂不可用';
     for (const f of features) {
-      const row = rowFor(f.key), entry = state && entryFor(state.entries, f), prompt = state?.preset && f.prompt ? promptFor(state.preset, f) : null;
-      let detail = '', selected = null, unavailable = !entry, warning = false;
-      if (!entry) detail = '未找到对应标签条目';
+      const row = rowFor(f.key), entries = (f.rules || [f]).map(rule => state && entryFor(state.entries, rule)), entry = entries[0], prompt = state?.preset && f.prompt ? promptFor(state.preset, f) : null;
+      let detail = '', selected = null, unavailable = entries.some(e => !e), warning = false;
+      if (unavailable) detail = '未找到对应标签条目';
       else if (f.key === 'opening') {
         selected = state.vars[STORE]?.mode || 'off';
         unavailable = typeof host.__dndDmPersonas?.refreshOpeningFlow !== 'function' || host.__dndDmPersonas.openingFlowBook !== state.book;
@@ -98,6 +99,7 @@
       } else {
         selected = entry.enabled ? 'on' : 'off';
         detail = '世界书 ' + (entry.enabled ? '开' : '关');
+        if (entries.some(e => e.enabled !== entry.enabled)) {selected = null; warning = true; detail = '世界书条目未同步';}
         if (state.preset && f.prompt) {
           if (!prompt) {unavailable = true; detail += ' · 预设未适配';}
           else {
@@ -133,12 +135,14 @@
       state = null; status.textContent = error.message; render();
     }
   }
-  async function setBook(start, f, value, expected, rollback = false) {
+  async function setBook(start, changes, rollback = false) {
     await api('updateWorldbookWith')(start.book, entries => {
       check(start, rollback);
-      const entry = entryFor(entries, f);
-      if (!entry || entry.enabled !== expected) throw Error('世界书状态已变化，请刷新');
-      entry.enabled = value;
+      for (const {rule, expected} of changes) {
+        const entry = entryFor(entries, rule);
+        if (!entry || entry.enabled !== expected) throw Error('世界书状态已变化，请刷新');
+      }
+      for (const {rule, value} of changes) entryFor(entries, rule).enabled = value;
       return entries;
     }, {render: 'debounced'});
   }
@@ -160,8 +164,8 @@
     try {
       check(start);
       before = await read(); check(start);
-      const entry = entryFor(before.entries, f);
-      if (!entry) throw Error('没有找到对应世界书条目');
+      const rules = f.rules || [f], entries = rules.map(rule => entryFor(before.entries, rule));
+      if (entries.some(e => !e)) throw Error('没有找到对应世界书条目');
       if (f.key === 'opening') {
         if (typeof host.__dndDmPersonas?.refreshOpeningFlow !== 'function' || host.__dndDmPersonas.openingFlowBook !== start.book) throw Error('开团脚本缺失或世界书不匹配');
         modeAttempted = true;
@@ -172,16 +176,19 @@
         if (before.preset && f.prompt && !prompt) throw Error('这个明月秋青预设尚未适配此开关');
         if (f.key === 'module') {
           moduleAttempted = true; await host.__dndModuleRunner.setEnabled(target); check(start);
-        } else if (entry.enabled !== target) {bookAttempted = true; await setBook(start, f, target, entry.enabled); check(start);}
+        } else {
+          const changes = rules.map((rule, i) => ({rule, value: target, expected: entries[i].enabled})).filter(change => change.expected !== target);
+          if (changes.length) {bookAttempted = true; await setBook(start, changes); check(start);}
+        }
         if (prompt && prompt.enabled !== target) {presetAttempted = true; await setPreset(start, f, target, prompt.enabled); check(start);}
       }
       const after = await read(); check(start);
-      const entryAfter = entryFor(after.entries, f);
+      const entryAfter = entryFor(after.entries, rules[0]);
       if (f.key === 'opening') {
         const completed = after.vars[STORE]?.completed === true || (ctx().chat || []).some(m => !m.is_user && !m.is_system && /<!--\s*dnd-setup-complete\s*-->/.test(m.mes || ''));
         const enabled = value === 'on' || (value === 'auto' && !completed);
         if (after.vars[STORE]?.mode !== value || entryAfter?.enabled !== enabled) throw Error('开团流程未同步成功');
-      } else if (entryAfter?.enabled !== (value === 'on') || (after.preset && f.prompt && promptFor(after.preset, f)?.enabled !== (value === 'on'))) throw Error('写入后状态未一致');
+      } else if (rules.some(rule => entryFor(after.entries, rule)?.enabled !== (value === 'on')) || (after.preset && f.prompt && promptFor(after.preset, f)?.enabled !== (value === 'on'))) throw Error('写入后状态未一致');
       state = after;
       status.textContent = f.name + '已' + (value === 'auto' ? '恢复自动' : value === 'on' ? '开启' : '关闭');
     } catch (error) {
@@ -205,8 +212,10 @@
           }
           if (moduleAttempted) await host.__dndModuleRunner.setEnabled(before.vars.dnd_module_state?.enabled === true);
           if (bookAttempted) {
-            const live = entryFor(await api('getWorldbook')(start.book), f), old = entryFor(before.entries, f);
-            if (live?.enabled !== old.enabled) await setBook(start, f, old.enabled, value === 'on', true);
+            const live = await api('getWorldbook')(start.book);
+            const changes = (f.rules || [f]).map(rule => ({rule, value: entryFor(before.entries, rule).enabled, expected: value === 'on'}))
+              .filter(change => change.value !== change.expected && entryFor(live, change.rule)?.enabled !== change.value);
+            if (changes.length) await setBook(start, changes, true);
           }
         }
       } catch {restored = false;}
