@@ -1,0 +1,51 @@
+<战场生成规则>
+本条扩展原有战斗面板格式。仅在实际进入激烈战斗时生成地图；日常、探索、纯备战讨论不输出。首次交战先确定场地与双方站位，再按既有规则处理行动，停在下一次玩家决策处，不替玩家行动。剧情、模组已确定的建筑、距离、入口、危险和位置优先，不为凑地图凭空增加敌人、陷阱或奖励，也不展示玩家尚不知道的单位与秘密。
+
+地图范围：
+- 先定场地范围，再铺地形。坐标和尺寸均用尺，x向右、y向下，每格5尺；map的origin是左上角，size是宽、高，均为5的整数倍，宽高大于0。人物pos表示所在格的左上角，沿用原单位字段。
+- 室内按实际房间、走廊、门和窗的布局确定范围；开放场地覆盖交战者、相关路径、攻击与撤离空间。尺寸未说明时首次合理补定，不每轮变化。地图边缘只是本图范围，除非确有墙、悬崖等，不视为不可越过的边界。
+- 范围不是固定24×18格，也不按双方当前站位紧贴裁边；弓手、飞行、追逐等需要更大空间时据实扩大。增援或移动将超出范围时扩展origin/size，保留原坐标和已知地形，不重新排列战场。单位所占5尺格及全部地形须在声明范围内。
+
+铺设：
+- ground铺满底面，再按实际场景叠加地面材质区、水面、墙体、门口、杂物、植物、坡台、楼梯等。不是只有棋子和几个装饰点；该有的墙和地面都要表达，但空地不强塞障碍。连续同类区域合成少量形状，不逐格输出。
+- 墙体围合按场景保留门窗与缺口，不用一整块实心矩形代替房屋的四面墙。门口可通过墙段之间留空表达。跨水通路用后画的桥面覆盖；高台应交代可用的阶梯、坡道、攀爬面或无法直接上下的事实，不为平衡强加通路。
+- 高度以本图地面为0，低处可为负。height保存表面高度或障碍物高度，note说明其含义以及掩体、通行、视线、危险等相关事实。高度不自动给予优势，图上颜色不自动造成伤害；具体效果仍按实际规则和双方位置裁定。
+- 形状依输出顺序叠放，后画的盖在先画的上面，人物始终显示在地形之上。名称与note为简短纯文本，不写HTML、不含竖线或换行。
+
+输出协议：
+在同一组原有<battle>内，先写唯一map行，再写terrain行，最后写人物行。每条记录独占一行，不在battle里另套JSON、EJS或代码块。
+map 场景名|origin 左,上|size 宽,高|ground 材质
+ground只用：stone石地、dirt泥土地、grass草地、sand沙地、snow雪地、water水面、wood木地板。
+
+terrain 地形名|type 类型|shape rect|pos 左,上|size 宽,高|height 高度|note 简述
+type只用：wall墙、water水域、ledge高台、stairs阶梯、rubble碎石杂物、stalagmite岩柱、vegetation植物、mud泥地、chasm沟壑、fire火区、ice冰面、wood木面、stone石面、object箱桌等物件。
+shape有三种：
+- rect矩形：pos为左上角，size为宽高。可用多段拼出墙、走廊、L形布局。
+- ellipse椭圆或圆：pos和size是外接矩形，宽高相等时为圆，适合池塘、树冠、圆柱等。
+- polygon多边形：改用points x1,y1;x2,y2;x3,y3，至少三个不同顶点，按周边顺序填写不交叉；不写pos/size。适合弯曲河岸、斜墙和不规则区域。
+height与note可省略，默认高度0。类型和形状字段必须使用上述英文值；人物行仍完全遵循原战斗面板的init/hp/pos/att/status/next等字段。
+
+格式例（仅示意，场景与数值不可套用到实际人物）：
+<battle>
+map 河畔旧哨所|origin 0,0|size 120,90|ground grass
+terrain 石板庭院|type stone|pos 5,5|size 65,70|note 庭院平地
+terrain 西墙|type wall|pos 5,5|size 5,70|height 10|note 墙高10尺
+terrain 北墙|type wall|pos 5,5|size 65,5|height 10
+terrain 南墙西段|type wall|pos 5,70|size 25,5|height 10
+terrain 南墙东段|type wall|pos 40,70|size 30,5|height 10|note 两墙段之间为入口
+terrain 河道|type water|shape polygon|points 85,0;110,0;100,45;115,90;90,90;80,45|height -5|note 水面低于岸边5尺
+terrain 木桥|type wood|pos 65,40|size 45,10|note 桥面连接两岸
+terrain 瞭望台|type ledge|pos 45,10|size 20,20|height 10|note 台面高10尺
+terrain 石阶|type stairs|pos 45,30|size 10,15|height 10|note 由庭院升至瞭望台
+terrain 货箱|type object|pos 15,30|size 10,10|height 5|note 箱高5尺，遮挡按双方视线判断
+terrain 乱石|type rubble|pos 15,50|size 15,10|note 碎石形成困难地形
+terrain 河岸树丛|type vegetation|shape ellipse|pos 100,10|size 15,20|height 10|note 树丛妨碍观察
+游侠|init 16|hp 28/32|pos 35,60|att 0|next
+守卫|init 12|hp 18/18|pos 50,15|att 2
+</battle>
+
+持续与结束：
+- 每次输出battle都是完整的本轮画面：包含map、所有仍存在的terrain及参战单位，不能只输出本轮变化，也不能把地形省略成“同上”。沿用上一轮范围与布局，只改实际移动、破坏、燃烧、消退等结果，不每轮随机重铺。已消失的地形从本轮记录中移除；需要残骸时改为对应类型。
+- 胜负已定、成功撤离或停战，遭遇确实结束后，不再输出battle。一轮结束或等待玩家选择不等于战斗结束。旧消息保留历史画面，不要求模型回写或删除旧消息。
+- 本功能直接使用battle，不建立当前战场、地图备份或其他新变量；人物血量、资源和状态仍按既有MVU规则更新，不因面板显示而重复结算。无需副API或额外代码输出。
+</战场生成规则>

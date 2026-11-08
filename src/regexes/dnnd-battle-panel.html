@@ -674,6 +674,31 @@ background: radial-gradient(circle at 50% 20%, rgba(120, 90, 70, 0.9), rgba(40, 
 border-radius: 50% 50% 30% 30%;
 }
 
+.battle-embed .map[data-ground="stone"] { background-color: #514c45; }
+.battle-embed .map[data-ground="dirt"] { background-color: #594635; }
+.battle-embed .map[data-ground="grass"] { background-color: #354b32; }
+.battle-embed .map[data-ground="sand"] { background-color: #88734b; }
+.battle-embed .map[data-ground="snow"] { background-color: #aeb9b8; }
+.battle-embed .map[data-ground="water"] { background-color: #254b5b; }
+.battle-embed .map[data-ground="wood"] { background-color: #67503a; }
+.battle-embed .terrain { border-radius: 2px; border: 1px solid #b8ab8655; pointer-events: none; }
+.battle-embed .terrain.wall { background: repeating-linear-gradient(0deg,#77736b 0 8px,#45463f 8px 10px); border: 2px solid #b6b1a0; }
+.battle-embed .terrain.stairs { background: repeating-linear-gradient(0deg,#b0a18a 0 5px,#5d554a 5px 8px); }
+.battle-embed .terrain.rubble { background: repeating-linear-gradient(135deg,#756959 0 5px,#413e36 5px 9px); }
+.battle-embed .terrain.vegetation { background: radial-gradient(ellipse,#5d7844,#263c2a); }
+.battle-embed .terrain.mud { background: #43382b; }
+.battle-embed .terrain.fire { background: radial-gradient(ellipse,#f6b643,#9a3c24); }
+.battle-embed .terrain.ice { background: linear-gradient(125deg,#7bafb5,#c4dbd9); }
+.battle-embed .terrain.wood { background: repeating-linear-gradient(90deg,#826644 0 9px,#4e3c2b 9px 11px); }
+.battle-embed .terrain.stone { background: #77746a; }
+.battle-embed .terrain.object { background: #6c5033; border: 2px solid #ab8757; }
+.battle-embed .terrain-label { display:block; padding:3px; font:600 11px/1.3 system-ui; color:#fff5dc; text-shadow:0 1px 3px #000,1px 0 3px #000; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.battle-embed .terrain-key { position:absolute; right:10px; bottom:44px; z-index:12; max-width:min(360px,85%); max-height:42%; overflow:auto; border:1px solid #a7906570; border-radius:8px; background:#18211ff2; color:#eee5d3; font:12px/1.6 system-ui; }
+.battle-embed .terrain-key summary { padding:8px 12px; cursor:pointer; }
+.battle-embed .terrain-key ul { margin:0; padding:0 14px 10px 28px; }
+.battle-embed[data-map-range] .map-stage .map-toolbar { left:auto; right:10px; max-width:calc(100% - 135px); }
+.battle-embed[data-map-range] .map-stage .map-toolbar span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
 .battle-embed .token {
 position: absolute;
 width: calc(var(--cell) * 0.85);
@@ -1146,6 +1171,7 @@ padding: 8px 12px;
 <div class="axis-layer" data-role="axisLayer"></div>
 </div>
 </div>
+<details class="terrain-key" data-role="terrainKey" hidden><summary>地形说明</summary><ul data-role="terrainList"></ul></details>
 </div>
 </section>
 </div>
@@ -1337,6 +1363,7 @@ status: ["grappled"]
 }
 ],
 terrain: [],
+field: null,
 events: []
 };
 
@@ -2039,6 +2066,8 @@ const battleContent = extractLatestTagContent(source, 'battle');
 const battleText = battleContent || source;
 const lines = splitBattleLines(battleText);
 const units = [];
+const terrain = [];
+let field = null;
 const errors = [];
 const warnings = [];
 lines.forEach((line, index) => {
@@ -2047,6 +2076,46 @@ return;
 }
 const parts = line.split('|').map((part) => part.trim()).filter(Boolean);
 if (!parts.length) return;
+if (/^(map|terrain)(?:\s|$)/i.test(parts[0])) {
+try {
+const isMap = /^map(?:\s|$)/i.test(parts[0]);
+const name = parts[0].replace(/^(map|terrain)\s*/i, '').trim();
+const values = Object.fromEntries(parts.slice(1).map(part => {
+const match = part.match(/^([a-z]+)\s+(.+)$/i);
+if (!match) throw Error('字段应为名称加空格和值');
+return [match[1].toLowerCase(), match[2].trim()];
+}));
+const pair = text => {
+const numbers = String(text || '').split(',').map(value => value.trim() === '' ? NaN : Number(value));
+if (numbers.length !== 2 || !numbers.every(Number.isFinite)) throw Error('坐标或尺寸需要两个有限数值');
+return numbers;
+};
+if (!name) throw Error('缺少名称');
+if (isMap) {
+if (field) throw Error('一张地图只能有一条 map');
+const origin = pair(values.origin), size = pair(values.size);
+if (![...origin, ...size].every(n => n % 5 === 0) || size.some(n => n <= 0)) throw Error('范围须按5尺网格，宽高须大于0');
+if (!['stone','dirt','grass','sand','snow','water','wood'].includes(values.ground)) throw Error('未知地面类型');
+field = {name, origin, size, ground: values.ground};
+} else {
+const shape = values.shape || 'rect';
+if (!['rect','ellipse','polygon'].includes(shape)) throw Error('未知地形形状');
+if (!['wall','water','ledge','stairs','rubble','stalagmite','vegetation','mud','chasm','fire','ice','wood','stone','object'].includes(values.type)) throw Error('未知地形类型');
+let pos, size, points;
+if (shape === 'polygon') {
+points = String(values.points || '').split(';').map(pair);
+if (points.length < 3) throw Error('多边形至少需要三个顶点');
+pos = [Math.min(...points.map(p => p[0])), Math.min(...points.map(p => p[1]))];
+size = [Math.max(...points.map(p => p[0])) - pos[0], Math.max(...points.map(p => p[1])) - pos[1]];
+} else { pos = pair(values.pos); size = pair(values.size); }
+if (size.some(n => n <= 0)) throw Error('地形尺寸须大于0');
+const height = values.height === undefined ? 0 : Number(values.height);
+if (!Number.isFinite(height)) throw Error('高度须为有限数值');
+terrain.push({name, type: values.type, shape, pos, size, points, height, note: values.note || ''});
+}
+} catch (error) { errors.push(`Line ${index + 1}: ${error.message}`); }
+return;
+}
 const idRaw = (parts[0] || '').replace(/[`*]/g, '').trim();
 const id = (idRaw.match(/^[^\s]+/) || [idRaw])[0];
 if (!id) {
@@ -2128,9 +2197,16 @@ warnings.push(`Line ${index + 1}: ignored field ${field}`);
 unit.faction = resolveFaction(unit.attitude);
 units.push(unit);
 });
+if (field) {
+const [x, y] = field.origin, [w, h] = field.size;
+for (const unit of units) if (unit.pos[0] < x || unit.pos[1] < y || unit.pos[0] + 5 > x + w || unit.pos[1] + 5 > y + h) warnings.push(`单位 ${unit.id} 超出声明的地图范围`);
+for (const tile of terrain) if (tile.pos[0] < x || tile.pos[1] < y || tile.pos[0] + tile.size[0] > x + w || tile.pos[1] + tile.size[1] > y + h) warnings.push(`地形 ${tile.name} 超出声明的地图范围`);
+} else if (terrain.length) { errors.push('地形缺少 map 范围声明'); terrain.length = 0; }
 return {
 hasBattleTag: /<battle[\s>]/i.test(source),
 units,
+terrain,
+field,
 errors,
 warnings
 };
@@ -2206,6 +2282,12 @@ themeSwitch.appendChild(btn);
 }
 
 function computeBounds() {
+if (state.field) return {
+minX: state.field.origin[0], minY: state.field.origin[1],
+maxX: state.field.origin[0] + state.field.size[0] - state.gridFt,
+maxY: state.field.origin[1] + state.field.size[1] - state.gridFt,
+fixed: true
+};
 if (state.mapDims.cols > 0 && state.mapDims.rows > 0) {
 const preferredCenter = computePreferredCenter();
 const spanX = (state.mapDims.cols - 1) * state.gridFt;
@@ -2293,6 +2375,9 @@ mapEl.style.setProperty("--cell", `${cell}px`);
 mapEl.style.setProperty("--scale", `${scale}px`);
 mapEl.style.setProperty("--min-x", bounds.minX);
 mapEl.style.setProperty("--min-y", bounds.minY);
+if (state.field) mapEl.dataset.ground = state.field.ground;
+else delete mapEl.dataset.ground;
+root.toggleAttribute('data-map-range', !!state.field);
 mapEl.style.width = `${mapWidth}px`;
 mapEl.style.height = `${mapHeight}px`;
 mapViewport.style.width = `${viewportSize.width}px`;
@@ -2309,6 +2394,8 @@ syncContainerSize(viewportSize.width, viewportSize.height);
 const widthFt = cols * state.gridFt;
 const heightFt = rows * state.gridFt;
 mapSize.textContent = `${cols} cells × ${rows} cells (${widthFt}ft × ${heightFt}ft)`;
+if (state.field) mapSize.textContent = `${state.field.name} · ${cols}×${rows}格 · ${widthFt}×${heightFt}尺`;
+mapSize.title = mapSize.textContent;
 const tickFt = pickTickFt(widthFt, heightFt);
 
 if (layoutDirty || tickFt !== lastTickFt) {
@@ -2320,9 +2407,23 @@ el.style.setProperty("--x", tile.pos[0]);
 el.style.setProperty("--y", tile.pos[1]);
 el.style.setProperty("--w", tile.size[0]);
 el.style.setProperty("--h", tile.size[1]);
+if (tile.shape === 'ellipse') el.style.borderRadius = '50%';
+if (tile.shape === 'polygon') el.style.clipPath = 'polygon(' + tile.points.map(p => `${(p[0]-tile.pos[0])/tile.size[0]*100}% ${(p[1]-tile.pos[1])/tile.size[1]*100}%`).join(',') + ')';
+const label = document.createElement('span');
+label.className = 'terrain-label';
+label.textContent = tile.name + (tile.height ? ` ${tile.height > 0 ? '+' : ''}${tile.height}尺` : '');
+if (tile.shape === 'polygon') label.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);max-width:100%';
+el.append(label);
 terrainFrag.appendChild(el);
 });
 terrainLayer.replaceChildren(terrainFrag);
+const terrainKey = root.querySelector('[data-role="terrainKey"]');
+terrainKey.hidden = !state.terrain.length;
+root.querySelector('[data-role="terrainList"]').replaceChildren(...state.terrain.map(tile => {
+const item = document.createElement('li');
+item.textContent = `${tile.name}（高度${tile.height}尺）${tile.note ? '：' + tile.note : ''}`;
+return item;
+}));
 
 const tokenFrag = document.createDocumentFragment();
 state.units.forEach((unit) => {
@@ -2411,7 +2512,12 @@ layoutDirty = false;
 lastTickFt = tickFt;
 }
 
-if (state.mapDims.cols > 0 && state.mapDims.rows > 0) {
+mapColsInput.disabled = mapRowsInput.disabled = applySizeBtn.disabled = autoSizeBtn.disabled = !!state.field;
+applySizeBtn.title = autoSizeBtn.title = state.field ? '本场范围由map声明；扩展场地请在正文说明' : '';
+if (state.field) {
+mapColsInput.value = cols;
+mapRowsInput.value = rows;
+} else if (state.mapDims.cols > 0 && state.mapDims.rows > 0) {
 mapColsInput.value = state.mapDims.cols;
 mapRowsInput.value = state.mapDims.rows;
 } else {
@@ -2514,12 +2620,14 @@ parseIssues.push(`${candidate.key}: no units parsed from <battle>`);
 continue;
 }
 state.units = cloneUnits(result.units);
+state.terrain = result.terrain;
+state.field = result.field;
 ingestState.lastGoodUnits = cloneUnits(result.units);
 layoutDirty = true;
 synced = true;
 sourceName = candidate.key;
 const nextUnit = getNextUnit() || state.units[0];
-pendingFocusUnitId = nextUnit ? nextUnit.id : "";
+pendingFocusUnitId = result.field ? "" : nextUnit ? nextUnit.id : "";
 break;
 }
 
