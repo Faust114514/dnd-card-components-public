@@ -13,12 +13,23 @@ const original={avatar:'fixture.png',data:{character_version:'vf.0.3.0',descript
 original.data.extensions.regex_scripts[0].substituteRegex=7;original.data.extensions.regex_scripts[0].disabled=true;original.data.extensions.regex_scripts[0].unknown={keep:1};
 original.data.extensions.tavern_helper.scripts[0].enabled=false;original.data.extensions.tavern_helper.scripts[0].data.userConfig='keep';
 original.data.extensions.tavern_helper.scripts[0].content='old source';
+original.data.post_history_instructions='\n'+latest.removed_post_history_instruction;
 original.data.extensions.tavern_helper.scripts.push({id:'user-added',type:'script',content:'personal',enabled:true,data:{keep:true}});
 const archiveIds=['d7a9c17d-960e-4a56-9e17-0c77e86c71a8','1c6924c3-1308-430b-b62c-e2ce7e0d1814'];
 const archivePattern=String.raw`<char_info>((?:(?!<\/?char_info>)[\s\S])*)<\/char_info>`;
 const before=JSON.stringify(original),result=merge(original,latest,sources),checks=[];
 for(const version of ['vf.0.3.12','vf.0.4.0']){const card=structuredClone(original);card.data.character_version=version;assert.equal(merge(card,latest,sources).extensions.dnd_component_updates.version,latest.version);checks.push(version+' card accepts 0.4 component update');}
 const check=(value,label)=>{assert.ok(value,label);checks.push(label);};
+const preMap=structuredClone(original),mapId='d5e20240-6d61-4700-9a11-7e5e20240001';
+preMap.data.extensions.tavern_helper.scripts=preMap.data.extensions.tavern_helper.scripts.filter(s=>s.id!==mapId);
+preMap.data.extensions.regex_scripts=preMap.data.extensions.regex_scripts.filter(s=>s.id!=='dnd-clean-old-map-marker');
+preMap.data.post_history_instructions='personal prefix\n'+latest.removed_post_history_instruction+'\npersonal suffix';
+const withMap=merge(preMap,latest,sources);
+assert.deepEqual(structuredClone(withMap.extensions.tavern_helper.scripts.find(s=>s.id===mapId)),original.data.extensions.tavern_helper.scripts.find(s=>s.id===mapId));
+check(withMap.extensions.regex_scripts.some(s=>s.id==='dnd-clean-old-map-marker'),'older card receives module map and marker cleanup with shipped metadata');
+check(withMap.postHistoryInstruction==='personal prefix\n\npersonal suffix','remove only shipped post-history instruction, preserving personal text');
+preMap.data.extensions={...preMap.data.extensions,...withMap.extensions};preMap.data.post_history_instructions=withMap.postHistoryInstruction;
+check(!merge(preMap,latest,sources).changed.length&&merge(preMap,latest,sources).postHistoryInstruction===undefined,'repeated module installation adds no duplicates or post-history writes');
 check(JSON.stringify(original)===before,'core does not mutate its input');
 check(result.changed.length===1,'only changed source counted');
 check(Object.keys(result.extensions).sort().join(',')==='dnd_component_updates,regex_scripts,tavern_helper','write payload contains only the three owned extension fields');
@@ -88,8 +99,8 @@ const previousRules=structuredClone(original);
 previousRules.data.extensions.regex_scripts=previousRules.data.extensions.regex_scripts.filter(r=>!r.id.startsWith('dnd-clean-'));
 for(const [id,field] of [['0d8967e6-d2e8-4afb-9770-d22e332c301c','promptOnly'],['b179c655-147d-4572-a6ea-1c0326363009','promptOnly'],['918ecc02-7af0-4700-89c5-cbf05735c7e9','markdownOnly']])previousRules.data.extensions.regex_scripts.find(r=>r.id===id)[field]=true;
 const configured=merge(previousRules,latest,sources);
-check(configured.extensions.regex_scripts.filter(r=>r.id.startsWith('dnd-clean-')).length===2,'old card receives the two new cleanup rules');
-check(configured.changed.length===6,'old card receives the three settings changes and one changed source');
+check(configured.extensions.regex_scripts.filter(r=>r.id.startsWith('dnd-clean-')).length===3,'old card receives all three cleanup rules');
+check(configured.changed.length===7,'old card receives the three cleanup and three settings changes and one changed source');
 const configuredCard=structuredClone(previousRules);Object.assign(configuredCard.data.extensions,configured.extensions);
 configuredCard.data.extensions.regex_scripts.find(r=>r.id==='918ecc02-7af0-4700-89c5-cbf05735c7e9').markdownOnly=true;
 check(merge(configuredCard,latest,sources).changed.length===0,'repeated update respects settings changed after migration');
@@ -173,8 +184,8 @@ window.fetch=async(url,options={})=>{
  if(url==='/api/worldinfo/get')return new Response(JSON.stringify(fixtureBook));
  if(url==='/api/characters/merge-attributes'){
   if(failure==='save'){failure=null;return new Response('failure',{status:500});}
-  if(Object.keys(payload).join(',')!=='avatar,data'||Object.keys(payload.data).join(',')!=='extensions')throw Error('wide update');
-  fixtureCard={...fixtureCard,data:{...fixtureCard.data,extensions:{...fixtureCard.data.extensions,...payload.data.extensions}}};
+  if(Object.keys(payload).join(',')!=='avatar,data'||Object.keys(payload.data).some(k=>!['extensions','post_history_instructions'].includes(k)))throw Error('wide update');
+  fixtureCard={...fixtureCard,data:{...fixtureCard.data,...payload.data,extensions:{...fixtureCard.data.extensions,...payload.data.extensions}}};
   const receipt=fixtureCard.data.extensions.dnd_component_updates;
   // Observed native saved order differs from the request's name/version/kept order.
   if(receipt.worldbook)receipt.worldbook=Object.fromEntries(Object.entries(receipt.worldbook).sort(([a],[b])=>a.localeCompare(b)));
@@ -220,6 +231,7 @@ addEventListener('DOMContentLoaded',async()=>{
    assert(fixtureBook.entries[643316].content===JSON.parse(remoteSources[remoteManifest.worldbook_path]).find(p=>p.uid===643316).content,'shipped worldbook content saved and verified');
   }
   assert(fixtureCard.data.extensions.dnd_component_updates.version===remoteManifest.version&&fixtureCard.data.character_version===initialCard.data.character_version,'component version updated without pretending whole card upgraded');
+  assert(fixtureCard.data.post_history_instructions==='','native merge removes shipped post-history instruction and verifies it');
   assert(fixtureCard.data.extensions.tavern_helper.scripts.filter(s=>s.id==='480d6777-f90d-4eba-a811-64cb2f1ffb00').length===1,'one orb present after UI install');
   assert(fixtureCard.data.extensions.tavern_helper.scripts.some(s=>s.id==='${runningId}')&&!fixtureCard.data.extensions.tavern_helper.scripts.some(s=>s.id==='${updaterId}'),'browser install preserves Helper-assigned updater ID');
   assert(fixtureCard.data.extensions.world===initialCard.data.extensions.world&&JSON.stringify(fixtureCard.data.character_book)===JSON.stringify(initialCard.data.character_book)&&fixtureCard.data.first_mes===initialCard.data.first_mes,'worldbook binding, content and opening preserved');

@@ -1,5 +1,5 @@
 {
-  "version": "vf.0.4.1",
+  "version": "vf.0.4.2",
   "scripts": [
     {
       "type": "script",
@@ -311,6 +311,28 @@
         "button": true
       },
       "source": "src/scripts/私有组件更新.js"
+    },
+    {
+      "type": "script",
+      "enabled": true,
+      "name": "模组地图",
+      "id": "d5e20240-6d61-4700-9a11-7e5e20240001",
+      "info": "D&D 官方模组运行辅助插件：从 5e.kiwee.top 读取模组与生物原版数据，自动生成每层地城拓扑图，提供玩家可拖动探索的多边形战争迷雾地图，并随剧情推进自动滑窗切换世界书房间数据。",
+      "button": {
+        "enabled": true,
+        "buttons": [
+          {
+            "name": "模组地图",
+            "visible": true
+          }
+        ]
+      },
+      "data": {},
+      "export_with": {
+        "data": true,
+        "button": true
+      },
+      "source": "src/scripts/模组地图.js"
     }
   ],
   "regexes": [
@@ -634,6 +656,24 @@
       "minDepth": 2,
       "maxDepth": null,
       "source": "src/regexes/[不发送]旧战斗面板清理.txt"
+    },
+    {
+      "id": "dnd-clean-old-map-marker",
+      "scriptName": "[不发送]旧模组地图标记清理",
+      "findRegex": "/<!--\\s*dnd-map\\s*:[\\s\\S]*?-->|<dnd-map>[\\s\\S]*?<\\/dnd-map>/gi",
+      "trimStrings": [],
+      "placement": [
+        1,
+        2
+      ],
+      "disabled": false,
+      "markdownOnly": false,
+      "promptOnly": true,
+      "runOnEdit": true,
+      "substituteRegex": 0,
+      "minDepth": 1,
+      "maxDepth": null,
+      "source": "src/regexes/旧模组地图标记清理.txt"
     }
   ]
 }

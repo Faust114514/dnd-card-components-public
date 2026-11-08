@@ -1,12 +1,13 @@
 {
   "format": 1,
-  "version": "vf.0.4.1",
+  "version": "vf.0.4.2",
   "minimum_card_version": "vf.0.3.0",
   "notes": [
-    "创建页新增“填写传记”勾选开关，默认开启；关闭可跳过14个新增传记栏目的必填检查，已填文字仍保留。",
-    "第零层命运之门和正式开始页均可打开角色档案，使用原有存档导入与保存功能，无需先创建角色或发送消息。",
-    "基于vf.0.4.0，保留本地战斗地图、EJS主持规则及原有配置；旧聊天更新组件后刷新，不更换世界书或存档。",
-    "vf.0.4.0可直接在线更新；更早0.3版本仍需先手动换新版更新器一次。真实酒馆导入和用户验收待试用。"
+    "合入原作者模组地图：线上模组与怪物资料、探索迷雾、队伍位置、提前一步加载房间资料；EJS模组适配暂时搁置。",
+    "世界书改为当前卡绑定，新增旧地图标记清理；保留本地战斗地图、传记开关、零层档案和已有个人配置。",
+    "合入罪犯背景巧手熟练、莉音生图标签、默认关闭开团及移除旧末尾变量约束。手动选择过的开团模式继续保留。",
+    "首次升级本版先停用旧更新器，导入本版更新器并启用，再检查安装；旧更新器不认识新增模组地图组件。",
+    "配套预设已适配新地图推进；旧聊天请解除EJS模组书关联，不换整卡、不替换整本世界书。"
   ],
   "components": [
     {
@@ -74,6 +75,12 @@
       "id": "736c0e4e-67b4-4113-a021-b3890714ba28",
       "name": "私有组件更新",
       "path": "src/scripts/私有组件更新.js"
+    },
+    {
+      "kind": "script",
+      "id": "d5e20240-6d61-4700-9a11-7e5e20240001",
+      "name": "模组地图",
+      "path": "src/scripts/模组地图.js"
     },
     {
       "kind": "regex",
@@ -213,7 +220,26 @@
       "minDepth": 2,
       "maxDepth": null,
       "replaceString": ""
+    },
+    {
+      "id": "dnd-clean-old-map-marker",
+      "scriptName": "[不发送]旧模组地图标记清理",
+      "findRegex": "/<!--\\s*dnd-map\\s*:[\\s\\S]*?-->|<dnd-map>[\\s\\S]*?<\\/dnd-map>/gi",
+      "replaceString": "",
+      "trimStrings": [],
+      "placement": [
+        1,
+        2
+      ],
+      "disabled": false,
+      "markdownOnly": false,
+      "promptOnly": true,
+      "runOnEdit": true,
+      "substituteRegex": 0,
+      "minDepth": 1,
+      "maxDepth": null
     }
   ],
-  "worldbook_path": "src/worldbook/updates.json"
+  "worldbook_path": "src/worldbook/updates.json",
+  "removed_post_history_instruction": "变量解析约束：思考区内不得复述任何完整的思考、分析或变量更新标签，包括反引号包裹的示例；格式说明使用普通文字。真正的思考区必须完整闭合后，才在回复末尾输出唯一一组变量更新与 JSONPatch 标签。不得生成迁移备份、法术备份或界面默认值；stat_data 是唯一跑团数据源。"
 }

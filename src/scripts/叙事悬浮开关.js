@@ -56,7 +56,7 @@
     <svg viewBox="0 0 32 32" fill="none" stroke="#e2c58b" stroke-width="1.4" aria-hidden="true"><path d="M16 2 29 10v13L16 30 3 23V10Z M16 2 9 20h14L16 2M3 10l6 10-6 3m26-13-6 10 6 3M9 20l7 10 7-10M3 10h26"/></svg>
   </button>
   <section class="dnc-panel" id="dnc-panel" role="dialog" aria-labelledby="dnc-title" hidden>
-    <div class="dnc-head"><div><div class="dnc-version">DND · VF.0.4.1</div><h2 id="dnc-title">冒险开关</h2></div><button class="dnc-close" type="button" aria-label="关闭面板">×</button></div>
+    <div class="dnc-head"><div><div class="dnc-version">DND · VF.0.4.2</div><h2 id="dnc-title">冒险开关</h2></div><button class="dnc-close" type="button" aria-label="关闭面板">×</button></div>
     <div class="dnc-badge"></div>
     ${features.map(f => `<div class="dnc-row" data-feature="${f.key}"><div class="dnc-line"><span class="dnc-label">${f.name}</span><div class="dnc-options" role="group" aria-label="${f.name}">${(f.key === 'opening' ? [['auto','自动'],['on','开'],['off','关']] : [['on','开'],['off','关']]).map(([v,t]) => `<button type="button" data-value="${v}" aria-pressed="false" disabled>${t}</button>`).join('')}</div></div><div class="dnc-detail">读取中…</div></div>`).join('')}
     <p class="dnc-note">联动修改当前预设；长期保留请在酒馆保存预设。世界书开关会影响共用它的聊天。</p>
@@ -92,7 +92,7 @@
       let detail = '', selected = null, unavailable = !entry, warning = false;
       if (!entry) detail = '未找到对应标签条目';
       else if (f.key === 'opening') {
-        selected = state.vars[STORE]?.mode || 'auto';
+        selected = state.vars[STORE]?.mode || 'off';
         unavailable = typeof host.__dndDmPersonas?.refreshOpeningFlow !== 'function' || host.__dndDmPersonas.openingFlowBook !== state.book;
         detail = unavailable ? '开团脚本缺失或世界书不匹配' : '当前' + (entry.enabled ? '开启' : '关闭') + ' · 自动随开团完成状态切换';
       } else {
@@ -106,6 +106,9 @@
           }
         }
         if (f.key === 'combat') detail += '（不改战斗副脑）';
+        if (f.key === 'module' && !host.__dndModuleRunner?.getState().moduleId) {
+          unavailable = true; detail = '请先在“模组地图”选择模组，再切换同步';
+        }
       }
       row.querySelector('.dnc-detail').textContent = detail;
       row.querySelector('.dnc-detail').dataset.warning = String(warning || unavailable);
@@ -152,7 +155,7 @@
   async function change(f, value) {
     if (writing || !state) return;
     const start = state;
-    let before, bookAttempted = false, presetAttempted = false, modeAttempted = false;
+    let before, bookAttempted = false, presetAttempted = false, modeAttempted = false, moduleAttempted = false;
     writing = true; status.textContent = '正在修改…'; render();
     try {
       check(start);
@@ -167,7 +170,9 @@
       } else {
         const target = value === 'on', prompt = before.preset && f.prompt ? promptFor(before.preset, f) : null;
         if (before.preset && f.prompt && !prompt) throw Error('这个明月秋青预设尚未适配此开关');
-        if (entry.enabled !== target) {bookAttempted = true; await setBook(start, f, target, entry.enabled); check(start);}
+        if (f.key === 'module') {
+          moduleAttempted = true; await host.__dndModuleRunner.setEnabled(target); check(start);
+        } else if (entry.enabled !== target) {bookAttempted = true; await setBook(start, f, target, entry.enabled); check(start);}
         if (prompt && prompt.enabled !== target) {presetAttempted = true; await setPreset(start, f, target, prompt.enabled); check(start);}
       }
       const after = await read(); check(start);
@@ -182,7 +187,7 @@
     } catch (error) {
       let restored = true;
       try {
-        if (bookAttempted || presetAttempted || modeAttempted) {
+        if (bookAttempted || presetAttempted || modeAttempted || moduleAttempted) {
           check(start, true);
           if (modeAttempted) {
             await api('updateVariablesWith')(vars => {
@@ -198,13 +203,14 @@
             const live = promptFor(api('getPreset')('in_use'), f), old = promptFor(before.preset, f);
             if (live?.enabled !== old.enabled) await setPreset(start, f, old.enabled, value === 'on', true);
           }
+          if (moduleAttempted) await host.__dndModuleRunner.setEnabled(before.vars.dnd_module_state?.enabled === true);
           if (bookAttempted) {
             const live = entryFor(await api('getWorldbook')(start.book), f), old = entryFor(before.entries, f);
             if (live?.enabled !== old.enabled) await setBook(start, f, old.enabled, value === 'on', true);
           }
         }
       } catch {restored = false;}
-      status.textContent = '未完成：' + error.message + (bookAttempted || presetAttempted || modeAttempted ? (restored ? '；已撤回本次更改。' : '；未能全部撤回，请刷新核对状态。') : '。');
+      status.textContent = '未完成：' + error.message + (bookAttempted || presetAttempted || modeAttempted || moduleAttempted ? (restored ? '；已撤回本次更改。' : '；未能全部撤回，请刷新核对状态。') : '。');
     } finally {
       writing = false;
       await refresh();

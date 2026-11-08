@@ -11,6 +11,7 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
     'e2a5bb3c-baa2-47dd-a306-494339a4b5fb','fbf175a5-3276-443f-9765-f16e3e843ada','28c1bd41-a967-4869-99d1-e8d935f62b3a',
     'c3c9ad44-9e9b-4c6e-ae93-f2b098a20125','87d2112d-e610-48c7-bae1-57f3c743be81','a39757e2-61fd-4aa0-8fd2-9ca4c264955a',
     '480d6777-f90d-4eba-a811-64cb2f1ffb00','736c0e4e-67b4-4113-a021-b3890714ba28',
+    'd5e20240-6d61-4700-9a11-7e5e20240001',
     '01c632e5-1071-4a08-aebd-6a0e5424ea99','07f940a4-9b91-450f-99d9-0eecfb0b6175','d4e1e18e-63e6-4a94-b63b-a140798d0b3b',
     'afa5df56-5392-4e15-b8a6-157791fe56a7','4b31a3fe-d7df-4f51-ac2d-5e4efda6fbe5','869d4177-a5a3-47b5-9b53-26ecd557d6f3',
     '36bab6c1-2a4d-44de-b9a7-256c8a68c50d','c150cf94-b876-499f-a9e3-80ccc0e96ff0','958c00c8-f1e0-4470-b81c-09de4601f71f',
@@ -39,12 +40,18 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
     const matches = (item.kind === 'script' ? scripts : regexes).filter(s => s.id === localId);
     const body = emptyRegexes.includes(item) ? '' : sources[item.path];
     if (typeof body !== 'string' || (item.kind === 'script' && !body.trim())) throw Error('组件源码缺失：' + item.name);
-    // vf.0.2.21 predates the orb. This is the sole permitted missing component.
+    // Only the shipped orb and module map may be added to cards that predate them.
     if (legacy && item.kind === 'script' && item.id === '480d6777-f90d-4eba-a811-64cb2f1ffb00' && matches.length === 0) {
       const orb = {type: 'script', enabled: true, name: '叙事悬浮开关', id: item.id, content: body,
         info: '模组、战斗检查、DNJ、开团及私有更新入口；使用当前卡绑定的世界书。',
         button: {enabled: false, buttons: []}, data: {}, export_with: {data: true, button: true}};
       helper.scripts.push(orb); scripts.push(orb); changed.push('新增叙事悬浮开关'); continue;
+    }
+    if (item.kind === 'script' && item.id === 'd5e20240-6d61-4700-9a11-7e5e20240001' && matches.length === 0) {
+      const map = {type: 'script', enabled: true, name: '模组地图', id: item.id, content: body,
+        info: 'D&D 官方模组运行辅助插件：从 5e.kiwee.top 读取模组与生物原版数据，自动生成每层地城拓扑图，提供玩家可拖动探索的多边形战争迷雾地图，并随剧情推进自动滑窗切换世界书房间数据。',
+        button: {enabled: true, buttons: [{name: '模组地图', visible: true}]}, data: {}, export_with: {data: true, button: true}};
+      helper.scripts.push(map); scripts.push(map); changed.push('新增模组地图'); continue;
     }
     if (matches.length === 0) throw Error('未找到组件：' + item.name);
     if (matches.length > 1) throw Error('组件 ID 重复：' + item.name);
@@ -58,7 +65,7 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
     }
   }
   if (manifest.added_regexes) {
-    const newIds = new Set(['dnd-clean-old-battlecheck', 'dnd-clean-old-battle-map']);
+    const newIds = new Set(['dnd-clean-old-battlecheck', 'dnd-clean-old-battle-map', 'dnd-clean-old-map-marker']);
     for (const rule of manifest.added_regexes) {
       if (!newIds.delete(rule.id) || rule.replaceString !== '' || typeof rule.findRegex !== 'string') throw Error('新增规则清单无效');
       const matches = regexes.filter(entry => entry.id === rule.id);
@@ -78,7 +85,12 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
       }
     }
   }
-  return {changed, extensions: {
+  const removedInstruction = manifest.removed_post_history_instruction;
+  const postHistory = card.data.post_history_instructions;
+  return {changed,
+    ...(typeof removedInstruction === 'string' && removedInstruction && typeof postHistory === 'string' && postHistory.includes(removedInstruction)
+      ? {postHistoryInstruction: postHistory.trim() === removedInstruction ? '' : postHistory.replace(removedInstruction, '')} : {}),
+    extensions: {
     tavern_helper: helper,
     regex_scripts: regexes,
     dnd_component_updates: {...current.dnd_component_updates, version: manifest.version, repository: 'Faust114514/dnd-card-components-public',
@@ -87,7 +99,7 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
 }
 
 function planDndWorldbook(book, patches, kept = []) {
-  const allowed = new Set([18, 643316, 781421]);
+  const allowed = new Set([18, 643316, 781421, 12, 207976]);
   return patches.map(patch => {
     if (!allowed.delete(patch.uid) || typeof patch.previous !== 'string' || typeof patch.content !== 'string' || !patch.content.trim()) throw Error('世界书更新条目无效');
     const entry = book.entries[patch.uid];
@@ -281,10 +293,12 @@ function dndVersionIsNewer(next, current) {
       status.textContent = '正在保存 ' + update.changed.length + ' 项代码更新…';
       // Native raw merge preserves substituteRegex and unknown fields that the
       // Helper 4.12 normalized regex conversion would otherwise discard.
-      await local('/api/characters/merge-attributes', {avatar, data: {extensions: update.extensions}});
+      await local('/api/characters/merge-attributes', {avatar, data: {extensions: update.extensions,
+        ...(update.postHistoryInstruction !== undefined ? {post_history_instructions: update.postHistoryInstruction} : {})}});
       saved = true;
       const confirmed = await (await local('/api/characters/get', {avatar_url: avatar})).json();
       const receipt = confirmed.data.extensions.dnd_component_updates;
+      if (update.postHistoryInstruction !== undefined && confirmed.data.post_history_instructions !== update.postHistoryInstruction) throw Error('末尾指令保存后读回不一致');
       if (receipt?.version !== release.version || receipt?.repository !== REPOSITORY || buildDndComponentUpdate(confirmed, release, sources, updaterId).changed.length) throw Error('保存后读回结果不一致');
       const expected = update.extensions.dnd_component_updates;
       // Native saves may reorder object keys. Compare the stored values, not key order.
