@@ -3,7 +3,7 @@ const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),
 const {spawn}=require('node:child_process'),assert=require('node:assert/strict');
 const root=path.resolve(__dirname,'..'),out=process.argv[2]||os.tmpdir();
 const source=fs.readFileSync(path.join(root,'src/regexes/dnnd-battle-panel.html'),'utf8');
-const rule=fs.readFileSync(path.join(root,'src/worldbook/战场生成规则.txt'),'utf8');
+const rule=fs.readFileSync(path.join(root,'src/worldbook/战场生成规则.txt'),'utf8').replace(/\r\n/g,'\n');
 const fixture=rule.match(/<battle>\r?\n[\s\S]*?<\/battle>/)[0];
 const furnished=`<battle>
 map 旅店会客厅|origin 0,0|size 70,50|ground wood
