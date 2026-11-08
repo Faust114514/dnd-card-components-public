@@ -3391,6 +3391,8 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
 <style>
 .creator-biography{min-width:0;margin:24px 0 8px;padding:18px 0 0;border:0;border-top:1px solid var(--border)}
 .creator-biography legend{padding-right:12px;color:var(--gold);font-size:1.1rem;font-weight:700}
+.creator-biography legend label{display:inline-flex;align-items:center;gap:10px;cursor:pointer;margin:0}
+.creator-biography #biography-enabled{width:18px;height:18px;margin:0;accent-color:var(--gold)}
 .biography-hint{margin:0 0 18px;color:var(--text-secondary);font-size:.9rem;line-height:1.6}
 .biography-facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
 .biography-prose{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:18px}
@@ -3502,8 +3504,9 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
                     </div>
                 </div>
                 <fieldset id="creator-biography" class="creator-biography">
-                    <legend>传记</legend>
-                    <p class="biography-hint">可以先填写其他选项，再回来补齐。以下栏目与上方性别均为必填，创建角色时检查，不限字数。</p>
+                    <legend><label><input type="checkbox" id="biography-enabled" aria-controls="biography-fields" checked>填写传记</label></legend>
+                    <p class="biography-hint">勾选时，创建前需补齐以下栏目，不限字数。取消勾选即可跳过；已填内容仍会保存，也可稍后在角色档案中补写。</p>
+                    <div id="biography-fields">
                     <div class="biography-facts">
                         <div class="field"><label for="bio-playerName">玩家名 <span aria-hidden="true">*</span></label><input type="text" id="bio-playerName" data-biography="playerName" aria-required="true" placeholder="玩家称呼，与角色姓名分开"></div>
                         <div class="field"><label for="bio-alignment">阵营 <span aria-hidden="true">*</span></label><input type="text" id="bio-alignment" data-biography="alignment" aria-required="true" list="biography-alignments"></div>
@@ -3534,6 +3537,7 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
                         <div class="field biography-wide"><label for="bio-biography">传记 <span aria-hidden="true">*</span></label><textarea id="bio-biography" data-biography="biography" aria-required="true" rows="5"></textarea></div>
                     </div>
                     <p id="biography-error" class="section-validation" role="alert"></p>
+                    </div>
                 </fieldset>
                 <div id="info-boxes"></div>
                 <div class="section-validation" id="validation-basics"></div>
@@ -5487,6 +5491,7 @@ const autoPreparedLookup = {
 const BIOGRAPHY_FIELDS = [["playerName", "玩家名"], ["alignment", "阵营"], ["age", "年龄"], ["height", "身高"], ["weight", "体重"], ["eyes", "眼睛"], ["skin", "皮肤"], ["hair", "发色"], ["description", "外观描述"], ["ideal", "理想"], ["bond", "牵绊"], ["flaw", "缺点"], ["trait", "个性特征"], ["biography", "传记"]];
 
 const state = {
+    biographyEnabled: true,
     biography: Object.fromEntries(BIOGRAPHY_FIELDS.map(([key])=>[key,''])),
     name: '',
     gender: '',
@@ -6067,7 +6072,7 @@ function applyClassDefaults() {
     state.equipmentSelected = [];
 }
 function missingBiographyFields() {
-    return BIOGRAPHY_FIELDS.filter(([key])=>!state.biography[key].trim());
+    return state.biographyEnabled ? BIOGRAPHY_FIELDS.filter(([key])=>!state.biography[key].trim()) : [];
 }
 
 function creatorBasicsReady() {
@@ -8777,7 +8782,7 @@ function renderSummary() {
             ${spellText}
             <strong>职业特性:</strong> ${classFeatures}
         </p>
-        <details style="margin-top:16px"><summary>传记预览</summary><dl style="white-space:pre-wrap;overflow-wrap:anywhere">${BIOGRAPHY_FIELDS.map(([key,label])=>`<dt style="color:var(--gold);margin-top:12px">${label}</dt><dd style="margin:4px 0">${ebEscape(state.biography[key] || '待填写')}</dd>`).join('')}</dl></details>
+        ${state.biographyEnabled ? `<details style="margin-top:16px"><summary>传记预览</summary><dl style="white-space:pre-wrap;overflow-wrap:anywhere">${BIOGRAPHY_FIELDS.map(([key,label])=>`<dt style="color:var(--gold);margin-top:12px">${label}</dt><dd style="margin:4px 0">${ebEscape(state.biography[key] || '待填写')}</dd>`).join('')}</dl></details>` : ''}
     `;
 }
 
@@ -8785,6 +8790,18 @@ function renderSummary() {
 function setupEventListeners() {
     elements.name.addEventListener('input', e => { state.name = e.target.value; requestRender(); });
     elements.gender.addEventListener('change', e => { state.gender = e.target.value; requestRender(); });
+    document.getElementById('biography-enabled').addEventListener('change', e => {
+        state.biographyEnabled=e.target.checked;
+        document.getElementById('biography-fields').hidden=!state.biographyEnabled;
+        for (const [key] of BIOGRAPHY_FIELDS) {
+            const input=document.getElementById('bio-'+key);
+            input.disabled=!state.biographyEnabled;
+            input.setAttribute('aria-required',String(state.biographyEnabled));
+            input.removeAttribute('aria-invalid');
+        }
+        document.getElementById('biography-error').textContent='';
+        renderSummary();
+    });
     for (const [key] of BIOGRAPHY_FIELDS) {
         document.getElementById('bio-'+key).addEventListener('input', e => {
             state.biography[key]=e.target.value;

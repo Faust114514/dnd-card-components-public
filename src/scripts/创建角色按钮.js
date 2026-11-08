@@ -5,7 +5,7 @@
   const host=hosts.find(w=>{try{return !!w.document?.body;}catch{return false;}})||window;
   const doc=host.document;
   host[NS]?.dispose?.();
-  const state={modal:null,frame:null,bridge:null,chat:null,character:null,html:'',previousFocus:null,overflow:null};
+  const state={modal:null,frame:null,archiveFrame:null,bridge:null,chat:null,character:null,html:'',previousFocus:null,overflow:null};
   host[NS]=state;
   function context() {
     for(const w of [window,window.parent,host])try{const c=w.SillyTavern?.getContext?.();if(c)return c;}catch{}
@@ -22,6 +22,11 @@
     const ctx=context();
     if(ctx.characterId!==state.character || ctx.chat!==state.chat)throw new Error('聊天已切换，请关闭并重新打开创建角色面板；未写入其他聊天。');
     return ctx;
+  }
+  function archiveHtml(ctx) {
+    const target=ctx.characters[ctx.characterId].data.extensions.regex_scripts.find(s=>s.id==='958c00c8-f1e0-4470-b81c-09de4601f71f'&&!s.disabled);
+    if(!target?.replaceString)throw new Error('当前角色没有启用的状态栏正则，请先启用角色档案面板。');
+    return target.replaceString.replace(/^\s*```(?:html)?\s*/i,'').replace(/\s*```\s*$/,'').trim();
   }
   function apiBridge() {
     const owner=context();
@@ -82,8 +87,9 @@
     const overlay=doc.createElement('dialog');
     overlay.id='dnd-creator-dialog';
     overlay.style.cssText='position:fixed;inset:0;z-index:10060;background:#080b12cc;display:none;align-items:center;justify-content:center;padding:10px;box-sizing:border-box;margin:0;border:0;width:100%;max-width:none;height:100dvh;max-height:none;color-scheme:dark;';
-    overlay.innerHTML='<style>#dnd-creator-dialog::backdrop{background:#080b12cc}#dnd-creator-dialog>section{min-height:0}#dnd-creator-dialog header{flex-shrink:0;border-bottom:1px solid #c5a36333;background:#20232b}#dnd-creator-dialog header strong{font:600 17px Georgia,"Noto Serif SC",serif;color:#e6ca8f}#dnd-creator-dialog header button{min-height:40px;padding:8px 12px;border:1px solid #c5a36344;border-radius:8px;background:#272b34;color:#e8dfcc;font-size:13px;box-shadow:none;text-shadow:none}#dnd-creator-dialog iframe{display:block;height:100%;flex:1 1 0!important;min-height:0!important}@media(max-width:760px){#dnd-creator-dialog{padding:0!important}#dnd-creator-dialog>section{width:100%!important;height:100%!important;border:0!important;border-radius:0!important}#dnd-creator-dialog header{padding:calc(8px + env(safe-area-inset-top)) 12px 8px!important;gap:8px!important}#dnd-creator-dialog header button{min-height:44px}}</style><section role="dialog" aria-modal="true" aria-label="创建角色" style="display:flex;flex-direction:column;width:min(1440px,100%);height:calc(100dvh - 20px);background:#151922;border:1px solid #3b4658;border-radius:12px;overflow:hidden"><header style="display:flex;align-items:center;gap:12px;padding:10px 14px;color:#eee"><strong style="flex:1">创建角色</strong><button type="button" data-action="restart">重新开始</button><button type="button" data-action="close">关闭</button></header><iframe title="D&D 2024 创建角色" style="border:0;flex:1;width:100%;min-height:0;background:#111"></iframe></section>';
+    overlay.innerHTML='<style>#dnd-creator-dialog::backdrop{background:#080b12cc}#dnd-creator-dialog>section{min-height:0}#dnd-creator-dialog header{flex-shrink:0;border-bottom:1px solid #c5a36333;background:#20232b}#dnd-creator-dialog header strong{font:600 17px Georgia,"Noto Serif SC",serif;color:#e6ca8f}#dnd-creator-dialog header button{min-height:40px;padding:8px 12px;border:1px solid #c5a36344;border-radius:8px;background:#272b34;color:#e8dfcc;font-size:13px;box-shadow:none;text-shadow:none}#dnd-creator-dialog iframe{display:block;height:100%;flex:1 1 0!important;min-height:0!important}@media(max-width:760px){#dnd-creator-dialog{padding:0!important}#dnd-creator-dialog>section{width:100%!important;height:100%!important;border:0!important;border-radius:0!important}#dnd-creator-dialog header{padding:calc(8px + env(safe-area-inset-top)) 12px 8px!important;gap:8px!important}#dnd-creator-dialog header button{min-height:44px}}</style><section role="dialog" aria-modal="true" aria-label="创建角色" style="display:flex;flex-direction:column;width:min(1440px,100%);height:calc(100dvh - 20px);background:#151922;border:1px solid #3b4658;border-radius:12px;overflow:hidden"><header style="display:flex;align-items:center;gap:12px;padding:10px 14px;color:#eee"><strong style="flex:1">创建角色</strong><button type="button" data-action="restart">重新开始</button><button type="button" data-action="import" hidden>导入存档</button><button type="button" data-action="close">关闭</button></header><iframe title="D&D 2024 创建角色" style="border:0;flex:1;width:100%;min-height:0;background:#111"></iframe></section>';
     overlay.querySelector('[data-action="close"]').addEventListener('click',close);
+    overlay.querySelector('[data-action="import"]').addEventListener('click',()=>state.archiveFrame.contentDocument.getElementById('import-data-btn').click());
     overlay.querySelector('[data-action="restart"]').addEventListener('click',()=>{
       if(!host.confirm('重新开始会丢弃面板内尚未提交的填写，不影响已保存角色。继续吗？'))return;
       try{assertChat();state.frame.srcdoc=inject(creatorHtml(context()));}catch(e){host.alert(e.message);}
@@ -93,15 +99,36 @@
     doc.body.appendChild(overlay);
     state.modal=overlay;state.frame=overlay.querySelector('iframe');
   }
-  function open() {
+  function open(archive=false) {
     try {
       const ctx=context();
-      const html=creatorHtml(ctx);
+      const html=archive?archiveHtml(ctx):creatorHtml(ctx);
       const same=state.chat===ctx.chat&&state.character===ctx.characterId&&state.html===html;
-      state.chat=ctx.chat;state.character=ctx.characterId;
       state.bridge=apiBridge();
       ensureModal();
-      if(!same){state.html=html;state.frame.srcdoc=inject(html);}
+      if(archive) {
+        if(!state.archiveFrame){
+          state.archiveFrame=state.frame.cloneNode(false);state.frame.after(state.archiveFrame);
+          state.archiveFrame.addEventListener('load',()=>{
+            const archiveDoc=state.archiveFrame.contentDocument;
+            for(const id of ['main-grid-container','main-container'])archiveDoc.getElementById(id).classList.remove('is-collapsed');
+            state.modal.querySelector('[data-action="import"]').disabled=false;
+          });
+        }
+        state.modal.querySelector('[data-action="import"]').disabled=true;
+        state.archiveFrame.title='D&D 2024 角色档案';
+        state.archiveFrame.srcdoc=inject(html);
+      } else {
+        state.chat=ctx.chat;state.character=ctx.characterId;
+        if(!same){state.html=html;state.frame.srcdoc=inject(html);}
+      }
+      state.frame.style.display=archive?'none':'block';
+      if(state.archiveFrame)state.archiveFrame.style.display=archive?'block':'none';
+      const title=archive?'角色档案':'创建角色';
+      state.modal.querySelector('header strong').textContent=title;
+      state.modal.querySelector('section').setAttribute('aria-label',title);
+      state.modal.querySelector('[data-action="restart"]').hidden=archive;
+      state.modal.querySelector('[data-action="import"]').hidden=!archive;
       if(state.modal.style.display!=='flex') {
         state.previousFocus=doc.activeElement;
         state.overflow={root:doc.documentElement.style.overflow,body:doc.body.style.overflow};
@@ -125,7 +152,7 @@
   }
   function onKey(event){if(event.key==='Escape'&&state.modal?.style.display==='flex')close();}
   function dispose(){host.visualViewport?.removeEventListener('resize',fitViewport);host.visualViewport?.removeEventListener('scroll',fitViewport);close();state.modal?.remove();doc.removeEventListener('click',onClick,true);doc.removeEventListener('keydown',onKey,true);if(host[NS]===state)delete host[NS];}
-   state.dispose=dispose;state.open=open;
+   state.dispose=dispose;state.open=()=>open();state.openArchive=()=>open(true);
   doc.addEventListener('click',onClick,true);
   doc.addEventListener('keydown',onKey,true);
   window.addEventListener('pagehide',dispose,{once:true});

@@ -30,7 +30,7 @@ nav{display:flex;justify-content:center;gap:32px;padding:22px 20px}nav button{bo
 <header><div class="brand"><i class="diamond" aria-hidden="true"></i> 龙与地下城</div><span class="edition">PLAYER'S CHRONICLE · 2024</span></header>
 <nav aria-label="开场章节"><button data-page="0" aria-current="step"><span>I</span>命运之门</button><button data-page="1"><span>II</span>莉音的问候</button><button data-page="2"><span>III</span>正式开始</button></nav>
 <section class="page landing" data-scene="0" aria-label="开始游戏">
-<div class="landing-copy"><div class="eyebrow">Beyond the dice, a world awaits.</div><h1>命运之门<small>为你而开</small></h1><div class="rule-line"></div><p class="lead">一卷尚未写完的史诗。<br>当骰子落下，世界便有了你的名字。</p><section class="dm-picker" aria-label="选择地下城主"><h2>谁来主持你的冒险？</h2><div class="dm-options" id="dm-options"></div><p class="dm-summary" id="dm-summary"></p><textarea class="dm-custom" id="dm-custom" aria-label="自定义DM人设" placeholder="姓名、性格、外形、口吻、主持偏好……" hidden></textarea><div class="dm-notice" id="dm-notice" role="status" aria-live="polite"></div></section><div class="actions"><button class="primary" data-page="1">开始游戏 <span aria-hidden="true">↗</span></button><button class="quiet" data-page="2">直接启程</button></div><p class="note" id="dm-credit">D&D 2024 · 文字叙事冒险 · 地下城主 莉音</p></div>
+<div class="landing-copy"><div class="eyebrow">Beyond the dice, a world awaits.</div><h1>命运之门<small>为你而开</small></h1><div class="rule-line"></div><p class="lead">一卷尚未写完的史诗。<br>当骰子落下，世界便有了你的名字。</p><section class="dm-picker" aria-label="选择地下城主"><h2>谁来主持你的冒险？</h2><div class="dm-options" id="dm-options"></div><p class="dm-summary" id="dm-summary"></p><textarea class="dm-custom" id="dm-custom" aria-label="自定义DM人设" placeholder="姓名、性格、外形、口吻、主持偏好……" hidden></textarea><div class="dm-notice" id="dm-notice" role="status" aria-live="polite"></div></section><div class="actions"><button class="primary" data-page="1">开始游戏 <span aria-hidden="true">↗</span></button><button class="secondary" data-open-archive>角色档案</button><button class="quiet" data-page="2">直接启程</button></div><p class="note" id="dm-credit">D&D 2024 · 文字叙事冒险 · 地下城主 莉音</p></div>
 <div class="sigil" aria-hidden="true"><div class="orbit"></div><div class="orbit two"></div><span class="rune n">XX</span><span class="rune s">Ⅰ</span><span class="rune e">Ⅵ</span><span class="rune w">Ⅹ</span><svg class="die" viewBox="0 0 140 150"><path d="M70 5 132 40 132 111 70 146 8 111 8 40Z M70 5 39 54 101 54Z M8 40 39 54 8 111 M132 40 101 54 132 111 M39 54 25 110 115 110 101 54 M25 110 70 146 115 110 M39 54 70 146 101 54"/><text x="70" y="92" text-anchor="middle">20</text></svg><span class="sigil-caption">FORTUNE FAVOURS THE BOLD</span></div>
 </section>
 <section class="page greeting" data-scene="1" aria-label="莉音的问候" hidden>
@@ -47,8 +47,8 @@ nav{display:flex;justify-content:center;gap:32px;padding:22px 20px}nav button{bo
 <p>桌上的计时沙漏发出细密的轻响，微风拂过窗帘，将秋日的凉意隔绝在明亮的房间之外。莉音保持着伸手等待的姿态，嘴角带着浅浅的弧度，目光安静而专注地注视着玩家手中的卡片，静候着这场未知旅途的第一步。</p></article></div>
 <footer><p>故事、规则与选择。从此刻起，我们共同书写。</p><button class="primary" data-page="2">我准备好了 <span aria-hidden="true">→</span></button></footer>
 </section>
-<section class="page begin" data-scene="2" aria-label="正式开始" hidden><div class="begin-copy"><div class="eyebrow">Chapter one · Your story begins</div><h2>下一页，写下你的传奇。</h2><p class="lead">“请把您精心构筑的角色卡递交给我吧。”<br>创建你的冒险者，或带着已有档案入座。旅途的第一步，由你决定。</p><div class="steps"><div class="step"><b>01 / THE ADVENTURER</b><h3>塑造你的角色</h3><p>选择物种、职业与背景，在创建面板完成并保存角色。</p></div><div class="step"><b>02 / THE ADVENTURE</b><h3>告诉莉音，你的选择</h3><p>在聊天框描述出身、想去的地方，或直接请莉音开启冒险。</p></div></div><div class="actions"><button class="primary" id="create-character">创建角色</button></div><div class="status" id="opening-status" role="status" aria-live="polite"></div></div><figure class="portrait"><img src="https://pic.imgdd.cc/i/034WV6negfVHPjpfrTUci6.png" alt="等待冒险者启程的莉音" loading="lazy" referrerpolicy="no-referrer"></figure></section>
-<footer class="bottom"><span>DUNGEONS & DRAGONS</span><span id="chapter-label">Ⅰ / 命运之门</span></footer>
+<section class="page begin" data-scene="2" aria-label="正式开始" hidden><div class="begin-copy"><div class="eyebrow">Chapter one · Your story begins</div><h2>下一页，写下你的传奇。</h2><p class="lead">“请把您精心构筑的角色卡递交给我吧。”<br>创建你的冒险者，或带着已有档案入座。旅途的第一步，由你决定。</p><div class="steps"><div class="step"><b>01 / THE ADVENTURER</b><h3>塑造你的角色</h3><p>选择物种、职业与背景，在创建面板完成并保存角色。</p></div><div class="step"><b>02 / THE ADVENTURE</b><h3>告诉莉音，你的选择</h3><p>在聊天框描述出身、想去的地方，或直接请莉音开启冒险。</p></div></div><div class="actions"><button class="primary" id="create-character">创建角色</button><button class="secondary" data-open-archive>角色档案</button></div></div><figure class="portrait"><img src="https://pic.imgdd.cc/i/034WV6negfVHPjpfrTUci6.png" alt="等待冒险者启程的莉音" loading="lazy" referrerpolicy="no-referrer"></figure></section>
+<div class="status" id="opening-status" role="status" aria-live="polite"></div><footer class="bottom"><span>DUNGEONS & DRAGONS</span><span id="chapter-label">Ⅰ / 命运之门</span></footer>
 </main>
 <script>
 (()=>{
@@ -91,6 +91,15 @@ applyChoice();
 let tries=0;
 const load=setInterval(async()=>{const b=bridge();if(!b){if(++tries>=30)clearInterval(load);return;}clearInterval(load);try{const state=await b.get();if(touched)return;selected=state.id;custom.value=state.custom;applyChoice();if(state.enabled===false){pending=true;++revision;void saveChoice();}}catch{}},200);
 window.addEventListener('pagehide',()=>{clearInterval(load);clearTimeout(saveTimer);}, {once:true});
+document.querySelectorAll('[data-open-archive]').forEach(button=>button.addEventListener('click',()=>{
+  for(const w of hosts())try{
+    if(typeof w.__dndCreatorButton_v1?.openArchive==='function'){
+      const opened=w.__dndCreatorButton_v1.openArchive();
+      status(opened?'':'角色档案未能打开，请检查酒馆助手是否已启用。');return;
+    }
+  }catch{}
+  status('请先更新并启用“创建角色按钮”脚本，再打开角色档案。');
+}));
 document.getElementById('create-character').addEventListener('click',()=>{for(const w of hosts()){try{if(typeof w.__dndCreatorButton_v1?.open==='function'){const opened=w.__dndCreatorButton_v1.open();status(opened?'':'创建面板未能打开，请检查酒馆助手是否已启用。');return;}}catch{}}status('请点击酒馆输入框上方的“创建”按钮。若尚未显示，请先启用角色卡的酒馆助手脚本。');});
 })();
 </script>
