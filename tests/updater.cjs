@@ -17,6 +17,7 @@ original.data.extensions.tavern_helper.scripts.push({id:'user-added',type:'scrip
 const archiveIds=['d7a9c17d-960e-4a56-9e17-0c77e86c71a8','1c6924c3-1308-430b-b62c-e2ce7e0d1814'];
 const archivePattern=String.raw`<char_info>((?:(?!<\/?char_info>)[\s\S])*)<\/char_info>`;
 const before=JSON.stringify(original),result=merge(original,latest,sources),checks=[];
+for(const version of ['vf.0.3.12','vf.0.4.0']){const card=structuredClone(original);card.data.character_version=version;assert.equal(merge(card,latest,sources).extensions.dnd_component_updates.version,latest.version);checks.push(version+' card accepts 0.4 component update');}
 const check=(value,label)=>{assert.ok(value,label);checks.push(label);};
 check(JSON.stringify(original)===before,'core does not mutate its input');
 check(result.changed.length===1,'only changed source counted');
@@ -47,7 +48,7 @@ for(const [label,modify] of [
  ['script declared empty',m=>m.empty_regexes.push(m.components[0])],
  ['path traversal',m=>m.components[0].path='src/scripts/../../private'],
  ['external URL',m=>m.components[0].path='https://example.org/steal'],
- ['unsupported version',m=>m.version='vf.0.4.0'],
+ ['unsupported version',m=>m.version='vf.0.5.0'],
  ['unsupported format',m=>m.format=2],
 ]){const bad=structuredClone(latest);modify(bad);assert.throws(()=>merge(original,bad,sources));checks.push('reject '+label);}
 const missing={...sources};delete missing[latest.components[0].path];assert.throws(()=>merge(original,latest,missing));checks.push('missing download prevents write preparation');

@@ -18,10 +18,10 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
     'battle-check-1774752962048','d7a9c17d-960e-4a56-9e17-0c77e86c71a8','1c6924c3-1308-430b-b62c-e2ce7e0d1814','b179c655-147d-4572-a6ea-1c0326363009',
   ]);
   const legacy = card.data.character_version === 'vf.0.2.21';
-  if (!legacy && !/^vf\.0\.3\.\d+$/.test(card.data.character_version)) throw Error('本更新器支持 vf.0.2.21 与 vf.0.3.x 卡');
+  if (!legacy && !/^vf\.0\.(?:3|4)\.\d+$/.test(card.data.character_version)) throw Error('本更新器支持 vf.0.2.21、vf.0.3.x 与 vf.0.4.x 卡');
   const emptyRegexes = manifest.empty_regexes ?? [];
   if (!Array.isArray(emptyRegexes) || emptyRegexes.some(item => item?.kind !== 'regex')) throw Error('空替换规则清单无效');
-  if (manifest.format !== 1 || !/^vf\.0\.3\.\d+$/.test(manifest.version) || manifest.minimum_card_version !== 'vf.0.3.0' || !Array.isArray(manifest.components)) throw Error('更新清单不适用于本卡');
+  if (manifest.format !== 1 || !/^vf\.0\.(?:3|4)\.\d+$/.test(manifest.version) || manifest.minimum_card_version !== 'vf.0.3.0' || !Array.isArray(manifest.components)) throw Error('更新清单不适用于本卡');
   if (legacy && !manifest.legacy_card_versions?.includes('vf.0.2.21')) throw Error('此发布尚未提供 vf.0.2.21 接入支持');
   const current = card.data.extensions;
   const helper = structuredClone(current.tavern_helper), regexes = structuredClone(current.regex_scripts);
