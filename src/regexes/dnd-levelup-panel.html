@@ -13715,10 +13715,38 @@ function growthFixed(plan,key,label,kind,values){
   if(state.charObj?.成长选择?.[key])return;
   (plan.growthAuto||=[]).push({key,label,kind,values});plan.gained.push(label+'：'+values.join('、'));
 }
+const RANGER_HOMEBREW = [
+  {key:'ranger_dual_concentration',level:11,name:'双重专注',options:['不启用','启用双重专注'],
+    description:'双重专注（Dual Concentration），自制游侠特性。你能够在正常维持一项游侠法术专注的同时，额外专注于一个猎人印记法术。通过此特性维持的猎人印记拥有独立的专注，你开始专注其他游侠法术时不会因此终止猎人印记的专注，反之亦然。你不能通过此特性同时维持两个猎人印记，也不能借此同时专注于两个猎人印记以外的法术。当你同时维持两项专注并受到伤害时，你必须分别为两项法术进行专注豁免。每项豁免独立决定其对应的法术是否结束。当你获得游侠13级永恒追猎后，仍保留其原版保护：猎人印记的专注不因受伤中断，因此受伤时仅为另一项法术进行专注豁免。'},
+  {key:'ranger_relentless_hunter',level:13,name:'永恒追猎',options:['保留原版','使用自制增强版'],
+    description:'永恒追猎（Relentless Hunter），自制游侠增强特性。保留原版效果：受到伤害不会打断你对猎人印记的专注。当受到你猎人印记影响的生物生命值降至0时，你可以立即将猎人印记转移到你90尺范围内能够看见的另一生物身上，无需消耗任何动作。如果你没有立即转移标记，仍可以按照猎人印记原本的规则，在之后使用附赠动作转移标记。'}
+];
+function rangerApplyHomebrew(c){
+  const choices=c.成长选择||{},level=Number(state.classLevels?.ranger||0);
+  for(const feature of RANGER_HOMEBREW){
+    if(level<feature.level||!choices[feature.key])continue;
+    if(choices[feature.key][0]===feature.options[1]){
+      c.特性.职业[feature.name]={描述:feature.description,来源:'自制游侠 '+feature.level+'级'};
+    }else if(feature.level===13){
+      const original=BRIEF_RULE_BANK.features.find(r=>r.classId==='ranger'&&r.key==='永恒追猎');
+      c.特性.职业.永恒追猎={描述:briefRuleText(original.description),来源:'游侠 13级'};
+    }else if(c.特性.职业[feature.name]?.来源==='自制游侠 11级'){
+      delete c.特性.职业[feature.name];
+    }
+  }
+}
 function growthClassChoices(plan,pending,classId,level,from){
   const data=state.classDataMap?.[classId]||{},sub=subclassSpellIdentity(classId,data,pending);
   const name=bookAllSubs.find(s=>s.id===sub)?.name||sub;
   const due=min=>level>=min&&(growthMode==='config'||from<min);
+  if(classId==='ranger')for(const feature of RANGER_HOMEBREW){
+    const saved=state.charObj?.成长选择?.[feature.key];
+    if(level<feature.level||(!due(feature.level)&&saved))continue;
+    const id='growth_select_'+feature.key;
+    pending[id]??=saved?.[0]||feature.options[0];
+    growthSingle(plan,pending,feature.key,`自制游侠 ${feature.level}级：${feature.name}${feature.level===11?'（额外获得，保留子职特性）':'（增强版替换同名原版特性）'}`,feature.options);
+    Object.assign(plan.req.at(-1),{growth:{key:feature.key,kind:'rangerHomebrew'},hint:feature.description});
+  }
   const add=(key,label,kind,values,count=1,extra={})=>growthRule(plan,pending,classId+'_'+key,label,kind,values,count,extra);
   const fixed=(key,label,kind,values)=>growthFixed(plan,classId+'_'+key,label,kind,values);
   const conditionalSave=(key,label,normal,alternatives)=>{if(state.charObj?.成长选择?.[classId+'_'+key])return;if(growthOwned('save',normal))add(key,label+'：替代豁免','save',alternatives);else fixed(key,label,'save',[normal]);};
@@ -13827,8 +13855,9 @@ function growthRenderMode(){
   const configButton=document.getElementById('hexblade-config-btn');
   if(configButton){
     const hexblade=Number(state.classLevels?.warlock||0)>=3&&subclassSpellIdentity('warlock',state.classDataMap?.warlock)==='legacy_hexblade';
-    configButton.hidden=!hexblade&&growthMode!=='config';
-    configButton.textContent=growthMode==='config'?'返回升级':'长休换选精通';
+    const ranger=Number(state.classLevels?.ranger||0)>=11;
+    configButton.hidden=!hexblade&&!ranger&&growthMode!=='config';
+    configButton.textContent=growthMode==='config'?'返回升级':ranger?'自制游侠特性／配置':'长休换选精通';
     configButton.onclick=()=>{
       if(Object.keys(state.pending||{}).length&&!confirm('切换会清除未提交的选择，已保存的人物不受影响。继续？'))return;
       growthMode=growthMode==='config'?'upgrade':'config';state.pending={};state.plan=buildPlan(state.pending);renderUI();
@@ -14479,7 +14508,7 @@ function featDuplicateCheck(name) {
           const reason=o.reason?`（${o.reason}）`:"";
           return `<option value="${esc(o.value)}" ${(state.pending[req.id]===o.value)?"selected":""} ${o.disabled?"disabled":""}>${esc(o.label)}${esc(reason)}</option>`;
         }).join("");
-        return `<div class="req-card"><label>${esc(req.label)}</label><select id="${req.id}" ${req.id==='book_dark_gift'?'data-dnd-name-search':''} ${req.rebuild?"data-rebuild='1'":""}>${opts}</select></div>`;
+        return `<div class="req-card"><label>${esc(req.label)}</label><select id="${req.id}" ${req.id==='book_dark_gift'?'data-dnd-name-search':''} ${req.rebuild?"data-rebuild='1'":""}>${opts}</select>${req.hint?`<div class="hint">${esc(req.hint)}</div>`:""}</div>`;
       }
       if(req.kind==="multi"){
         const picked=new Set(state.pending[req.id]||[]);
@@ -15088,6 +15117,7 @@ function briefRestoreDescriptions(c,before={}){
     delete entry.完整描述;
   }
   ebApplyCapstone(c);
+  rangerApplyHomebrew(c);
 }
 
 const LevelGrowth = (() => {
