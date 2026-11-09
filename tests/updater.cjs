@@ -137,16 +137,16 @@ if(baselinePath){
  assert.deepEqual(restored,expected);checks.push('real legacy card preserves metadata outside the released sources and settings changes');
 }
 
-const selected=latest.components.filter(c=>['c3c9ad44-9e9b-4c6e-ae93-f2b098a20125','480d6777-f90d-4eba-a811-64cb2f1ffb00','736c0e4e-67b4-4113-a021-b3890714ba28','01c632e5-1071-4a08-aebd-6a0e5424ea99',...archiveIds].includes(c.id));
+const selected=latest.components.filter(c=>['c3c9ad44-9e9b-4c6e-ae93-f2b098a20125','480d6777-f90d-4eba-a811-64cb2f1ffb00','736c0e4e-67b4-4113-a021-b3890714ba28','01c632e5-1071-4a08-aebd-6a0e5424ea99','36bab6c1-2a4d-44de-b9a7-256c8a68c50d',...archiveIds].includes(c.id));
 const fixtureManifest={...latest,components:selected,empty_regexes:latest.empty_regexes.filter(c=>archiveIds.includes(c.id))};
 const withWorldbook=process.argv.includes('--worldbook');
-// Exercise the depth migration without adding unrelated cleanup rules to this fixture.
-fixtureManifest.added_regexes=[];
+// Include the map cleanup needed by the current pattern migration.
+fixtureManifest.added_regexes=latest.added_regexes.filter(r=>r.id==='dnd-clean-old-battle-map');
 if(!withWorldbook)delete fixtureManifest.worldbook_path;
 const fixtureSources=Object.fromEntries(selected.map(c=>[c.path,sources[c.path]]));
 if(withWorldbook)fixtureSources[latest.worldbook_path]=JSON.stringify(patches);
 const fixture=structuredClone(original);fixture.data.extensions.tavern_helper.scripts=fixture.data.extensions.tavern_helper.scripts.filter(s=>selected.some(c=>c.id===s.id)||s.id==='user-added');
-fixture.data.extensions.tavern_helper.scripts[0].content='old DM';fixture.data.extensions.regex_scripts=fixture.data.extensions.regex_scripts.filter(r=>selected.some(c=>c.id===r.id)||archiveIds.includes(r.id));
+fixture.data.extensions.tavern_helper.scripts[0].content='old DM';fixture.data.extensions.regex_scripts=fixture.data.extensions.regex_scripts.filter(r=>selected.some(c=>c.id===r.id)||archiveIds.includes(r.id)||r.id==='dnd-clean-old-battle-map');
 // Receipt-loss verification revisits the earlier display/prompt migration too.
 for(const id of ['0d8967e6-d2e8-4afb-9770-d22e332c301c','b179c655-147d-4572-a6ea-1c0326363009','918ecc02-7af0-4700-89c5-cbf05735c7e9']){
  if(!fixture.data.extensions.regex_scripts.some(r=>r.id===id))fixture.data.extensions.regex_scripts.push({...original.data.extensions.regex_scripts.find(r=>r.id===id),replaceString:''});
@@ -219,7 +219,7 @@ addEventListener('DOMContentLoaded',async()=>{
   emit('update-button');assert(q('#dnd-private-update').open,'helper button opens dialog');
   assert(!q('.dpu-token')&&!q('.dpu-disconnect'),'public update UI has no token or connection controls');
   failure='manifest';await check();assert(q('.dpu-install').disabled&&q('.dpu-status').textContent.includes('404'),'manifest download failure prevents installation');
-  await check();assert(!q('.dpu-install').disabled,'anonymous version check enables installation');
+  await check();assert(!q('.dpu-install').disabled,'anonymous version check enables installation / '+q('.dpu-status').textContent);
   const initial=JSON.stringify(fixtureCard);failure='download';await install();assert(saves===0&&JSON.stringify(fixtureCard)===initial,'failed component download makes no local write');
   assert(q('.dpu-status').textContent.includes('501')&&q('.dpu-status').textContent.includes(decodeURIComponent(calls.at(-1).url.split('/').at(-1))),'failed nonempty download reports status and filename');
   let release;delayNext=new Promise(r=>release=r);q('.dpu-install').click();await tick();context.chatId='b';emit('chat');release();await wait(()=>!q('.dpu-check').disabled,'cancel switched chat');assert(saves===0,'chat switch during download cancels before save');context.chatId='a';emit('chat');
@@ -255,6 +255,18 @@ addEventListener('DOMContentLoaded',async()=>{
     assert(files.size===1&&[...files].every(file=>file.includes('/src/regexes/')),'same-version repair downloads the display template only');
   }
   await check();assert(q('.dpu-install').disabled&&q('.dpu-status').textContent.includes('最新'),'next check reports current after saving the patterns');
+  // Simulate the first pass through an old updater: version/body saved, patterns unchanged.
+  const mapFixes=${jsJSON([
+    ['36bab6c1-2a4d-44de-b9a7-256c8a68c50d',String.raw`/(<battle>[\s\S]*?<\/battle>)/g`],
+    ['dnd-clean-old-battle-map',String.raw`/<battle>[\s\S]*?<\/battle>/g`],
+  ])};
+  for(const [id,oldPattern] of mapFixes)fixtureCard.data.extensions.regex_scripts.find(r=>r.id===id).findRegex=oldPattern;
+  await check();assert(!q('.dpu-install').disabled,'same-version check detects old battle patterns after first install');
+  await install();assert(mapFixes.every(([id,oldPattern])=>fixtureCard.data.extensions.regex_scripts.find(r=>r.id===id).findRegex!==oldPattern),'second install saves both battle pattern repairs');
+  await check();assert(q('.dpu-install').disabled,'battle pattern repair becomes current');
+  fixtureCard.data.extensions.regex_scripts.find(r=>r.id===mapFixes[1][0]).findRegex=mapFixes[1][1];
+  await check();assert(!q('.dpu-install').disabled,'cleanup-only mismatch remains installable');
+  await install();await check();assert(q('.dpu-install').disabled,'cleanup-only repair persists');
   assert(errors.length===0,'no browser errors');
   assert(calls.filter(c=>c.url.startsWith('https://')).every(c=>c.method==='GET'&&!c.body),'remote server receives only GET requests without card data');
   document.getElementById('fixture-result').textContent=JSON.stringify({passed:true,checks});

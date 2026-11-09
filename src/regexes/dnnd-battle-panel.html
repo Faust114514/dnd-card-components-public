@@ -657,20 +657,20 @@ height: calc(var(--h) * var(--scale));
 }
 
 .battle-embed .terrain.water {
-background: linear-gradient(135deg, rgba(44, 78, 93, 0.9), rgba(20, 40, 48, 0.9));
+background: #2c596b;
 }
 
 .battle-embed .terrain.chasm {
-background: linear-gradient(180deg, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.85));
+background: #171e1e;
 border: 1px dashed rgba(255, 255, 255, 0.2);
 }
 
 .battle-embed .terrain.ledge {
-background: linear-gradient(180deg, rgba(120, 97, 77, 0.6), rgba(70, 55, 42, 0.8));
+background: #8d7154;
 }
 
 .battle-embed .terrain.stalagmite {
-background: radial-gradient(circle at 50% 20%, rgba(120, 90, 70, 0.9), rgba(40, 30, 25, 0.9));
+background: #68564a;
 border-radius: 50% 50% 30% 30%;
 }
 
@@ -681,19 +681,18 @@ border-radius: 50% 50% 30% 30%;
 .battle-embed .map[data-ground="snow"] { background-color: #aeb9b8; }
 .battle-embed .map[data-ground="water"] { background-color: #254b5b; }
 .battle-embed .map[data-ground="wood"] { background-color: #67503a; }
-.battle-embed .terrain { border-radius: 2px; border: 1px solid #b8ab8655; pointer-events: none; }
-.battle-embed .terrain.wall { background: repeating-linear-gradient(0deg,#77736b 0 8px,#45463f 8px 10px); border: 2px solid #b6b1a0; }
-.battle-embed .terrain.stairs { background: repeating-linear-gradient(0deg,#b0a18a 0 5px,#5d554a 5px 8px); }
-.battle-embed .terrain.rubble { background: repeating-linear-gradient(135deg,#756959 0 5px,#413e36 5px 9px); }
-.battle-embed .terrain.vegetation { background: radial-gradient(ellipse,#5d7844,#263c2a); }
+.battle-embed .terrain { border-radius: 0; border: 1px solid #b8ab8655; box-shadow: none; opacity: 1; pointer-events: none; }
+.battle-embed .terrain-layer::after { content: ""; position: absolute; inset: 0; pointer-events: none; background-image: linear-gradient(90deg,#ffffff26 1px,transparent 1px),linear-gradient(0deg,#ffffff26 1px,transparent 1px); background-size: var(--cell) var(--cell); }
+.battle-embed .terrain.wall { background: #77736b; border: 2px solid #b6b1a0; }
+.battle-embed .terrain.stairs { background: #b0a18a; }
+.battle-embed .terrain.rubble { background: #756959; }
+.battle-embed .terrain.vegetation { background: #48643c; }
 .battle-embed .terrain.mud { background: #43382b; }
-.battle-embed .terrain.fire { background: radial-gradient(ellipse,#f6b643,#9a3c24); }
-.battle-embed .terrain.ice { background: linear-gradient(125deg,#7bafb5,#c4dbd9); }
-.battle-embed .terrain.wood { background: repeating-linear-gradient(90deg,#826644 0 9px,#4e3c2b 9px 11px); }
+.battle-embed .terrain.fire { background: #b8532d; }
+.battle-embed .terrain.ice { background: #95c2c7; }
+.battle-embed .terrain.wood { background: #826644; }
 .battle-embed .terrain.stone { background: #77746a; }
 .battle-embed .terrain.object { background: #6c5033; border: 2px solid #ab8757; }
-.battle-embed .terrain.object[data-icon] { background:transparent; border:0; box-shadow:none; opacity:1; }
-.battle-embed .terrain.object[data-icon] svg { display:block; width:100%; height:100%; filter:drop-shadow(1px 2px 1px #0007); }
 .battle-embed .terrain-key { position:absolute; right:10px; bottom:44px; z-index:12; max-width:min(360px,85%); max-height:42%; overflow:auto; border:1px solid #a7906570; border-radius:8px; background:#18211ff2; color:#eee5d3; font:12px/1.6 system-ui; }
 .battle-embed .terrain-key summary { padding:8px 12px; cursor:pointer; }
 .battle-embed .terrain-key ul { margin:0; padding:0 14px 10px 28px; }
@@ -1097,13 +1096,6 @@ padding: 8px 12px;
 }
 
 .battle-embed .panel__head:has(.settings--open){z-index:30}
-.battle-embed .local-map-assets{display:grid;gap:8px;padding:10px 0;border-top:1px solid #a7906555;font:13px/1.5 system-ui}
-.battle-embed .local-map-assets p{max-width:340px;color:#d6cbb8;white-space:normal}
-.battle-embed .local-map-assets [data-state="error"]{color:#ffc29e}
-.battle-embed .terrain.has-local-asset{background:transparent;border:0;box-shadow:none;opacity:1}
-.battle-embed .terrain.has-local-asset svg{display:block;width:100%;height:100%;overflow:visible}
-.battle-embed .terrain.ledge.has-local-asset{box-shadow:0 3px 0 #38281c,0 5px 7px #0008}
-.battle-embed .terrain.water.has-local-asset{box-shadow:inset 0 0 0 2px #575340}
 </style>
 </head>
 <body>
@@ -1134,13 +1126,6 @@ padding: 8px 12px;
 <button class="btn" data-role="applySize" type="button">Apply</button>
 <button class="btn" data-role="autoSize" type="button">Auto</button>
 </div>
-<section class="local-map-assets" aria-label="本地地图素材">
-<strong>本地地图素材</strong>
-<button class="btn" data-role="mapAssetsImport" type="button">导入素材文件夹</button>
-<input data-role="mapAssetsInput" type="file" webkitdirectory multiple accept="image/png,image/jpeg" hidden />
-<p data-role="mapAssetsStatus" role="status">正在检查本机素材…</p>
-<p>选择 Forgotten-Adventures 文件夹。图片只保存在当前酒馆的浏览器里；换浏览器、换酒馆地址或清除网站数据后需重新导入。未导入时显示占位图。</p>
-</section>
 <div class="token-base-controls">
 <label for="battle-token-base">Token Base URL <span>在线资源根目录</span></label>
 <div class="token-base-controls__row">
@@ -2077,146 +2062,6 @@ if (labels.length === 1) return labels[0];
 return `${labels[0]}+${labels.length - 1}`;
 }
 
-// Maintained placeholder drawings only; model output selects a key, never SVG markup.
-const objectIcons = {
-sofa: '<g stroke="#352a27" stroke-width="3" stroke-linejoin="round"><rect x="5" y="12" width="90" height="76" rx="12" fill="#5e3937"/><rect x="14" y="17" width="72" height="19" rx="6" fill="#c39a7a"/><rect x="17" y="37" width="21" height="39" rx="4" fill="#a67962"/><rect x="39" y="37" width="22" height="39" rx="4" fill="#a67962"/><rect x="62" y="37" width="21" height="39" rx="4" fill="#a67962"/><rect x="6" y="32" width="11" height="49" rx="4" fill="#d0aa86"/><rect x="83" y="32" width="11" height="49" rx="4" fill="#d0aa86"/></g>',
-chair: '<g stroke="#352b20" stroke-width="4" stroke-linejoin="round"><path d="M20 15V88M80 15V88" stroke="#4d3423" stroke-width="9"/><rect x="14" y="10" width="72" height="20" rx="5" fill="#c99b60"/><rect x="20" y="35" width="60" height="46" rx="7" fill="#a77a48"/><path d="M28 45H72M28 70H72" stroke="#d6ad73" stroke-width="2"/></g>',
-table: '<g stroke="#3d2e21" stroke-width="3"><rect x="9" y="9" width="82" height="82" rx="5" fill="#694a2f"/><rect x="5" y="5" width="90" height="84" rx="7" fill="#b38958"/><path d="M10 25H90M10 47H90M10 69H90" stroke="#7a5737" stroke-width="2"/><path d="M13 10V84M87 10V84" stroke="#d8b27e" stroke-width="2"/></g>',
-bed: '<g stroke="#3c3028" stroke-width="3"><rect x="8" y="4" width="84" height="92" rx="5" fill="#795438"/><rect x="15" y="12" width="70" height="77" rx="5" fill="#ddd0b5"/><rect x="20" y="18" width="27" height="20" rx="5" fill="#f6ebd6"/><rect x="53" y="18" width="27" height="20" rx="5" fill="#f6ebd6"/><path d="M15 43H85V86H15Z" fill="#55796d"/><path d="M16 49H84" stroke="#8fb0a1" stroke-width="5"/></g>',
-cabinet: '<g stroke="#36291e" stroke-width="3"><rect x="5" y="9" width="90" height="82" rx="3" fill="#6e4c30"/><rect x="10" y="15" width="38" height="68" fill="#a17c50"/><rect x="52" y="15" width="38" height="68" fill="#a17c50"/><path d="M40 43V58M60 43V58" stroke="#e1c48d" stroke-width="5"/><path d="M7 88H93" stroke="#c39d66" stroke-width="4"/></g>',
-barrel: '<g stroke="#392b1d" stroke-width="3"><circle cx="50" cy="50" r="44" fill="#ad814a"/><path d="M25 15V85M42 8V92M59 8V92M76 15V85" stroke="#6c492b" stroke-width="3"/><circle cx="50" cy="50" r="39" fill="none" stroke="#454b48" stroke-width="7"/><circle cx="50" cy="50" r="9" fill="#74502e"/></g>',
-crate: '<g stroke="#3c2c1c" stroke-width="3"><rect x="7" y="7" width="86" height="86" rx="2" fill="#a77d47"/><path d="M12 30H88M12 50H88M12 70H88" stroke="#6d4b2b"/><path d="M14 14L86 86M86 14L14 86" stroke="#d1ab72" stroke-width="9"/><rect x="10" y="10" width="80" height="80" fill="none" stroke="#6e4e2c" stroke-width="6"/></g>',
-chest: '<g stroke="#332b22" stroke-width="3"><rect x="6" y="12" width="88" height="76" rx="8" fill="#81562e"/><rect x="8" y="14" width="84" height="47" rx="9" fill="#b08549"/><path d="M25 14V85M75 14V85" stroke="#46514f" stroke-width="9"/><path d="M9 60H91" stroke="#3b3328" stroke-width="5"/><rect x="43" y="52" width="14" height="20" rx="2" fill="#d9bc74"/><circle cx="50" cy="61" r="2" fill="#342a21"/></g>'
-};
-
-
-// Local images remain in this browser origin. No image files are bundled or uploaded.
-const localMapCatalog = {"chair":{"label":"椅子","types":["object"],"files":[["Chair Wood Ashen A 1x1.png",200,200,42,41,117,118],["Chair Wood Ashen B 1x1.png",200,200,42,41,117,118],["Chair Wood Ashen C 1x1.png",200,200,40,37,120,127],["Chair Wood Ashen D 1x1.png",200,200,40,37,120,127],["Chair Wood Ashen E 1x1.png",200,200,42,45,116,111],["Chair Wood Ashen F 1x1.png",200,200,49,40,102,121],["Chair Wood Ashen G 1x1.png",200,200,42,45,116,111],["Chair Wood Ashen H 1x1.png",200,200,48,43,104,114],["Chair Wood Dark A 1x1.png",200,200,42,41,117,118],["Chair Wood Dark B 1x1.png",200,200,42,41,117,118],["Chair Wood Dark C 1x1.png",200,200,40,37,120,127],["Chair Wood Dark D 1x1.png",200,200,40,37,120,127]]},"armchair":{"label":"扶手椅","types":["object"],"files":[["Armchair Fabric Black A1 1x1.png",200,200,12,26,173,142],["Armchair Fabric Black B1 1x1.png",200,200,21,34,159,128],["Armchair Fabric Black Wood Ashen C1 1x1.png",200,200,16,28,170,149],["Armchair Fabric Black Wood Ashen D1 1x1.png",200,200,23,42,152,118],["Armchair Fabric Black Wood Ashen D2 1x1.png",200,200,23,42,152,118],["Armchair Fabric Black Wood Ashen E1 1x1.png",200,200,35,32,132,131],["Armchair Fabric Black Wood Ashen F1 1x1.png",200,200,32,37,134,124],["Armchair Fabric Black Wood Dark C1 1x1.png",200,200,16,28,170,149],["Armchair Fabric Black Wood Dark D1 1x1.png",200,200,23,42,152,118]]},"bench":{"label":"长凳","types":["object"],"files":[["Bench Wood Ashen A1 2x1.png",400,200,43,56,314,88],["Bench Wood Ashen A2 2x1.png",400,200,44,57,312,87],["Bench Wood Ashen B1 2x1.png",400,200,45,43,310,114],["Bench Wood Ashen B2 2x1.png",400,200,45,43,310,114],["Bench Wood Ashen C1 3x1.png",600,200,95,61,410,78],["Bench Wood Ashen C2 3x1.png",600,200,95,62,410,76],["Bench Wood Ashen D1 2x1.png",400,200,45,62,310,76],["Bench Wood Ashen D2 2x1.png",400,200,45,62,310,76]]},"stool":{"label":"凳子","types":["object"],"files":[["Stool Fabric Black Wood Ashen A1 1x1.png",200,200,50,56,102,89],["Stool Fabric Black Wood Ashen B1 1x1.png",200,200,55,64,92,73],["Stool Fabric Black Wood Dark A1 1x1.png",200,200,50,56,102,89],["Stool Fabric Black Wood Dark B1 1x1.png",200,200,55,64,92,73],["Stool Fabric Black Wood Light A1 1x1.png",200,200,50,56,102,89],["Stool Fabric Black Wood Light B1 1x1.png",200,200,55,64,92,73],["Stool Fabric Black Wood Walnut A1 1x1.png",200,200,50,56,102,89],["Stool Fabric Black Wood Walnut B1 1x1.png",200,200,55,64,92,73]]},"sofa":{"label":"长沙发","types":["object"],"files":[["Couch Fabric Black Wood Ashen B1 3x1.png",600,200,88,25,426,149],["Couch Fabric Black A1 2x1.png",400,200,51,23,295,151],["Couch Fabric Black A2 3x1.png",600,200,84,24,432,151],["Couch Fabric Black Wood Ashen A1 2x1.png",400,200,53,25,295,149],["Couch Fabric Black Wood Ashen C1 2x1.png",400,200,54,42,290,115],["Couch Fabric Black Wood Ashen C2 2x1.png",400,200,54,42,290,115],["Couch Fabric Black Wood Ashen D1 3x1.png",600,200,93,42,414,116],["Couch Fabric Black Wood Ashen D2 3x1.png",600,200,93,42,414,116],["Couch Fabric Black Wood Dark A1 2x1.png",400,200,53,25,295,149]]},"table_round":{"label":"圆桌","types":["object"],"files":[["Table Round Wood Ashen A1 2x2.png",400,400,73,75,258,258],["Table Round Wood Ashen A2 2x2.png",400,400,72,71,258,258],["Table Round Wood Ashen B1 2x2.png",400,400,73,75,258,258],["Table Round Wood Ashen B2 2x2.png",400,400,71,72,260,259],["Table Round Wood Ashen C1 2x2.png",400,400,69,70,259,259],["Table Round Wood Ashen C2 2x2.png",400,400,72,71,258,258],["Table Round Wood Ashen D1 1x1.png",200,200,20,22,161,161],["Table Round Wood Ashen D2 1x1.png",200,200,19,22,161,161]]},"table":{"label":"长桌","types":["object"],"files":[["Table Rectangle Wood Ashen A 4x2.png",800,400,68,95,658,207],["Table Rectangle Wood Ashen B 3x2.png",600,400,22,95,559,207],["Table Rectangle Wood Ashen C 3x2.png",600,400,66,95,459,207],["Table Rectangle Wood Ashen D 2x2.png",400,400,20,95,357,207],["Table Rectangle Wood Ashen E 2x1.png",400,200,48,23,304,156],["Table Rectangle Wood Ashen F 2x1.png",400,200,48,23,304,156],["Table Rectangle Wood Ashen G 2x1.png",400,200,48,23,304,156],["Table Rectangle Wood Ashen H 2x1.png",400,200,48,22,304,159],["Table Rectangle Wood Ashen I 2x1.png",400,200,48,22,304,160],["Table Rectangle Wood Ashen J 2x1.png",400,200,4,0,394,200]]},"bed":{"label":"床","types":["object"],"files":[["Single Bed Ashen A 1x2.png",200,400,7,41,193,329],["Single Bed Ashen B 1x2.png",200,400,7,41,193,329],["Single Bed Ashen C 1x2.png",200,400,7,43,193,324],["Single Bed Ashen D 1x2.png",200,400,2,52,198,316],["Single Bed Dark A 1x2.png",200,400,7,41,193,329],["Single Bed Dark B 1x2.png",200,400,7,41,193,329],["Single Bed Dark C 1x2.png",200,400,7,43,193,324],["Single Bed Dark D 1x2.png",200,400,2,52,198,316],["Single Bed Light A 1x2.png",200,400,7,41,193,329],["Single Bed Light B 1x2.png",200,400,7,41,193,329],["Single Bed Light C 1x2.png",200,400,7,43,193,324],["Single Bed Light D 1x2.png",200,400,2,52,198,316]]},"cabinet":{"label":"衣柜","types":["object"],"files":[["Wardrobe Wood Ashen A1 2x1.png",400,200,39,32,322,136],["Wardrobe Wood Ashen A2 2x1.png",400,200,39,42,322,116],["Wardrobe Wood Ashen B1 2x1.png",400,200,39,32,322,137],["Wardrobe Wood Ashen B2 2x1.png",400,200,39,42,322,117],["Wardrobe Wood Dark A1 2x1.png",400,200,39,32,322,136],["Wardrobe Wood Dark A2 2x1.png",400,200,39,42,322,116],["Wardrobe Wood Dark B1 2x1.png",400,200,39,32,322,137],["Wardrobe Wood Dark B2 2x1.png",400,200,39,42,322,117]]},"bookcase":{"label":"书架","types":["object"],"files":[["Bookcase Wood Ashen A 2x1.png",400,200,47,50,306,101],["Bookcase Wood Ashen A1 4x1.png",800,200,72,50,656,101],["Bookcase Wood Ashen B 2x1.png",400,200,47,50,306,101],["Bookcase Wood Ashen B1 2x1.png",400,200,8,50,384,100],["Bookcase Wood Ashen C 2x1.png",400,200,47,49,306,103],["Bookcase Wood Ashen D 2x1.png",400,200,47,49,306,103],["Bookcase Wood Ashen E 2x1.png",400,200,41,40,319,120],["Bookcase Wood Ashen F 2x1.png",400,200,41,29,319,143],["Bookcase Wood Ashen G 3x1.png",600,200,41,40,519,121],["Bookcase Wood Ashen H 3x1.png",600,200,41,29,519,143]]},"barrel":{"label":"木桶","types":["object"],"files":[["Barrel Wood Ashen A 1x1.png",200,200,24,24,152,152],["Barrel Large Wood Ashen A Side 3x3.png",600,600,16,54,569,493],["Barrel Large Wood Ashen A Side Rusty 3x3.png",600,600,16,54,569,493],["Barrel Large Wood Ashen A Top 3x3.png",600,600,65,64,471,472],["Barrel Large Wood Ashen A Top Rusty 3x3.png",600,600,65,64,471,472],["Barrel Large Wood Dark A Side 3x3.png",600,600,16,54,569,493],["Barrel Large Wood Dark A Top 3x3.png",600,600,65,64,471,472],["Barrel Large Wood Light A Side 3x3.png",600,600,16,54,569,493],["Barrel Large Wood Light A Top 3x3.png",600,600,65,64,471,472],["Barrel Large Wood Walnut A Side 3x3.png",600,600,16,54,569,493],["Barrel Large Wood Walnut A Top 3x3.png",600,600,65,64,471,472],["Barrel Wood Ashen B 1x1.png",200,200,24,24,152,152],["Barrel Wood Ashen C 1x1.png",200,200,24,24,152,152],["Barrel Wood Ashen C RUM 1x1.png",200,200,24,24,152,152],["Barrel Wood Ashen C TNT 1x1.png",200,200,24,24,152,152],["Barrel Wood Ashen C XXX 1x1.png",200,200,24,24,152,152]]},"crate":{"label":"木箱","types":["object"],"files":[["Crate Wood Ashen A 1x1.png",200,200,20,46,160,108],["Crate Lid Wood Ashen A 2x1.png",400,200,60,15,281,170],["Crate Lid Wood Ashen B 2x1.png",400,200,60,43,281,116],["Crate Lid Wood Ashen C 2x1.png",400,200,74,8,253,182],["Crate Lid Wood Ashen D 2x1.png",400,200,60,15,281,170],["Crate Lid Wood Ashen E 2x1.png",400,200,60,15,281,170],["Crate Lid Wood Dark A 2x1.png",400,200,60,15,281,170],["Crate Lid Wood Dark B 2x1.png",400,200,60,43,281,116],["Crate Lid Wood Dark C 2x1.png",400,200,74,8,253,182],["Crate Lid Wood Dark D 2x1.png",400,200,60,15,281,170],["Crate Lid Wood Dark E 2x1.png",400,200,60,15,281,170],["Crate Wood Ashen B 1x1.png",200,200,22,54,158,94],["Crate Wood Ashen C 2x1.png",400,200,74,9,252,181],["Crate Wood Ashen D 2x1.png",400,200,62,17,277,167],["Crate Wood Ashen E 2x1.png",400,200,62,46,277,110]]},"chest":{"label":"宝箱","types":["object"],"files":[["Chest Wood Ashen A 1x1.png",200,200,28,52,143,95],["Chest Wood Ashen A Rusty 1x1.png",200,200,28,52,143,95],["Chest Wood Ashen B 1x1.png",200,200,21,55,158,89],["Chest Wood Ashen B Rusty 1x1.png",200,200,21,55,158,89],["Chest Wood Ashen C 1x1.png",200,200,29,57,141,90],["Chest Wood Ashen C Rusty 1x1.png",200,200,29,57,141,90],["Chest Wood Ashen D 1x1.png",200,200,11,53,177,100],["Chest Wood Ashen D Rusty 1x1.png",200,200,11,53,177,100],["Chest Wood Ashen E 1x1.png",200,200,22,57,156,83],["Chest Wood Ashen E Rusty 1x1.png",200,200,22,57,156,83]]},"door":{"label":"门","types":["object"],"files":[["Door Wood Ashen A 1x1.png",200,200,0,90,200,35],["Door Wood Ashen B 1x1.png",200,200,0,79,200,43],["Door Wood Ashen C 1x1.png",200,200,0,84,200,41],["Door Wood Ashen D 1x1.png",200,200,0,76,200,47],["Door Wood Ashen D Rusty 1x1.png",200,200,0,76,200,47],["Door Wood Ashen E 1x1.png",200,200,0,79,200,42],["Door Wood Ashen E Rusty 1x1.png",200,200,0,79,200,42],["Door Wood Ashen F 1x1.png",200,200,0,74,200,53],["Door Wood Ashen G 1x1.png",200,200,0,85,200,30],["Door Wood Ashen G Rusty 1x1.png",200,200,0,85,200,30]]},"stairs_stone":{"label":"石楼梯","types":["stairs"],"files":[["Stairs Stone Earthy A 1x3.png",200,600,0,0,200,425],["Stairs Stone Earthy B 1x2.png",200,400,0,0,200,225],["Stairs Stone Earthy C 1x1.png",200,200,0,0,200,185],["Stairs Stone Earthy Corner In A 1x1.png",200,200,0,0,200,200],["Stairs Stone Earthy Corner In B 1x1.png",200,200,0,0,200,200],["Stairs Stone Earthy Corner In C 1x1.png",200,200,0,0,200,200]]},"stairs_wood":{"label":"木楼梯","types":["stairs"],"files":[["Stairs Wood Ashen A 1x3.png",200,600,0,0,200,425],["Stairs Wood Ashen B 1x2.png",200,400,0,0,200,225],["Stairs Wood Ashen C 1x1.png",200,200,0,0,200,185],["Stairs Wood Ashen Corner In A 1x1.png",200,200,0,0,200,200],["Stairs Wood Ashen Corner In B 1x1.png",200,200,0,0,200,200],["Stairs Wood Ashen Corner In C 1x1.png",200,200,0,0,200,200]]},"wall_stone":{"label":"石墙","types":["wall"],"files":[["Wall Stone Earthy A Straight C 1x1.png",200,200,0,66,200,68],["Wall Stone Earthy A Connector A 1x1.png",200,200,46,66,109,68],["Wall Stone Earthy A Connector B 1x1.png",200,200,67,66,66,68],["Wall Stone Earthy A Connector DIAG A 1x1.png",200,200,14,66,158,118],["Wall Stone Earthy A Corner A 1x1.png",200,200,66,66,107,108],["Wall Stone Earthy A Corner B 1x1.png",200,200,66,66,107,108],["Wall Stone Earthy A Corner C 1x1.png",200,200,66,66,134,134],["Wall Stone Earthy A Corner D 1x1.png",200,200,67,67,133,133],["Wall Stone Earthy A Corner E 1x1.png",200,200,66,66,134,134],["Wall Stone Earthy A Corner F 2x2.png",400,400,166,166,234,234],["Wall Stone Earthy A Corner G 2x2.png",400,400,65,67,335,333],["Wall Stone Earthy A Corner H 3x3.png",600,600,165,166,435,434],["Wall Stone Earthy A Ending A 1x1.png",200,200,100,66,50,68],["Wall Stone Earthy A Joint A 1x1.png",200,200,32,31,137,138],["Wall Stone Earthy A Joint B 1x1.png",200,200,32,66,137,103],["Wall Stone Earthy A Joint C 1x1.png",200,200,0,0,200,200],["Wall Stone Earthy A Joint D 1x1.png",200,200,0,66,200,134],["Wall Stone Earthy A Straight A 3x1.png",600,200,0,66,600,68],["Wall Stone Earthy A Straight B 2x1.png",400,200,0,66,400,68],["Wall Stone Earthy A Straight D 1x1.png",200,200,0,66,100,68]]},"wall_wood":{"label":"木墙","types":["wall"],"files":[["Wall Wood Ashen A Straight C 1x1.png",200,200,0,78,200,44],["Wall Wood Ashen A Connector A 1x1.png",200,200,46,78,109,44],["Wall Wood Ashen A Connector B 1x1.png",200,200,77,78,46,44],["Wall Wood Ashen A Connector DIAG A 1x1.png",200,200,23,78,147,99],["Wall Wood Ashen A Corner A 1x1.png",200,200,78,78,95,96],["Wall Wood Ashen A Corner B 1x1.png",200,200,78,78,95,96],["Wall Wood Ashen A Corner C 1x1.png",200,200,78,78,122,122],["Wall Wood Ashen A Corner D 1x1.png",200,200,78,78,122,122],["Wall Wood Ashen A Corner E 1x1.png",200,200,78,78,122,122],["Wall Wood Ashen A Corner F 2x2.png",400,400,178,178,222,222],["Wall Wood Ashen A Corner G 2x2.png",400,400,78,78,322,322],["Wall Wood Ashen A Corner H 3x3.png",600,600,178,178,422,422],["Wall Wood Ashen A Ending A 1x1.png",200,200,100,78,50,44],["Wall Wood Ashen A Joint A 1x1.png",200,200,32,31,137,138],["Wall Wood Ashen A Joint B 1x1.png",200,200,32,78,137,91],["Wall Wood Ashen A Joint C 1x1.png",200,200,0,0,200,200],["Wall Wood Ashen A Joint D 1x1.png",200,200,0,78,200,122],["Wall Wood Ashen A Straight A 3x1.png",600,200,0,78,600,44],["Wall Wood Ashen A Straight B 2x1.png",400,200,0,78,400,44],["Wall Wood Ashen A Straight D 1x1.png",200,200,0,78,100,44]]},"stone":{"label":"石地板","types":["stone"],"files":[["Cobblestone A 03.jpg",600,600,0,0,600,600],["Cobblestone A 01.jpg",600,600,0,0,600,600],["Cobblestone A 02.jpg",600,600,0,0,600,600],["Cobblestone A 04.jpg",600,600,0,0,600,600],["Cobblestone A 05.jpg",600,600,0,0,600,600],["Cobblestone A Dirt1.jpg",1800,1800,0,0,1800,1800]]},"wood":{"label":"木地板","types":["wood","ledge"],"files":[["Wood Texture A Ashen.jpg",1000,1000,0,0,1000,1000],["Wood Texture A Dark.jpg",1000,1000,0,0,1000,1000],["Wood Texture A Light.jpg",1000,1000,0,0,1000,1000],["Wood Texture A Red.jpg",1000,1000,0,0,1000,1000],["Wood Texture A Walnut 5x5.jpg",1000,1000,0,0,1000,1000],["Wood Texture A.jpg",1000,1000,0,0,1000,1000]]},"water":{"label":"水面","types":["water"],"files":[["Water Still A 01.jpg",1400,1400,0,0,1400,1400],["Water Opaque A 01.jpg",1200,1200,0,0,1200,1200],["Water Still A 03.jpg",1400,1400,0,0,1400,1400],["Water Still B 01.jpg",1400,1400,0,0,1400,1400]]},"boulder":{"label":"巨石","types":["stalagmite","rubble","object"],"files":[["Boulder Stone Earthy A1 3x3.png",600,600,81,10,423,581],["Boulder Stone Earthy A10 3x3.png",600,600,34,63,533,499],["Boulder Stone Earthy A11 3x3.png",600,600,1,0,598,597],["Boulder Stone Earthy A12 3x3.png",600,600,45,16,518,569],["Boulder Stone Earthy A13 3x3.png",600,600,78,49,460,531],["Boulder Stone Earthy A14 3x3.png",600,600,2,22,598,566],["Boulder Stone Earthy A15 3x3.png",600,600,2,44,590,521],["Boulder Stone Earthy A16 3x3.png",600,600,33,25,554,535]]},"grass":{"label":"草丛","types":["vegetation"],"files":[["Grass Patch Green1 A10 1x1.png",200,200,51,60,98,80],["Grass Patch Green1 A11 1x1.png",200,200,22,43,157,115],["Grass Patch Green1 A12 1x1.png",200,200,17,36,166,129],["Grass Patch Green1 A13 1x1.png",200,200,48,58,105,85],["Grass Patch Green1 A14 1x1.png",200,200,23,47,155,107],["Grass Patch Green1 A15 1x1.png",200,200,62,76,76,48],["Grass Patch Green1 A16 1x1.png",200,200,57,70,86,61],["Grass Patch Green1 A17 1x1.png",200,200,55,66,90,69]]},"tree":{"label":"树冠","types":["vegetation"],"files":[["Tree Multicolor1 A1 6x6.png",1200,1200,42,57,1121,1103],["Tree Multicolor1 A2 8x7.png",1600,1400,85,98,1401,1229],["Tree Multicolor1 A3 6x5.png",1200,1000,65,11,1062,961],["Tree Multicolor1 A4 5x6.png",1000,1200,13,109,966,1000],["Tree Multicolor1 A5 6x6.png",1200,1200,105,77,1000,1056],["Tree Multicolor1 B1 5x5.png",1000,1000,40,26,926,943],["Tree Multicolor1 B2 5x5.png",1000,1000,72,78,867,776],["Tree Multicolor1 B3 5x5.png",1000,1000,44,71,923,832]]}};
-const localMapFiles = new Map(Object.values(localMapCatalog).flatMap(group => group.files.map(file => [file[0],file])));
-const localMapCache = new Map();
-const localMapStatus = root.querySelector('[data-role="mapAssetsStatus"]');
-const localMapImport = root.querySelector('[data-role="mapAssetsImport"]');
-const localMapInput = root.querySelector('[data-role="mapAssetsInput"]');
-let localMapDbPromise;
-function mapAssetStatus(message, error=false) {
- localMapStatus.textContent=message;
- localMapStatus.dataset.state=error?'error':'ready';
-}
-function openMapAssets() {
- if (!localMapDbPromise) localMapDbPromise = new Promise((resolve,reject)=>{
-  const request=indexedDB.open('dnd-battle-map-assets',1);
-  request.onupgradeneeded=()=>request.result.createObjectStore('files');
-  request.onsuccess=()=>resolve(request.result);
-  request.onerror=()=>reject(request.error);
- });
- return localMapDbPromise;
-}
-async function reportMapAssetCount() {
- const db=await openMapAssets();
- const keys=await new Promise((resolve,reject)=>{
-  const req=db.transaction('files').objectStore('files').getAllKeys();
-  req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);
- });
- const count=keys.filter(key=>localMapFiles.has(key)).length;
- mapAssetStatus(count?`本机已保存 ${count} / ${localMapFiles.size} 张素材；未导入的物件使用占位图。`:'尚未导入本地素材；当前使用占位图。');
-}
-function resolveMapAsset(text, type, warnings) {
- if (!text) return '';
- const match=String(text).match(/^([a-z_]+)(?::([1-9]\d*))?$/);
- const group=match&&Object.hasOwn(localMapCatalog,match[1])?localMapCatalog[match[1]]:null, number=Number(match?.[2]||1);
- if(!group||!group.types.includes(type)||number>group.files.length){warnings.push(`未知或不适用的素材 ${text}，保留地形占位`);return '';}
- return `${match[1]}:${number}`;
-}
-function getMapAssetRecord(ref) {
- const [key,number]=ref.split(':');
- return {key,file:localMapCatalog[key].files[Number(number||1)-1]};
-}
-function loadMapAsset(ref) {
- const {key,file}=getMapAssetRecord(ref), filename=file[0];
- if(!localMapCache.has(filename)) localMapCache.set(filename,(async()=>{
-  const db=await openMapAssets();
-  const blob=await new Promise((resolve,reject)=>{
-   const request=db.transaction('files').objectStore('files').get(filename);
-   request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);
-  });
-  if(!blob)return null;
-  const url=URL.createObjectURL(blob),image=new Image();image.src=url;
-  try{await image.decode();}catch(error){URL.revokeObjectURL(url);throw Error(`素材无法显示：${filename}`);}
-  return {key,file,url};
- })().catch(error=>{mapAssetStatus(`本地素材读取失败：${error.message}。当前保留占位，请重新导入或检查浏览器存储。`,true);return null;}));
- return localMapCache.get(filename);
-}
-async function importMapAssets(files) {
- const selected=[...files].filter(file=>localMapFiles.has(file.name));
- if(!selected.length)throw Error('所选目录没有匹配图片，请选择 Forgotten-Adventures 素材文件夹。');
- if(new Set(selected.map(file=>file.name)).size!==selected.length)throw Error('目录中有同名素材，请只选择一份素材包。');
- for(const file of selected){
-  if(!['image/png','image/jpeg'].includes(file.type))throw Error(`文件不是PNG/JPEG图片：${file.name}`);
-  const bitmap=await createImageBitmap(file);bitmap.close();
- }
- const db=await openMapAssets();
- await new Promise((resolve,reject)=>{
-  const tx=db.transaction('files','readwrite');
-  for(const file of selected)tx.objectStore('files').put(file,file.name);
-  tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error||Error('素材保存已取消'));
- });
- const oldAssets=await Promise.all(localMapCache.values());
- for(const asset of oldAssets)if(asset)URL.revokeObjectURL(asset.url);
- localMapCache.clear();
- await reportMapAssetCount();layoutDirty=true;renderMap();
- return selected.length;
-}
-function paintMapAsset(el,tile,asset) {
- const {key,file,url}=asset;
- el.replaceChildren();
- el.classList.add('has-local-asset');
- el.dataset.localAsset=key;
- if(['stone','wood','water'].includes(key)){
-  el.style.backgroundImage=`url("${url}")`;
-  el.style.backgroundSize='calc(var(--scale) * 15) calc(var(--scale) * 15)';
-  return;
- }
- const ns='http://www.w3.org/2000/svg';
- const svg=document.createElementNS(ns,'svg');
- svg.setAttribute('viewBox','0 0 100 100');svg.setAttribute('preserveAspectRatio','none');svg.setAttribute('aria-hidden','true');
- const g=document.createElementNS(ns,'g');
- const straightWall=tile.type==='wall'&&file[0].includes(' Straight ');
- const vertical=straightWall&&tile.size[1]>tile.size[0];
- g.setAttribute('transform',`rotate(${straightWall?(vertical?90:0):tile.facing} 50 50)`);
- const count=straightWall?Math.max(1,Math.round(Math.max(...tile.size)/Math.min(...tile.size)*file[6]/file[5])):1;
- for(let i=0;i<count;i++){
-  const part=document.createElementNS(ns,'svg');part.setAttribute('viewBox',file.slice(3).join(' '));part.setAttribute('preserveAspectRatio','none');
-  part.setAttribute('x',i*100/count);part.setAttribute('y',0);part.setAttribute('width',100/count);part.setAttribute('height',100);
-  const image=document.createElementNS(ns,'image');image.setAttribute('href',url);image.setAttribute('width',file[1]);image.setAttribute('height',file[2]);
-  part.append(image);g.append(part);
- }
- svg.append(g);el.append(svg);
-}
-function applyMapGround() {
- const field=state.field;
- const ref=field&&(field.asset||(['stone','wood','water'].includes(field.ground)?field.ground+':1':''));
- mapEl.dataset.localGround=ref||'';
- mapEl.style.backgroundImage='';mapEl.style.backgroundSize='';mapEl.style.backgroundPosition='';
- if(ref)loadMapAsset(ref).then(asset=>{
-  if(!asset||mapEl.dataset.localGround!==ref||!mapEl.isConnected)return;
-  mapEl.style.backgroundImage=`linear-gradient(90deg,rgba(255,255,255,.16) 1px,transparent 1px),linear-gradient(0deg,rgba(255,255,255,.16) 1px,transparent 1px),url("${asset.url}")`;
-  mapEl.style.backgroundSize='var(--cell) var(--cell),var(--cell) var(--cell),calc(var(--scale) * 25) calc(var(--scale) * 25)';
-  mapEl.style.backgroundPosition='0 0';
- });
-}
-localMapImport.addEventListener('click',()=>localMapInput.click());
-localMapInput.addEventListener('change',async()=>{
- if(!localMapInput.files.length)return;
- localMapImport.disabled=true;mapAssetStatus('正在保存到本机，请稍候…');
- try{await importMapAssets(localMapInput.files);}catch(error){mapAssetStatus(`导入失败：${error.message}`,true);}
- finally{localMapImport.disabled=false;localMapInput.value='';}
-});
-reportMapAssetCount().catch(error=>{mapAssetStatus(`浏览器本地存储不可用：${error.message}。当前使用占位图。`,true);});
-window.addEventListener('pagehide',()=>{
- for(const pending of localMapCache.values())pending.then(asset=>{if(asset)URL.revokeObjectURL(asset.url);});
- if(localMapDbPromise)localMapDbPromise.then(db=>db.close()).catch(()=>{});
-},{once:true});
-
 function parseBattleBlock(rawSource) {
 const source = normalizeRawText(rawSource);
 const battleContent = extractLatestTagContent(source, 'battle');
@@ -2253,7 +2098,7 @@ if (field) throw Error('一张地图只能有一条 map');
 const origin = pair(values.origin), size = pair(values.size);
 if (![...origin, ...size].every(n => n % 5 === 0) || size.some(n => n <= 0)) throw Error('范围须按5尺网格，宽高须大于0');
 if (!['stone','dirt','grass','sand','snow','water','wood'].includes(values.ground)) throw Error('未知地面类型');
-field = {name, origin, size, ground: values.ground, asset: resolveMapAsset(values.asset, values.ground, warnings)};
+field = {name, origin, size, ground: values.ground};
 } else {
 const shape = values.shape || 'rect';
 if (!['rect','ellipse','polygon'].includes(shape)) throw Error('未知地形形状');
@@ -2268,10 +2113,7 @@ size = [Math.max(...points.map(p => p[0])) - pos[0], Math.max(...points.map(p =>
 if (size.some(n => n <= 0)) throw Error('地形尺寸须大于0');
 const height = values.height === undefined ? 0 : Number(values.height);
 if (!Number.isFinite(height)) throw Error('高度须为有限数值');
-const icon = values.icon || '', facing = values.facing === undefined ? 0 : Number(values.facing);
-if (icon && (values.type !== 'object' || !Object.hasOwn(objectIcons, icon))) throw Error('物件图形须使用已支持的object图标');
-if (![0,90,180,270].includes(facing)) throw Error('物件朝向只支持0、90、180、270度');
-terrain.push({name, type: values.type, shape, pos, size, points, height, icon, facing, asset: resolveMapAsset(values.asset, values.type, warnings), note: values.note || ''});
+terrain.push({name, type: values.type, shape, pos, size, points, height, note: values.note || ''});
 }
 } catch (error) { errors.push(`Line ${index + 1}: ${error.message}`); }
 return;
@@ -2537,7 +2379,6 @@ mapEl.style.setProperty("--min-x", bounds.minX);
 mapEl.style.setProperty("--min-y", bounds.minY);
 if (state.field) mapEl.dataset.ground = state.field.ground;
 else delete mapEl.dataset.ground;
-applyMapGround();
 root.toggleAttribute('data-map-range', !!state.field);
 mapEl.style.width = `${mapWidth}px`;
 mapEl.style.height = `${mapHeight}px`;
@@ -2570,21 +2411,6 @@ el.style.setProperty("--w", tile.size[0]);
 el.style.setProperty("--h", tile.size[1]);
 if (tile.shape === 'ellipse') el.style.borderRadius = '50%';
 if (tile.shape === 'polygon') el.style.clipPath = 'polygon(' + tile.points.map(p => `${(p[0]-tile.pos[0])/tile.size[0]*100}% ${(p[1]-tile.pos[1])/tile.size[1]*100}%`).join(',') + ')';
-if (tile.icon) {
-el.dataset.icon = tile.icon;
-const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-svg.setAttribute('viewBox', '0 0 100 100');
-svg.setAttribute('preserveAspectRatio', 'none');
-svg.setAttribute('aria-hidden', 'true');
-const drawing = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-drawing.setAttribute('transform', `rotate(${tile.facing} 50 50)`);
-drawing.innerHTML = objectIcons[tile.icon]; // Fixed drawings above, never model-supplied markup.
-svg.append(drawing);
-el.append(svg);
-}
-const defaultAsset = tile.icon || ({wall:'wall_stone',stairs:'stairs_stone',water:'water',ledge:'wood',wood:'wood',stone:'stone',stalagmite:'boulder',vegetation:'grass'})[tile.type];
-const assetRef = tile.asset || (defaultAsset ? defaultAsset + ':1' : '');
-if(assetRef)loadMapAsset(assetRef).then(asset=>{if(asset&&el.isConnected)paintMapAsset(el,tile,asset);});
 terrainFrag.appendChild(el);
 });
 terrainLayer.replaceChildren(terrainFrag);

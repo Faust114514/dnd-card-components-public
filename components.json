@@ -1,5 +1,5 @@
 {
-  "version": "vf.0.4.5",
+  "version": "vf.0.4.6",
   "scripts": [
     {
       "type": "script",
@@ -444,7 +444,7 @@
     },
     {
       "disabled": false,
-      "findRegex": "/(<battle>[\\s\\S]*?<\\/battle>)/g",
+      "findRegex": "/(<battle>(?:(?!<battle>)[\\s\\S])*?<\\/battle>)/g",
       "id": "36bab6c1-2a4d-44de-b9a7-256c8a68c50d",
       "markdownOnly": true,
       "maxDepth": 3,
@@ -642,7 +642,7 @@
     {
       "id": "dnd-clean-old-battle-map",
       "scriptName": "[不发送]旧战斗面板清理",
-      "findRegex": "/<battle>[\\s\\S]*?<\\/battle>/g",
+      "findRegex": "/<battle>(?:(?!<battle>)[\\s\\S])*?<\\/battle>/g",
       "trimStrings": [],
       "placement": [
         1,

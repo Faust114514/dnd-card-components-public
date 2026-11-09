@@ -26,26 +26,12 @@ shape有三种：
 - polygon多边形：改用points x1,y1;x2,y2;x3,y3，至少三个不同顶点，按周边顺序填写不交叉；不写pos/size。适合弯曲河岸、斜墙和不规则区域。
 height与note可省略，默认高度0。地图默认不铺名称文字，名称、高度和note仍保存在可展开的地形说明中，不要因隐藏标签省略必要信息。类型和形状字段必须使用上述英文值；人物行仍完全遵循原战斗面板的init/hp/pos/att/status/next等字段。
 
-家具与物件占位图：
-- type object可增加icon，支持sofa沙发、chair椅子、table桌子、bed床、cabinet柜子、barrel木桶、crate木箱、chest宝箱。它们是内置俯视图形；模型只选英文键，不输出图片URL、SVG或HTML。其他物件仍用普通object形状和准确名称、note描述，不强行套错图标。
-- facing只用0、90、180、270，默认0。图形基准朝向为图的上方，顺时针旋转；sofa/chair/bed的靠背或床头在0度时位于图形上侧。pos和size始终是旋转后实际占地的左上角与宽高，不会被程序自动交换。横放10×5尺的沙发改为竖放时，相应写size 5,10与facing 90或270。
-- 家具尺寸按实际物件填写，可以小于一格；例如椅子2×2尺、木桶3×3尺，不强制每件都占满5尺格。图形只表示位置和外观，是否可移动、翻倒或提供掩体仍由实际事实与规则判断。
-例：terrain 长沙发|type object|icon sofa|pos 10,10|size 10,5|height 3|note 可供三人坐
-例：terrain 靠墙木椅|type object|icon chair|facing 90|pos 25,15|size 2,2|height 3|note 普通木椅
-
-本地图片素材：
-- 地图程序可按asset代号选用玩家已导入的图片。模型只写代号，不写图片URL、文件路径、HTML或SVG。素材只是外观；不能根据某张图片反过来增加剧情中的物件、通路、敌人或奖励。
-- terrain可添加asset 代号。可选代号与对应类型如下：
-  object：chair木椅、armchair扶手椅、bench长凳、stool凳子、sofa长沙发、table_round圆桌、table长桌、bed床、cabinet衣柜、bookcase书架、barrel木桶、crate木箱、chest宝箱、door门。
-  wall：wall_stone石墙、wall_wood木墙；stairs：stairs_stone石阶、stairs_wood木阶；vegetation：grass草丛、tree树冠。
-  stone：stone石面；wood或ledge：wood木面；water：water水面；stalagmite、rubble或object：boulder巨石。
-- map可增加asset stone、wood或water，须与ground相同；其他底面继续用原有地面表现。没有asset时，已支持的ground与地形类型、旧icon会使用默认素材；没有导入对应图片时仍显示原占位图，不取消地形。
-- 默认用该类第1张，保持每轮一致；只有玩家指定或既有场景已经确定编号时，才写asset 代号:编号选择固定变体，例如asset chair:2。不要随机更换图片或凭空编造代号。
-- asset仍按pos、size、shape和facing显示；pos/size是实际占地，不包含原图的透明边缘。直墙素材按墙长重复铺设，竖墙自动转向；转角素材按实际形状与facing摆放。门的开启情况写在note中，不把关门图片当作自动判定。
-- 冷僻物件没有对应素材时，省略asset和icon，使用type object与rect/ellipse/polygon表达真实占地，并保留准确名称、高度、通行、遮挡等note。不得为了有图而换成语义不符的物件。
-例：terrain 圆餐桌|type object|asset table_round|pos 20,20|size 8,8|height 3
-例：terrain 橡树|type vegetation|asset tree|pos 60,15|size 15,15|height 25|note 树干位于中心，树冠投影不等于整块不能通行
-例：terrain 星象仪|type object|shape ellipse|pos 30,20|size 5,5|height 6|note 铜制环形仪器，不可直接穿过
+纯色地形：
+- 使用现有5尺格网与纯色形状表示地面、墙、水、杂物、家具和高低差，不读取图片素材。矩形区域按实际占地涂色；连续同类区域合并，仍可使用椭圆和多边形表达实际边界。
+- 家具统一使用type object，按实际尺寸单独记录。椅子、沙发、桌子和冷僻物件均靠准确名称及note区分；可以小于一格，不强制每件占满5尺。长条物件朝向通过pos/size表达，额外细节写note。
+- 不输出asset、icon、facing、图片地址、文件路径、HTML或SVG。颜色与格子只表达场地，不自动改变掩体、通行或战斗判定。
+- 地形依输出顺序叠加：先地面和道路，再墙、家具等障碍；门窗在墙段之间留空，不能用整块实心墙遮住门口或整间房。
+- 思考或检查文字只写“战斗地图”等普通名称，不写实际battle标签或完整示例；真正的战斗地图仅在思考区闭合后输出一组。
 
 格式例（仅示意，场景与数值不可套用到实际人物）：
 <battle>
@@ -59,7 +45,7 @@ terrain 河道|type water|shape polygon|points 85,0;110,0;100,45;115,90;90,90;80
 terrain 木桥|type wood|pos 65,40|size 45,10|note 桥面连接两岸
 terrain 瞭望台|type ledge|pos 45,10|size 20,20|height 10|note 台面高10尺
 terrain 石阶|type stairs|pos 45,30|size 10,15|height 10|note 由庭院升至瞭望台
-terrain 货箱|type object|icon crate|pos 15,30|size 10,10|height 5|note 箱高5尺，遮挡按双方视线判断
+terrain 货箱|type object|pos 15,30|size 10,10|height 5|note 箱高5尺，遮挡按双方视线判断
 terrain 乱石|type rubble|pos 15,50|size 15,10|note 碎石形成困难地形
 terrain 河岸树丛|type vegetation|shape ellipse|pos 100,10|size 15,20|height 10|note 树丛妨碍观察
 游侠|init 16|hp 28/32|pos 35,60|att 0|next

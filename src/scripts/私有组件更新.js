@@ -1,3 +1,9 @@
+// Shipped map patterns to repair, shared by installation and same-version detection.
+const battlePatternFixes = [
+      ['36bab6c1-2a4d-44de-b9a7-256c8a68c50d', String.raw`/(<battle>[\s\S]*?<\/battle>)/g`, String.raw`/(<battle>(?:(?!<battle>)[\s\S])*?<\/battle>)/g`],
+      ['dnd-clean-old-battle-map', String.raw`/<battle>[\s\S]*?<\/battle>/g`, String.raw`/<battle>(?:(?!<battle>)[\s\S])*?<\/battle>/g`],
+    ];
+
 // Only these two shipped patterns need the global flag. Keep custom patterns as entered.
 function hasOriginalCharacterPattern(rule) {
   const isArchiveRule = rule.id === 'd7a9c17d-960e-4a56-9e17-0c77e86c71a8' ||
@@ -94,6 +100,14 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
         // Migrate the shipped depths only; preserve personal settings and switches.
         if (target[field] === previous) {target[field] = next; changed.push(target.scriptName + '深度');}
       }
+    }
+  }
+  if (dndVersionIsNewer(manifest.version, 'vf.0.4.5')) {
+    for (const [id, previous, next] of battlePatternFixes) {
+      const target = regexes.find(rule => rule.id === id);
+      if (!target) throw Error('未找到战斗地图规则：' + id);
+      // Only replace the faulty shipped pattern; retain personal settings.
+      if (target.findRegex === previous) { target.findRegex = next; changed.push(target.scriptName + '匹配范围'); }
     }
   }
   const removedInstruction = manifest.removed_post_history_instruction;
@@ -257,12 +271,13 @@ function dndVersionIsNewer(next, current) {
       await inspectWorldbook(candidate, start); guard(start);
       // Older updaters downloaded the bodies and recorded the version, but kept findRegex.
       if (candidate.version === installed()) {
-        const pending = current().data.extensions.regex_scripts.filter(hasOriginalCharacterPattern);
+        const pending = current().data.extensions.regex_scripts.filter(rule => hasOriginalCharacterPattern(rule) ||
+          (dndVersionIsNewer(candidate.version, 'vf.0.4.5') && battlePatternFixes.some(([id, previous]) => rule.id === id && rule.findRegex === previous)));
         const needsRepair = item => item.kind === 'regex' && dndVersionIsNewer(candidate.version, 'vf.0.3.4') && pending.some(rule => rule.id === item.id);
         candidate.components = candidate.components.filter(needsRepair);
         if (candidate.empty_regexes) candidate.empty_regexes = candidate.empty_regexes.filter(needsRepair);
         const rulesVersion = dndVersionIsNewer(candidate.version, 'vf.0.4.4') ? 'vf.0.4.5' : 'vf.0.3.8';
-        if (current().data.extensions.dnd_component_updates?.rules_version === rulesVersion) delete candidate.added_regexes;
+        if (current().data.extensions.dnd_component_updates?.rules_version === rulesVersion && !pending.some(rule => rule.id === 'dnd-clean-old-battle-map')) delete candidate.added_regexes;
       }
       manifest = candidate;
       for (const text of manifest.notes) {const li = doc.createElement('li'); li.textContent = text; dialog.querySelector('.dpu-notes').append(li);}

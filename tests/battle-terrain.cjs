@@ -12,15 +12,15 @@ terrain 西墙|type wall|pos 0,0|size 2,50|height 10
 terrain 东墙|type wall|pos 68,0|size 2,50|height 10
 terrain 南墙西段|type wall|pos 0,48|size 28,2|height 10
 terrain 南墙东段|type wall|pos 42,48|size 28,2|height 10|note 中间为入口
-terrain 长沙发|type object|icon sofa|pos 7,7|size 15,8|height 3|note 三人长沙发
-terrain 茶几|type object|icon table|pos 13,19|size 10,6|height 2
-terrain 西侧椅子|type object|icon chair|facing 270|pos 7,20|size 4,4|height 3
-terrain 东侧椅子|type object|icon chair|facing 90|pos 25,20|size 4,4|height 3
-terrain 床铺|type object|icon bed|pos 50,5|size 10,15|height 2
-terrain 双门柜|type object|icon cabinet|facing 180|pos 33,4|size 10,5|height 6
-terrain 木桶|type object|icon barrel|pos 52,34|size 4,4|height 3
-terrain 木箱|type object|icon crate|pos 58,34|size 5,5|height 4
-terrain 铜扣宝箱|type object|icon chest|pos 35,35|size 8,5|height 3
+terrain 长沙发|type object|pos 7,7|size 15,8|height 3|note 三人长沙发
+terrain 茶几|type object|pos 13,19|size 10,6|height 2
+terrain 西侧椅子|type object|pos 7,20|size 4,4|height 3
+terrain 东侧椅子|type object|pos 25,20|size 4,4|height 3
+terrain 床铺|type object|pos 50,5|size 10,15|height 2
+terrain 双门柜|type object|pos 33,4|size 10,5|height 6
+terrain 木桶|type object|pos 52,34|size 4,4|height 3
+terrain 木箱|type object|pos 58,34|size 5,5|height 4
+terrain 铜扣宝箱|type object|pos 35,35|size 8,5|height 3
 游侠|init 16|hp 28/32|pos 15,35|att 0|next
 守卫|init 12|hp 18/18|pos 60,20|att 2
 </battle>`;
@@ -29,7 +29,7 @@ const checks=[];function check(ok,label){assert.ok(ok,label);checks.push(label);
 let browser,ws,session,seq=0;const pending=new Map(),sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const server=http.createServer((req,res)=>{
  if(req.url!=='/'){res.writeHead(404);res.end();return;}
- const setup="window.fixtureErrors=[];addEventListener('error',e=>{if(e.message)fixtureErrors.push(e.message)});addEventListener('unhandledrejection',e=>fixtureErrors.push(String(e.reason)));";
+ const setup="Object.defineProperty(window,'indexedDB',{get(){throw Error('Unexpected local asset access')}});window.fixtureErrors=[];addEventListener('error',e=>{if(e.message)fixtureErrors.push(e.message)});addEventListener('unhandledrejection',e=>fixtureErrors.push(String(e.reason)));";
  const html=source.replace(/^```html\s*/,'').replace(/\s*```\s*$/,'').replace('$1',()=>fixture)
  .replace('<head>','<head><script>'+setup+'</script>')
  .replace(/\}\)\(\);\s*<\/script>/,'window.mapTest={state,parseBattleBlock,computeBounds,syncBattleSnapshotFromDom,renderMap};\n})();\n</script>');
@@ -61,15 +61,14 @@ async function shot(name){const clip=await run('(()=>{const b=document.querySele
  check(await run('document.querySelector("[data-role=mapCols]").value==="24"&&document.querySelector("[data-role=applySize]").disabled'),'size controls show the declared extent');
  await shot('战场地形-桌面');
  await feed(furnished);
- check(await run('mapTest.state.terrain.length===14&&document.querySelectorAll(".terrain[data-icon] svg").length===9'),'room furniture renders as nine distinct placeholders');
- check(await run('new Set(mapTest.state.terrain.filter(t=>t.icon).map(t=>t.icon)).size===8'),'all eight supported prop types are present');
- check(await run('document.querySelector(".terrain[data-icon=chair] g").getAttribute("transform")==="rotate(270 50 50)"&&mapTest.state.terrain.find(t=>t.name==="西侧椅子").size.join(",")==="4,4"'),'chair orientation rotates its drawing without changing its footprint');
+ check(await run('mapTest.state.terrain.length===14&&document.querySelectorAll(".terrain.object").length===9'),'furniture uses nine separate colored footprints');
+ check(await run('!document.querySelector(".terrain svg,.terrain img,[data-role=mapAssetsInput]")'),'no furniture drawings, local images or file importer');
+ check(await run('[...document.querySelectorAll(".terrain")].every(el=>getComputedStyle(el).backgroundImage==="none")'),'terrain uses flat colors');
+ check(await run('getComputedStyle(document.querySelector(".terrain-layer"),"::after").backgroundImage.includes("linear-gradient")'),'grid lines remain visible over terrain');
  check(await run('mapTest.parseBattleBlock(document.querySelector(".battle-embed").dataset.battle).errors.length===0'),'furnished scene fits the declared map and parses');
- await shot('家具占位-桌面');
- await feed(furnished.replace('icon sofa','icon https://example.invalid/sofa.svg'));
- check(await run('!mapTest.state.terrain.some(t=>t.name==="长沙发")&&document.querySelector("[data-role=parseStatus]").className.includes("warn")'),'model-supplied icon URLs are rejected rather than loaded');
- await feed(furnished.replace('facing 270','facing 45'));
- check(await run('!mapTest.state.terrain.some(t=>t.name==="西侧椅子")'),'unsupported rotation reports an invalid prop');
+ await shot('家具色块-桌面');
+ await feed(furnished.replace('type object|pos 7,7','type object|asset https://example.invalid/a.png|icon sofa|facing 90|pos 7,7'));
+ check(await run('mapTest.state.terrain.length===14&&!document.querySelector(".terrain img,.terrain svg")'),'old asset fields leave colored footprints without loading images');
  await feed(furnished.replace('note 三人长沙发','note <img src=x onerror=alert(1)>'));
  check(await run('!document.querySelector("[data-role=terrainList] img")&&document.querySelector("[data-role=terrainList]").textContent.includes("<img src=x")'),'prop descriptions render model text without executing markup');
  const moved=fixture.replace('pos 35,60','pos 60,60').replace(/^terrain 货箱.*\n/m,'');await feed(moved);
@@ -108,6 +107,19 @@ async function shot(name){const clip=await run('(()=>{const b=document.querySele
  await send('Input.dispatchMouseEvent',{type:'mousePressed',...viewport,button:'left',clickCount:1});await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:viewport.x+40,y:viewport.y+20,button:'left',buttons:1});await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:viewport.x+40,y:viewport.y+20,button:'left',clickCount:1});
  check(await run('mapTest.state.pan.x!==0||mapTest.state.pan.y!==0'),'map dragging remains usable');
  await feed(furnished);await shot('家具占位-手机');
+ if(process.argv[3]) {
+  const reply=fs.readFileSync(process.argv[3],'utf8');
+  const blocks=[...reply.matchAll(asRegex(mapRule.findRegex))];check(blocks.length===1,'actual corrected reply yields exactly one map');
+  await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
+  await run('dispatchEvent(new Event("resize"))');await feed(blocks[0][0]);
+  check(await run('mapTest.state.units.length===13&&mapTest.state.terrain.length===12'),'actual reply renders 13 units and 12 terrain areas');
+  check(await run('mapTest.parseBattleBlock(document.querySelector(".battle-embed").dataset.battle).errors.length===0'),'actual reply parses without errors');
+  check(await run('document.querySelectorAll(".terrain svg,.terrain img").length===0'),'actual reply uses only colored terrain');
+  await run('mapTest.state.zoom=1;mapTest.state.pan={x:0,y:0};mapTest.renderMap()');await shot('此轮回复-纯色地图-桌面');
+  await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await run('dispatchEvent(new Event("resize"))');await sleep(200);
+  check(await run('document.querySelector("[data-role=mapViewport]").getBoundingClientRect().width<=390'),'actual reply fits 390px');
+  await shot('此轮回复-纯色地图-手机');
+ }
  check(await run('fixtureErrors.length===0'),'no unhandled page errors');
  console.log(JSON.stringify({passed:true,checks:checks.length,evidence:'isolated Edge, no real Tavern'}));
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(async()=>{try{if(ws?.readyState===1)await send('Browser.close',{},null);}catch{}ws?.close();browser?.kill();server.close();});
