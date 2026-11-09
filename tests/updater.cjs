@@ -123,6 +123,8 @@ if(baselinePath){
   assert.equal(appliedRule.findRegex,'/'+oldRule.findRegex+'/g');
   assert.equal(appliedRule.replaceString,original.data.extensions.regex_scripts.find(rule=>rule.id===id).replaceString);
   appliedRule.findRegex=oldRule.findRegex;
+  if(id===archiveIds[0])appliedRule.maxDepth=oldRule.maxDepth;
+  if(id===archiveIds[1])appliedRule.minDepth=oldRule.minDepth;
  }
  restored.data.extensions.regex_scripts=restored.data.extensions.regex_scripts.filter(rule=>!rule.id.startsWith('dnd-clean-'));
  for(const rule of restored.data.extensions.regex_scripts){
@@ -138,13 +140,20 @@ if(baselinePath){
 const selected=latest.components.filter(c=>['c3c9ad44-9e9b-4c6e-ae93-f2b098a20125','480d6777-f90d-4eba-a811-64cb2f1ffb00','736c0e4e-67b4-4113-a021-b3890714ba28','01c632e5-1071-4a08-aebd-6a0e5424ea99',...archiveIds].includes(c.id));
 const fixtureManifest={...latest,components:selected,empty_regexes:latest.empty_regexes.filter(c=>archiveIds.includes(c.id))};
 const withWorldbook=process.argv.includes('--worldbook');
-delete fixtureManifest.added_regexes;
+// Exercise the depth migration without adding unrelated cleanup rules to this fixture.
+fixtureManifest.added_regexes=[];
 if(!withWorldbook)delete fixtureManifest.worldbook_path;
 const fixtureSources=Object.fromEntries(selected.map(c=>[c.path,sources[c.path]]));
 if(withWorldbook)fixtureSources[latest.worldbook_path]=JSON.stringify(patches);
 const fixture=structuredClone(original);fixture.data.extensions.tavern_helper.scripts=fixture.data.extensions.tavern_helper.scripts.filter(s=>selected.some(c=>c.id===s.id)||s.id==='user-added');
 fixture.data.extensions.tavern_helper.scripts[0].content='old DM';fixture.data.extensions.regex_scripts=fixture.data.extensions.regex_scripts.filter(r=>selected.some(c=>c.id===r.id)||archiveIds.includes(r.id));
+// Receipt-loss verification revisits the earlier display/prompt migration too.
+for(const id of ['0d8967e6-d2e8-4afb-9770-d22e332c301c','b179c655-147d-4572-a6ea-1c0326363009','918ecc02-7af0-4700-89c5-cbf05735c7e9']){
+ if(!fixture.data.extensions.regex_scripts.some(r=>r.id===id))fixture.data.extensions.regex_scripts.push({...original.data.extensions.regex_scripts.find(r=>r.id===id),replaceString:''});
+}
 for (const rule of fixture.data.extensions.regex_scripts.filter(r=>archiveIds.includes(r.id))) rule.findRegex=archivePattern;
+fixture.data.extensions.regex_scripts.find(r=>r.id===archiveIds[0]).maxDepth=3;
+fixture.data.extensions.regex_scripts.find(r=>r.id===archiveIds[1]).minDepth=5;
 const sameVersionRepair=process.argv.includes('--repair');
 if(sameVersionRepair) fixture.data.extensions.dnd_component_updates={version:latest.version,repository:'Faust114514/dnd-card-components-public'};
 if(process.argv.includes('--legacy')){fixture.data.character_version='vf.0.2.21';fixture.data.extensions.world='D&D 2024 vf.0.2.21';fixture.data.extensions.tavern_helper.scripts=fixture.data.extensions.tavern_helper.scripts.filter(s=>s.id!==orbId);}
@@ -239,8 +248,10 @@ addEventListener('DOMContentLoaded',async()=>{
   assert(!JSON.stringify(fixtureCard).includes('test-session-read-only')&&!localStorage.length&&!sessionStorage.length,'no credential or browser storage written');
   const archiveRules = fixtureCard.data.extensions.regex_scripts.filter(rule=>${jsJSON(archiveIds)}.includes(rule.id));
   assert(archiveRules.length===2&&archiveRules.every(rule=>rule.findRegex===${jsJSON('/'+archivePattern+'/g')}),'both archive rules persist with global matching');
+  assert(archiveRules.find(rule=>rule.id===${jsJSON(archiveIds[0])}).maxDepth===0&&archiveRules.find(rule=>rule.id===${jsJSON(archiveIds[1])}).minDepth===1,'archive display and prompt depths persist as latest-only');
+  assert(fixtureCard.data.extensions.dnd_component_updates.rules_version==='vf.0.4.5','same-version installation records the archive depth migration');
   if(${sameVersionRepair}){
-    const files=new Set(calls.filter(call=>call.url.startsWith('https://')&&!call.url.endsWith('/latest.json')).map(call=>call.url));
+    const files=new Set(calls.filter(call=>call.url.startsWith('https://')&&!call.url.endsWith('/latest.json')&&!decodeURIComponent(call.url).endsWith('/'+remoteManifest.worldbook_path)).map(call=>call.url));
     assert(files.size===1&&[...files].every(file=>file.includes('/src/regexes/')),'same-version repair downloads the display template only');
   }
   await check();assert(q('.dpu-install').disabled&&q('.dpu-status').textContent.includes('最新'),'next check reports current after saving the patterns');

@@ -73,7 +73,7 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
       if (!matches.length) {regexes.push(structuredClone(rule)); changed.push(rule.scriptName);}
     }
     // Apply these shipped display/prompt fixes once, then respect later user settings.
-    if (current.dnd_component_updates?.rules_version !== 'vf.0.3.8') {
+    if (!['vf.0.3.8', 'vf.0.4.5'].includes(current.dnd_component_updates?.rules_version)) {
       for (const [id, field] of [
         ['0d8967e6-d2e8-4afb-9770-d22e332c301c', 'promptOnly'],
         ['b179c655-147d-4572-a6ea-1c0326363009', 'promptOnly'],
@@ -82,6 +82,17 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
         const target = regexes.find(rule => rule.id === id);
         if (!target) throw Error('未找到显示／发送规则：' + id);
         if (target[field]) {target[field] = false; changed.push(target.scriptName + '设置');}
+      }
+    }
+    if (dndVersionIsNewer(manifest.version, 'vf.0.4.4') && current.dnd_component_updates?.rules_version !== 'vf.0.4.5') {
+      for (const [id, field, previous, next] of [
+        ['d7a9c17d-960e-4a56-9e17-0c77e86c71a8', 'maxDepth', 3, 0],
+        ['1c6924c3-1308-430b-b62c-e2ce7e0d1814', 'minDepth', 5, 1],
+      ]) {
+        const target = regexes.find(rule => rule.id === id);
+        if (!target) throw Error('未找到角色档案规则：' + id);
+        // Migrate the shipped depths only; preserve personal settings and switches.
+        if (target[field] === previous) {target[field] = next; changed.push(target.scriptName + '深度');}
       }
     }
   }
@@ -94,7 +105,7 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
     tavern_helper: helper,
     regex_scripts: regexes,
     dnd_component_updates: {...current.dnd_component_updates, version: manifest.version, repository: 'Faust114514/dnd-card-components-public',
-      ...(manifest.added_regexes ? {rules_version: 'vf.0.3.8'} : {})},
+      ...(manifest.added_regexes ? {rules_version: dndVersionIsNewer(manifest.version, 'vf.0.4.4') ? 'vf.0.4.5' : 'vf.0.3.8'} : {})},
   }};
 }
 
@@ -250,7 +261,8 @@ function dndVersionIsNewer(next, current) {
         const needsRepair = item => item.kind === 'regex' && dndVersionIsNewer(candidate.version, 'vf.0.3.4') && pending.some(rule => rule.id === item.id);
         candidate.components = candidate.components.filter(needsRepair);
         if (candidate.empty_regexes) candidate.empty_regexes = candidate.empty_regexes.filter(needsRepair);
-        if (current().data.extensions.dnd_component_updates?.rules_version === 'vf.0.3.8') delete candidate.added_regexes;
+        const rulesVersion = dndVersionIsNewer(candidate.version, 'vf.0.4.4') ? 'vf.0.4.5' : 'vf.0.3.8';
+        if (current().data.extensions.dnd_component_updates?.rules_version === rulesVersion) delete candidate.added_regexes;
       }
       manifest = candidate;
       for (const text of manifest.notes) {const li = doc.createElement('li'); li.textContent = text; dialog.querySelector('.dpu-notes').append(li);}
