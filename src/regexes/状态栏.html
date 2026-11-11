@@ -1203,10 +1203,52 @@ function normalizeCantripPreparation(character) {
   return changed;
 }
 
+function wizardPreparedLimit(character) {
+  const levels = getLevels(character);
+  if (Object.keys(levels).filter(k => Number(levels[k]) > 0).length !== 1) return null;
+  return [0,4,5,6,7,9,10,11,12,14,15,16,16,17,18,19,21,22,23,24,25][Number(levels.法师)] ?? null;
+}
+function normalizeSpellPreparation(character) {
+  const casting = character?.施法, book = casting?.法术书;
+  if (!object(book)) return 0;
+  const grants = character.额外法术 || character.grantedSpells || {};
+  const always = new Set([grants, ...Object.values(grants.条目 || grants.entries || {})]
+    .flatMap(entry => entry.已备法术 || entry.preparedSpells || []).map(spellKey));
+  const levels = getLevels(character), level = Object.values(levels).reduce((n,v) => n + Number(v), 0);
+  // Older high-elf saves have no grant records. Only mark spells already in the book.
+  if (/高等精灵|高精灵|精灵\s*[（(]高等[）)]|high elf/i.test(String(character.种族 || ''))) {
+    if (level >= 3) always.add(spellKey('侦测魔法'));
+    if (level >= 5) always.add(spellKey('迷踪步'));
+  }
+  const wizard = character.法师数据 || character.职业详情?.职业数据?.wizard || character.职业详情?.classData?.wizard || {};
+  const wizardAlways = new Map();
+  if (Number(levels.法师) >= 18) for (const name of wizard.法术精通 || wizard.spellMastery || []) wizardAlways.set(spellKey(name),'法术精通');
+  if (Number(levels.法师) >= 20) for (const name of wizard.招牌法术 || wizard.signatureSpells || []) wizardAlways.set(spellKey(name),'招牌法术');
+  for (const key of wizardAlways.keys()) always.add(key);
+  let changed = 0, legacyGrants = 0, grantedCount = 0;
+  for (const [name, spell] of Object.entries(book)) {
+    if (!object(spell) || Number(spell.等级) === 0) continue;
+    if (always.has(spellKey(name)) || /始终准备/.test(String(spell.来源 || ''))) {
+      grantedCount++;
+      const feature = wizardAlways.get(spellKey(name));
+      if (feature && !String(spell.来源 || '').includes('法师·'+feature)) {
+        spell.来源 = [spell.来源, '法师·'+feature+'：始终准备，不占普通名额'].filter(Boolean).join('；'); changed++;
+      }
+      if (spell.准备中 !== 'always') { spell.准备中 = 'always'; changed++; legacyGrants++; }
+    }
+  }
+  const cap = wizardPreparedLimit(character);
+  // Correct the shipped grant-inclusive total once; retain explicit custom limits afterwards.
+  if (cap !== null && (casting.可准备法术 == null || (legacyGrants && Number(casting.可准备法术) === cap + grantedCount))) {
+    casting.可准备法术 = cap; changed++;
+  }
+  return changed;
+}
+
 function enrichSpellCharacter(character) {
   const book = character?.施法?.法术书;
   if (!book || typeof book !== 'object' || Array.isArray(book)) return 0;
-  let changed = normalizeCantripPreparation(character);
+  let changed = normalizeCantripPreparation(character) + normalizeSpellPreparation(character);
   for (const [name, raw] of Object.entries(book)) {
     const record = SPELL_METADATA[spellKey(name)] || SPELL_METADATA[spellKey(raw?.名称)] || SPELL_METADATA[spellKey(raw?.nameEN)];
     if (!record) continue;
@@ -1393,6 +1435,14 @@ function enrichSpellVariables(variables) {
     if (current.施法?.法术书) out.施法.法术书=recordMerge(original.施法?.法术书,current.施法.法术书);
     if (current.临时效果 !== undefined) out.临时效果=clone(current.临时效果);
     if (original.职业详情?.classLevels) { out.职业详情=clone(original.职业详情); }
+    // Keep the wizard upgrade selection in sync with actual status-bar checkboxes.
+    if (current.施法?.法术书 && wizardPreparedLimit(out) !== null) {
+      const data = out.法师数据;
+      if (object(data)) {
+        const key = Object.hasOwn(data,'preparedSpells') && !Object.hasOwn(data,'已备法术') ? 'preparedSpells' : '已备法术';
+        data[key] = entries(out.施法.法术书).filter(([,spell]) => Number(spell.等级)>0 && [true,'true'].includes(spell.准备中)).map(([name])=>name);
+      }
+    }
     // Status text is the editable source of truth after migration.
     delete out.状态;
     return out;
@@ -1401,6 +1451,7 @@ function enrichSpellVariables(variables) {
     const root=clone(vars?.stat_data);
     normalizeDndRootEffects(root);
     DndArmor.syncRoot(root);
+    for (const [,c] of entries(root?.角色列表)) normalizeSpellPreparation(c);
     ui=clone(vars?.mvu_lite_ui || {});
     return root;
   }
@@ -1440,7 +1491,7 @@ function enrichSpellVariables(variables) {
       await window.replaceVariables(next,scope);
     }
   }
-  return {compactCharacter,expandCharacter,compactRoot:r=>mapRoot(r,compactCharacter),expandRoot:r=>mapRoot(r,expandCharacter),mergeStatus,write,prune,readRoot,stripDefaults};
+  return {wizardPreparedLimit,compactCharacter,expandCharacter,compactRoot:r=>mapRoot(r,compactCharacter),expandRoot:r=>mapRoot(r,expandCharacter),mergeStatus,write,prune,readRoot,stripDefaults};
 })();
 
 </script>
@@ -3806,7 +3857,9 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                         // This shipped status panel renders only the newest floor. Persist derived values for old saves before the next prompt.
                         const initiativeChanged = Object.entries(rawCharacters).some(([id,c]) => c && typeof c==='object' &&
                             ['先攻','先攻额外加值','_有效先攻','_先攻说明'].some(key => c[key] !== chatVars.stat_data?.角色列表?.[id]?.[key]));
-                        if (initiativeChanged) await MvuLite.write({stat_data:{角色列表:rawCharacters}});
+                        const preparationChanged = Object.entries(rawCharacters).some(([id,c]) =>
+                            JSON.stringify(c?.施法) !== JSON.stringify(chatVars.stat_data?.角色列表?.[id]?.施法));
+                        if (initiativeChanged || preparationChanged) await MvuLite.write({stat_data:{角色列表:rawCharacters}});
                         loadedCharacters = rawCharacters;
                         loadedActiveName = unwrapVariableValue(stat_data.当前角色ID) || null;
                         if (rawCharacters && typeof rawCharacters === 'object') {
@@ -5687,6 +5740,17 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     </div>`;       
             }
 
+            function spellPreparationState() {
+                const spells = characterData.spells;
+                const preparedLimit = normalizeNullableNumber(spells.maxPrepared);
+                const abilityMod = spells.ability && spells.ability !== 'none' ? getModifier(characterData.stats[spells.ability]) : 0;
+                const autoMaxPrepared = MvuLite.wizardPreparedLimit(characterData.__mvuSource || {}) ?? abilityMod + Math.ceil(characterData.level / 2);
+                const maxPrepared = Math.max(0, Math.floor(preparedLimit ?? autoMaxPrepared));
+                const currentPrepared = Object.entries(spells.known || {}).filter(([level]) => level !== '0')
+                    .flatMap(([, list]) => list).filter(s => s.isPrepared === true || s.isPrepared === 'true').length;
+                return {preparedLimit, autoMaxPrepared, maxPrepared, currentPrepared};
+            }
+
             function renderSpellsTabModern(container) {
                 if (!container) return false;
                 const { spells } = characterData;
@@ -5697,14 +5761,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                 const spellDCBase = Number.isFinite(spells.dc) ? spells.dc : autoSpellDC;
                 const spellAttack = applyNumericEffects(spellAttackBase, ['spell.attack']);
                 const spellDC = applyNumericEffects(spellDCBase, ['spell.dc']);
-                const preparedLimit = normalizeNullableNumber(spells.maxPrepared);
-                const autoMaxPrepared = spellAbilityMod + Math.ceil(characterData.level / 2);
-                const maxPrepared = preparedLimit === null ? autoMaxPrepared : preparedLimit;
-                const currentPrepared = Object.entries(spells.known || {})
-                    .filter(([level]) => level !== '0')
-                    .flatMap(([_, spellList]) => spellList || [])
-                    .filter(s => s.isPrepared === true || s.isPrepared === 'true')
-                    .length;
+                const {preparedLimit, autoMaxPrepared, maxPrepared, currentPrepared} = spellPreparationState();
 
                 const attackInputValue = Number.isFinite(spells.attackBonus) ? spells.attackBonus : '';
                 const dcInputValue = Number.isFinite(spells.dc) ? spells.dc : '';
@@ -5719,14 +5776,16 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                 const spellAbilitySelectHtml = spellAbilityOptions
                     .map(option => `<option value="${option.value}" ${currentSpellAbility === option.value ? 'selected' : ''}>${option.label}</option>`)
                     .join('');
-                const headerHtml = isEditing
+                let headerHtml = isEditing
                     ? `<div class="grid grid-cols-4 gap-3 text-center mb-6 bg-gray-800/50 p-3 rounded-lg spell-summary-grid">
                         <div><div class="text-sm text-gray-400">施法属性</div><select id="edit-spell-ability" class="edit-input edit-input-sm text-center mx-auto">${spellAbilitySelectHtml}</select></div>
                         <div><div class="text-sm text-gray-400">法术攻击加值</div><input id="edit-spell-attack" type="number" class="edit-input edit-input-sm text-center" value="${escapeAttr(attackInputValue)}" placeholder="${autoSpellAttack}"></div>
                         <div><div class="text-sm text-gray-400">法术豁免DC</div><input id="edit-spell-dc" type="number" class="edit-input edit-input-sm text-center" value="${escapeAttr(dcInputValue)}" placeholder="${autoSpellDC}"></div>
                         <div><div class="text-sm text-gray-400">可准备法术数量</div><div class="flex items-center justify-center gap-2"><span class="text-gray-400">${currentPrepared} /</span><input id="edit-spell-max-prepared" type="number" class="edit-input edit-input-sm text-center" value="${escapeAttr(maxPreparedInputValue)}" placeholder="${autoMaxPrepared}"></div></div>
                     </div>`
-                    : `<div class="grid grid-cols-4 gap-3 text-center mb-6 bg-gray-800/50 p-3 rounded-lg spell-summary-grid"><div><div class="text-sm text-gray-400">施法属性</div><div class="font-bold">${ABILITY_FROM_KEY[spells.ability] || spells.ability.toUpperCase()}</div></div><div><div class="text-sm text-gray-400">法术攻击</div><div class="font-bold">+${spellAttack}</div></div><div><div class="text-sm text-gray-400">法术豁免DC</div><div class="font-bold">${spellDC}</div></div><div><div class="text-sm text-gray-400">已准备法术</div><div class="font-bold">${currentPrepared} / ${maxPrepared}</div></div></div>`;
+                    : `<div class="grid grid-cols-4 gap-3 text-center mb-6 bg-gray-800/50 p-3 rounded-lg spell-summary-grid"><div><div class="text-sm text-gray-400">施法属性</div><div class="font-bold">${ABILITY_FROM_KEY[spells.ability] || spells.ability.toUpperCase()}</div></div><div><div class="text-sm text-gray-400">法术攻击</div><div class="font-bold">+${spellAttack}</div></div><div><div class="text-sm text-gray-400">法术豁免DC</div><div class="font-bold">${spellDC}</div></div><div><div class="text-sm text-gray-400">普通已准备法术</div><div class="font-bold">${currentPrepared} / ${maxPrepared}</div></div></div>`;
+
+                headerHtml += `<p class="text-sm text-gray-400 mb-4" role="status">${currentPrepared > maxPrepared ? `已超出普通准备上限 ${currentPrepared - maxPrepared} 个，请取消部分勾选；原选择已保留。` : currentPrepared === maxPrepared ? '普通准备名额已满，取消一个后可改选。' : '勾选普通法术占用准备名额。'} 常驻法术锁定勾选，不占名额；戏法也不计入。</p>`;
 
                 const renderSpellRow = (spell, level, index, editing) => {
                     const panelGroup = `spells-${editing ? 'edit' : 'view'}-${level}`;
@@ -5745,8 +5804,8 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                         : (level === '0'
                             ? `<span class="text-xs text-sky-300 px-2">0环</span>`
                             : (isAlways
-                                ? `<i class="fa-solid fa-star text-amber-300" title="始终准备"></i>`
-                                : `<input type="checkbox" data-spell-prep-level="${level}" data-spell-prep-index="${index}" ${isPrepared ? 'checked' : ''}>`));
+                                ? `<input type="checkbox" checked disabled aria-label="始终准备，不占普通准备名额" title="始终准备，不占普通准备名额">`
+                                : `<input type="checkbox" data-spell-prep-level="${level}" data-spell-prep-index="${index}" ${isPrepared ? 'checked' : currentPrepared >= maxPrepared ? 'disabled' : ''} aria-label="准备法术" title="${!isPrepared && currentPrepared >= maxPrepared ? '普通准备名额已满，请先取消一个已准备法术' : '准备或取消准备'}">`));
                     const detailHtml = editing
                         ? `<div class="detail-grid">
                             <div><label class="detail-label">名称</label><input class="detail-input" value="${safeName}" data-spell-known-level="${level}" data-spell-known-index="${index}" data-prop="name"></div>
@@ -5821,14 +5880,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                 const spellDCBase = Number.isFinite(spells.dc) ? spells.dc : autoSpellDC;
                 const spellAttack = applyNumericEffects(spellAttackBase, ['spell.attack']);
                 const spellDC = applyNumericEffects(spellDCBase, ['spell.dc']);
-                const preparedLimit = normalizeNullableNumber(spells.maxPrepared);
-                const autoMaxPrepared = spellAbilityMod + Math.ceil(characterData.level / 2);
-                const maxPrepared = preparedLimit === null ? autoMaxPrepared : preparedLimit;
-                // 计算已准备法术：排除零环戏法和 isPrepared="always" 的法术
-                let currentPrepared = Object.entries(spells.known)
-                    .filter(([level, _]) => level !== "0") // 排除零环
-                    .flatMap(([_, spellList]) => spellList)
-                    .filter(s => s.isPrepared === true || s.isPrepared === 'true').length;
+                const {preparedLimit, autoMaxPrepared, maxPrepared, currentPrepared} = spellPreparationState();
 
                 const attackInputValue = Number.isFinite(spells.attackBonus) ? spells.attackBonus : '';
                 const dcInputValue = Number.isFinite(spells.dc) ? spells.dc : '';
@@ -5870,7 +5922,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                             </div>
                         </div>`;
                 } else {
-                    headerHtml = `<div class="grid grid-cols-4 gap-3 text-center mb-6 bg-gray-800/50 p-3 rounded-lg spell-summary-grid"><div><div class="text-sm text-gray-400">施法属性</div><div class="font-bold">${ABILITY_FROM_KEY[spells.ability] || spells.ability.toUpperCase()}</div></div><div><div class="text-sm text-gray-400">法术攻击</div><div class="font-bold">+${spellAttack}</div></div><div><div class="text-sm text-gray-400">法术豁免DC</div><div class="font-bold">${spellDC}</div></div><div><div class="text-sm text-gray-400">已准备法术</div><div class="font-bold">${currentPrepared} / ${maxPrepared}</div></div></div>`;
+                    headerHtml = `<div class="grid grid-cols-4 gap-3 text-center mb-6 bg-gray-800/50 p-3 rounded-lg spell-summary-grid"><div><div class="text-sm text-gray-400">施法属性</div><div class="font-bold">${ABILITY_FROM_KEY[spells.ability] || spells.ability.toUpperCase()}</div></div><div><div class="text-sm text-gray-400">法术攻击</div><div class="font-bold">+${spellAttack}</div></div><div><div class="text-sm text-gray-400">法术豁免DC</div><div class="font-bold">${spellDC}</div></div><div><div class="text-sm text-gray-400">普通已准备法术</div><div class="font-bold">${currentPrepared} / ${maxPrepared}</div></div></div>`;
                 }
                 
                 let contentHtml = '';
@@ -5919,8 +5971,8 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                             const isAlways = s.isPrepared === 'always';
                             const isPrepared = s.isPrepared === true || s.isPrepared === 'true' || isAlways;
                             const prepIcon = isAlways
-                                ? `<i class="fa-solid fa-star" style="color: #fbbf24; font-size: 1.2em;" title="始终准备"></i>`
-                                : `<input type="checkbox" data-spell-prep-level="${level}" data-spell-prep-index="${i}" ${isPrepared ? 'checked' : ''}>`;
+                                ? `<input type="checkbox" checked disabled aria-label="始终准备，不占普通准备名额" title="始终准备，不占普通准备名额">`
+                                : `<input type="checkbox" data-spell-prep-level="${level}" data-spell-prep-index="${i}" ${isPrepared ? 'checked' : currentPrepared >= maxPrepared ? 'disabled' : ''} aria-label="准备法术" title="${!isPrepared && currentPrepared >= maxPrepared ? '普通准备名额已满，请先取消一个已准备法术' : '准备或取消准备'}">`;
                             const tooltip = `${s.name} | ${s.range || ''} | ${s.castingTime || ''} | ${s.duration || ''} | ${s.details || '无描述'}`.replace(/\s+/g, ' ').trim();
                             return `
                             <div class="list-item-grid grid-cols-[auto,auto,1fr,auto,auto,auto] gap-3">
@@ -7066,6 +7118,12 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     const spell = characterData.spells.known[spellPrepLevel][prepIdx];
                     // 防止修改 isPrepared="always" 的法术
                     if (spell && spellPrepLevel !== '0' && spell.isPrepared !== 'always') {
+                        const {currentPrepared, maxPrepared} = spellPreparationState();
+                        if (e.target.checked && spell.isPrepared !== true && spell.isPrepared !== 'true' && currentPrepared >= maxPrepared) {
+                            e.target.checked = false;
+                            renderSpellsTab();
+                            return;
+                        }
                         spell.isPrepared = e.target.checked;
                         saveData();
                         renderSpellsTab();
