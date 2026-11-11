@@ -20,6 +20,16 @@ const archivePattern=String.raw`<char_info>((?:(?!<\/?char_info>)[\s\S])*)<\/cha
 const before=JSON.stringify(original),result=merge(original,latest,sources),checks=[];
 for(const version of ['vf.0.3.12','vf.0.4.0']){const card=structuredClone(original);card.data.character_version=version;assert.equal(merge(card,latest,sources).extensions.dnd_component_updates.version,latest.version);checks.push(version+' card accepts 0.4 component update');}
 const check=(value,label)=>{assert.ok(value,label);checks.push(label);};
+const visibleUpdater=structuredClone(original);
+const oldToolbar=visibleUpdater.data.extensions.tavern_helper.scripts.find(s=>s.id===updaterId);
+oldToolbar.button.buttons[0].visible=true;
+oldToolbar.button.buttons.push({name:'个人按钮',visible:true});
+const hiddenToolbar=merge(visibleUpdater,latest,sources);
+const hiddenScript=hiddenToolbar.extensions.tavern_helper.scripts.find(s=>s.id===updaterId);
+check(hiddenScript.enabled&&hiddenScript.button.enabled&&!hiddenScript.button.buttons[0].visible&&hiddenScript.button.buttons[1].visible,'hide only shipped updater shortcut; script and personal buttons remain enabled');
+Object.assign(visibleUpdater.data.extensions,hiddenToolbar.extensions);
+visibleUpdater.data.extensions.tavern_helper.scripts.find(s=>s.id===updaterId).button.buttons[0].visible=true;
+check(merge(visibleUpdater,latest,sources).extensions.tavern_helper.scripts.find(s=>s.id===updaterId).button.buttons[0].visible,'later personal re-enabling is preserved');
 const preMap=structuredClone(original),mapId='d5e20240-6d61-4700-9a11-7e5e20240001';
 preMap.data.extensions.tavern_helper.scripts=preMap.data.extensions.tavern_helper.scripts.filter(s=>s.id!==mapId);
 preMap.data.extensions.regex_scripts=preMap.data.extensions.regex_scripts.filter(s=>s.id!=='dnd-clean-old-map-marker');
@@ -216,7 +226,7 @@ addEventListener('DOMContentLoaded',async()=>{
  async function install(){q('.dpu-install').click();await wait(()=>!q('.dpu-check').disabled,'install complete');}
  try{
   await wait(()=>window.__dndPrivateUpdates,'mounted');assert(calls.length===0&&saves===0,'mount performs no download or mutation');
-  emit('update-button');assert(q('#dnd-private-update').open,'helper button opens dialog');
+  window.__dndPrivateUpdates.open();assert(q('#dnd-private-update').open,'orb entry opens dialog without a visible toolbar button');
   assert(!q('.dpu-token')&&!q('.dpu-disconnect'),'public update UI has no token or connection controls');
   failure='manifest';await check();assert(q('.dpu-install').disabled&&q('.dpu-status').textContent.includes('404'),'manifest download failure prevents installation');
   await check();assert(!q('.dpu-install').disabled,'anonymous version check enables installation / '+q('.dpu-status').textContent);

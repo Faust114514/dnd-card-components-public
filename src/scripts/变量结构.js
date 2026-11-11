@@ -314,6 +314,9 @@ function normalizeEquipmentItem(item) {
 
 function fromSchema(raw) {
   const object=v=>v && typeof v==='object' && !Array.isArray(v);
+  const initiative=object(raw.先攻)?raw.先攻:{};
+  const initiativeExtra=initiative.额外加值 ?? raw.先攻额外加值 ?? 0;
+  const initiativeOverride=raw.基础先攻覆盖 ?? raw.数值覆盖?.先攻;
   const levels=object(raw.职业)?raw.职业:raw.职业详情?.classLevels || {};
   const stats=Object.fromEntries(Object.entries(ABILITY_TO_KEY).filter(([,v])=>v!=='none').map(([cn,key])=>[key,normalizeNumber(raw.属性?.[cn],10)]));
   const features={class:[],race:[],feats:[]}, inventory={weapons:[],equipment:[]};
@@ -338,12 +341,13 @@ function fromSchema(raw) {
     proficiencyBonus:normalizeNumber(raw.熟练加值,2),
     maxHp:normalizeNumber(raw.生命值?.最大,1),currentHp:normalizeNumber(raw.生命值?.当前,0),
     speed:normalizeNumber(raw.速度?.步行,0),
-    acMode:raw.护甲模式 || 'auto',overrides:{ac:raw.基础AC覆盖},
+    acMode:raw.护甲模式 || 'auto',overrides:{ac:raw.基础AC覆盖,initiative:Number.isFinite(initiativeOverride)?initiativeOverride:null},
+    initiativeBonus:normalizeNumber(initiativeExtra,0),
     useUnarmoredDefense:raw.无甲防御!==false,temporaryEffects:normalizeEffects(raw.临时效果)
   };
 }
 
-function evaluate(characterData, detailsOnly=false, selectedMode=characterData.acMode || 'auto') {
+function evaluate(characterData, detailsOnly=false, selectedMode=characterData.acMode || 'auto', initiativeOnly=false) {
 function hasFeature(featureName) {
     if (!characterData || !characterData.features) return false;
     const lowerCaseName = normalizeString(featureName, '').toLowerCase().trim();
@@ -851,6 +855,72 @@ function applyNumericEffects(baseValue, targetKeys, context = {}, trace = null) 
     });
     return Number.isFinite(value) ? value : base;
 }
+// Inserted inside the existing shared derived-stat evaluator, beside its effect helpers.
+function calculateInitiativeDetails() {
+  const signed=n=>n>=0?`+${n}`:String(n);
+  const dex=getModifier(characterData.stats.dex);
+  const prof=normalizeNumber(characterData.proficiencyBonus,2);
+  const extra=normalizeNumber(characterData.initiativeBonus,0);
+  let base=dex+extra;
+  const parts=[`敏捷 ${signed(dex)}`],notes=[];
+  if(extra)parts.push(`额外调整 ${signed(extra)}`);
+  const entries=collectActiveEffectEntries(['initiative.bonus']);
+  const sources=getEffectSourceContainers().filter(source=>{
+    const item=source.sourceObj;
+    if(item?.enabled===false)return false;
+    if(['weapon','equipment'].includes(source.sourceType))return item?.isEquipped===true&&(!item.requiresAttunement||item.isAttuned===true);
+    return source.sourceType.startsWith('feature-');
+  });
+  const nameOf=source=>String(source.sourceName).replace(/^(?:专长|职业特性|种族特性)\s*[:：]\s*/,'');
+  const textOf=source=>String(source.sourceObj?.details||'').replace(/【当前数值】[\s\S]*$/,'').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
+  const alert=/^(?:警觉|警戒)(?:$|\s|[（(])|\bAlert\b/i;
+  const hare=/狡兔敏锐|Hare[- ]Trigger/i;
+  const profSources=sources.filter(s=>hare.test(nameOf(s))||(alert.test(nameOf(s))&&!/2014|PHB14/i.test(nameOf(s)+' '+textOf(s))));
+  const hasProfEffect=entries.some(e=>profSources.some(s=>s.sourceObj===e.source.sourceObj));
+  const used=new Set();
+  for(const source of sources){
+    const name=nameOf(source),text=textOf(source),feature=source.sourceType.startsWith('feature-');
+    const legacy=/2014|PHB14/i.test(name+' '+text);
+    let key='',bonus=0;
+    if(feature&&alert.test(name)){
+      key=legacy?'alert2014':'proficiency';bonus=legacy?5:prof;
+      if(!legacy&&!/交换/.test(text))notes.push(`${name}：先攻交换需双方自愿且未失能`);
+    }else if(feature&&hare.test(name)){key='proficiency';bonus=prof;
+    }else if(feature&&/恐惧伏击|恐怖伏击|Dread Ambusher/i.test(name)){key='dread-ambusher';bonus=getModifier(characterData.stats.wis);
+    }else if(feature&&/战术之智|Tactical Wit/i.test(name)){key='tactical-wit';bonus=getModifier(characterData.stats.int);
+    }else if(feature&&/时序感知|Temporal Awar(?:e)?ness/i.test(name)){key='temporal-awareness';bonus=getModifier(characterData.stats.int);
+    }else if(feature&&/潇洒无畏|Rakish Audacity/i.test(name)){key='rakish-audacity';bonus=getModifier(characterData.stats.cha);
+    }else if(feature&&/万事通|Jack of All Trades/i.test(name)){
+      if(legacy&&!profSources.length){key='legacy-jack';bonus=Math.floor(prof/2);}
+      else if(!legacy)notes.push('万事通（2024）：不适用于先攻');
+    }else if(!feature&&/幸运石|好运石|Stone of Good Luck|Luckstone/i.test(name)){key='luckstone';bonus=1;}
+    if(key&&!used.has(key)){
+      used.add(key);
+      const byEffect=entries.some(e=>e.source.sourceObj===source.sourceObj)||(key==='proficiency'&&hasProfEffect);
+      if(!byEffect){base+=bonus;parts.push(`${name} ${signed(bonus)}`);}
+    }
+    // Advantage, dice, exchanges and conditional benefits remain explicit rules, not invented flat bonuses.
+    const clauses=text.split(/[。\n]/).filter(clause=>/先攻|initiative/i.test(clause));
+    if(clauses.length)notes.push(`${name}：${clauses.join('；')}`);
+    else if(feature&&/野性直觉|Feral Instinct|运动健将|Remarkable Athlete|暗杀|Assassinate/i.test(name)&&!legacy)notes.push(`${name}：先攻具有优势`);
+    else if(feature&&/哨卫灵光|Aura of the Sentinel/i.test(name))notes.push(`${name}：未失能且在范围内时加光环提供者的熟练加值，由活动效果记录，不能重复加熟练`);
+  }
+  if(profSources.length>1)notes.push('先攻熟练加值只计一次');
+  if(Number.isFinite(characterData.overrides?.initiative)){
+    base=characterData.overrides.initiative;
+    parts.splice(0,parts.length,`手动基础先攻 ${signed(base)}`);
+  }
+  const trace=[];
+  const total=applyNumericEffects(base,['initiative.bonus'],{},trace);
+  for(const step of trace){
+    const name=step.entry.source.sourceType==='temporary'?step.entry.effect.name:step.entry.source.sourceName;
+    const operation={add:signed(step.value),multiply:`×${step.value}`,override:`设为${step.value}`,upgrade:`至少${step.value}`,downgrade:`至多${step.value}`}[step.mode];
+    parts.push(`${name} ${operation}`);
+  }
+  return {base,total,description:parts.join('；')+` → 先攻 ${signed(total)}`+(notes.length?'\n'+[...new Set(notes)].join('\n'):'')};
+}
+
+  if(initiativeOnly)return calculateInitiativeDetails();
   const mode=selectedMode;
   if (!['auto','custom','armor','unarmored','monk','barbarian','mage-armor'].includes(mode)) throw new Error('护甲模式无效：'+mode);
   if (mode==='custom' && !Number.isFinite(characterData.overrides?.ac)) throw new Error('手动模式必须填写基础AC覆盖');
@@ -866,17 +936,25 @@ function syncCharacter(raw) {
   if (!['属性','物品','护甲模式','基础AC覆盖','护甲等级'].some(key=>Object.hasOwn(raw,key))) return raw;
   raw.护甲模式 ||= 'auto';
   if (raw.护甲模式!=='custom') delete raw.基础AC覆盖;
-  const result=evaluate(fromSchema(raw));
+  const character=fromSchema(raw);
+  const result=evaluate(character);
   raw.护甲等级=result.base;
   raw._有效AC=result.total;
   raw.护甲说明=result.description;
+  const initiative=evaluate(character,false,undefined,true);
+  const extra=character.initiativeBonus;
+  if (raw.先攻 && typeof raw.先攻==='object' && typeof raw.先攻.描述==='string') raw.先攻说明=raw.先攻.描述;
+  raw.先攻=initiative.base;
+  raw.先攻额外加值=extra;
+  raw._有效先攻=initiative.total;
+  raw._先攻说明=initiative.description;
   return raw;
 }
 function syncRoot(root) {
   for (const c of Object.values(root?.角色列表 || {})) if (c && typeof c==='object' && !Array.isArray(c)) syncCharacter(c);
   return root;
 }
-return {fromSchema,syncCharacter,syncRoot,calculate:character=>evaluate(character),details:(character,mode)=>evaluate(character,true,mode)};
+return {fromSchema,syncCharacter,syncRoot,initiative:character=>evaluate(character,false,undefined,true),calculate:character=>evaluate(character),details:(character,mode)=>evaluate(character,true,mode)};
 })();
 
 export const Schema = z.object({当前角色ID:z.any().optional(),角色列表:z.any().optional()}).passthrough().transform((data,ctx)=>{

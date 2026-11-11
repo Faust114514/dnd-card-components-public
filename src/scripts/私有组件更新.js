@@ -63,9 +63,16 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
     if (matches.length > 1) throw Error('组件 ID 重复：' + item.name);
     const field = item.kind === 'script' ? 'content' : 'replaceString';
     const target = matches[0];
+    const hideUpdaterButton = item.id === '736c0e4e-67b4-4113-a021-b3890714ba28' &&
+      dndVersionIsNewer(manifest.version, 'vf.0.4.9') &&
+      dndVersionIsNewer('vf.0.4.10', current.dnd_component_updates?.version || card.data.character_version);
+    let buttonChanged = false;
+    if (hideUpdaterButton) for (const button of target.button.buttons) {
+      if (button.name === '私有更新' && button.visible) {button.visible = false; buttonChanged = true;}
+    }
     const fixPattern = item.kind === 'regex' && hasOriginalCharacterPattern(target) && dndVersionIsNewer(manifest.version, 'vf.0.3.4');
     if (fixPattern) target.findRegex = '/' + target.findRegex + '/g';
-    if (target[field] !== body || fixPattern) {
+    if (target[field] !== body || fixPattern || buttonChanged) {
       target[field] = body;
       changed.push(item.name);
     }
@@ -124,7 +131,7 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
 }
 
 function planDndWorldbook(book, patches, kept = []) {
-  const allowed = new Set([18, 643316, 781421, 12, 207976]);
+  const allowed = new Set([18, 643316, 781421, 12, 207976, 6, 781420]);
   return patches.map(patch => {
     if (!allowed.delete(patch.uid) || typeof patch.previous !== 'string' || typeof patch.content !== 'string' || !patch.content.trim()) throw Error('世界书更新条目无效');
     const entry = book.entries[patch.uid];

@@ -1,5 +1,5 @@
 {
-  "version": "vf.0.4.9",
+  "version": "vf.0.4.10",
   "scripts": [
     {
       "type": "script",
@@ -301,7 +301,7 @@
         "buttons": [
           {
             "name": "私有更新",
-            "visible": true
+            "visible": false
           }
         ]
       },
