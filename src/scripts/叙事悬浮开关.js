@@ -57,7 +57,7 @@
     <svg viewBox="0 0 32 32" fill="none" stroke="#e2c58b" stroke-width="1.4" aria-hidden="true"><path d="M16 2 29 10v13L16 30 3 23V10Z M16 2 9 20h14L16 2M3 10l6 10-6 3m26-13-6 10 6 3M9 20l7 10 7-10M3 10h26"/></svg>
   </button>
   <section class="dnc-panel" id="dnc-panel" role="dialog" aria-labelledby="dnc-title" hidden>
-    <div class="dnc-head"><div><div class="dnc-version">DND · VF.0.4.11</div><h2 id="dnc-title">冒险开关</h2></div><button class="dnc-close" type="button" aria-label="关闭面板">×</button></div>
+    <div class="dnc-head"><div><div class="dnc-version">DND · VF.0.4.12</div><h2 id="dnc-title">冒险开关</h2></div><button class="dnc-close" type="button" aria-label="关闭面板">×</button></div>
     <div class="dnc-badge"></div>
     ${features.map(f => `<div class="dnc-row" data-feature="${f.key}"><div class="dnc-line"><span class="dnc-label">${f.name}</span><div class="dnc-options" role="group" aria-label="${f.name}">${(f.key === 'opening' ? [['auto','自动'],['on','开'],['off','关']] : [['on','开'],['off','关']]).map(([v,t]) => `<button type="button" data-value="${v}" aria-pressed="false" disabled>${t}</button>`).join('')}</div></div><div class="dnc-detail">读取中…</div></div>`).join('')}
     <p class="dnc-note">联动修改当前预设；长期保留请在酒馆保存预设。世界书开关会影响共用它的聊天。</p>
