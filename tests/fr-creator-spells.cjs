@@ -66,7 +66,7 @@ async function runScenarios(){
  const before=await run('getVariables().stat_data.角色列表.费伦法师测试');
  for(const name of Object.keys(availability)){
   const spell=before.施法.法术书[name];
-  check(spell&&spell.等级===1&&spell.描述.includes('距离：60尺')&&!spell.专注&&!spell.仪式&&spell.描述.includes('升环施法'),name+' saves with complete rules, level and casting metadata');
+  check(spell&&spell.等级===1&&spell.距离==='60尺'&&!spell.专注&&!spell.仪式&&spell.描述.includes('升环施法'),name+' saves with complete rules, level and casting metadata');
  }
  check(before.施法.法术书.咒火闪焰.描述.includes('远程法术攻击')&&before.施法.法术书.咒火闪焰.描述.includes('2d10光耀伤害')&&before.施法.法术书.制敌术.描述.includes('构装和亡灵自动豁免成功'),'damage and saving-throw exceptions remain in the saved descriptions');
  check(await run("fixtureSends===0&&getVariables().otherPlugin.keep&&getVariables({type:'chat'}).stat_data.角色列表.费伦法师测试"),'saving uses both existing scopes and does not send a message');
