@@ -3382,7 +3382,14 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
       const levels=unique(availableSpells.map((spell)=>String(toInt(spell.level,0)))).map((x)=>toInt(x,0)).sort((a,b)=>a-b);
       const schoolOptions=schools.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("");
       const levelOptions=levels.map((lv)=>`<option value="${lv}">${lv===0?"戏法":`${lv}环`}</option>`).join("");
-      const existing=req.exclude&&req.exclude.length?`<div class="hint">已拥有：${esc(req.exclude.join("、"))}</div>`:"";
+      const existingNames=(req.exclude||[]).filter(name=>{
+        const level=Number(getSpellFromSources(sourceNames,name)?.level ?? state.charObj?.施法?.法术书?.[name]?.等级);
+        if(!Number.isFinite(level)) return true;
+        if(Array.isArray(req.spellLevels)&&req.spellLevels.length) return req.spellLevels.map(Number).includes(level);
+        if(Number.isFinite(Number(req.spellLevel))) return level===Number(req.spellLevel);
+        return !req.maxSpellLevel || level<=Number(req.maxSpellLevel);
+      });
+      const existing=existingNames.length?`<div class="hint">已拥有：${esc(existingNames.join("、"))}</div>`:"";
       const extraHint=req.helpText?`<div class="hint">${esc(req.helpText)}</div>`:"";
       return `
         <div class="req-card">
