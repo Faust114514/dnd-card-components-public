@@ -6,7 +6,7 @@ fs.mkdirSync(out,{recursive:true});
 const source=fs.readFileSync(path.join(root,'src/scripts/叙事悬浮开关.js'),'utf8');
 const personalPrompts=[['dnd-house-party-xp-v01','玩家队伍经验房规.txt',false],['dnd-style-names-v01','适当美化.txt',false],['ab695962-b420-4731-b14c-3f6860909fd9','场景小巧思.txt',true]].map(([id,file,enabled])=>({id,enabled,content:fs.readFileSync(path.join(root,'src/prompts',file),'utf8'),custom:'keep'}));
 const setup=String.raw`
-window.errors=[];window.calls={book:0,preset:0,presetRead:0};window.failure='';window.selectedPreset='【明月秋青】fixture';
+window.errors=[];window.calls={book:0,preset:0,presetRead:0};window.failure='';window.selectedPreset='【DND】浮士德预设v1.0';
 addEventListener('error',e=>errors.push(e.message));addEventListener('unhandledrejection',e=>errors.push(String(e.reason)));
 window.entries=[{uid:2,content:'<战斗面板规则>原面板正文</战斗面板规则>',enabled:true,keep:2},{uid:781429,content:'<战场生成规则>原地形正文</战场生成规则>',enabled:true,keep:3},{uid:781428,content:'<战斗准则>原战斗规则</战斗准则>',enabled:true},{uid:12,content:'<模组主持规则>原模组规则</模组主持规则>',enabled:false},{uid:8,content:'<DNJ风格规则>原风格</DNJ风格规则>',enabled:true},{uid:5,content:'<开局流程>原开团</开局流程>',enabled:false},{uid:781422,content:'<战斗检定输出规则>保留检定</战斗检定输出规则>',enabled:true}];
 window.originalEntries=structuredClone(entries);
@@ -56,6 +56,7 @@ async function shot(name){const r=await send('Page.captureScreenshot',{format:'p
   async function refresh(){await click('.dnc-refresh');await settled()}
   await wait('!!window.__dndNarrativeControls');await click('.dnc-orb');await settled();
   await check('calls.book===0&&calls.preset===0','mount preserves current defaults without writes');
+  await check('document.querySelector(".dnc-badge").textContent.includes("预设联动")','Faust v1.0 preset is recognized for linked controls');
   await check('document.querySelector("#dnc-personal").hidden&&[...document.querySelectorAll("#dnc-functional [data-feature]")].map(e=>e.dataset.feature).join() === "module,combat,battlemap,opening"&&[...document.querySelectorAll("#dnc-personal [data-feature]")].map(e=>e.dataset.feature).join() === "dnj,partyxp,nameStyle,sceneStyle"','functional and personal settings form two separate tabs');
   await shot('冒险设置-功能');
   await click('#dnc-tab-personal');
@@ -81,7 +82,14 @@ async function shot(name){const r=await send('Page.captureScreenshot',{format:'p
   await check('document.querySelector("[data-feature=sceneStyle] [data-value=on]").disabled&&document.querySelector("[data-feature=partyxp] [data-value=on]").disabled&&document.querySelector("[data-feature=sceneStyle]").textContent.includes("配套预设")','legacy DIY and missing new prompts are reported as needing the adapted preset');
   await run('prompt("ab695962-b420-4731-b14c-3f6860909fd9").content=normalDIY;prompt("legacy-missing").id="dnd-house-party-xp-v01";selectedPreset="其他预设"');await refresh();
   await check('[...document.querySelectorAll("[data-feature=partyxp] button,[data-feature=nameStyle] button,[data-feature=sceneStyle] button")].every(b=>b.disabled)&&!document.querySelector("[data-feature=dnj] button").disabled','preset-only options are disabled for unrelated presets while DNJ stays available');
-  await run('selectedPreset="【明月秋青】fixture"');await refresh();await click('[data-feature=sceneStyle] [data-value=on]');await settled();
+  const readsBeforeNameCheck=await run('calls.presetRead');
+  await run('selectedPreset="【明月秋青】fixture"');await refresh();
+  await check(`calls.presetRead===${readsBeforeNameCheck}&&document.querySelector("[data-feature=partyxp] button").disabled`,'legacy Mingyue name is no longer treated as the maintained preset');
+  await run('selectedPreset="【DND】其他预设v1.0"');await refresh();
+  await check(`calls.presetRead===${readsBeforeNameCheck}&&document.querySelector("[data-feature=partyxp] button").disabled`,'unrelated DND preset is not matched or read');
+  await run('selectedPreset="【DND】浮士德预设v1.1"');await refresh();
+  await check('document.querySelector(".dnc-badge").textContent.includes("预设联动")&&!document.querySelector("[data-feature=partyxp] button").disabled','future Faust preset versions use the same prefix');
+  await run('selectedPreset="【DND】浮士德预设v1.0"');await refresh();await click('[data-feature=sceneStyle] [data-value=on]');await settled();
   await run('calls.book=0;calls.preset=0');await click('#dnc-tab-functional');
   await check('document.querySelector("[data-feature=battlemap] [data-value=on]").getAttribute("aria-pressed")==="true"','battle generation appears enabled when both rules and planning are enabled');
   await click(off);await settled();
@@ -104,7 +112,7 @@ async function shot(name){const r=await send('Page.captureScreenshot',{format:'p
   await run('selectedPreset="其他预设"');await refresh();const reads=await run('calls.presetRead');const writes=await run('calls.preset');
   await click(off);await settled();
   await check(`!entry(2).enabled&&!entry(781429).enabled&&calls.presetRead===${reads}&&calls.preset===${writes}`,'unrelated presets are neither read nor written');
-  await run('selectedPreset="【明月秋青】fixture";prompt("dnd-cot-battle-map-v01").id="missing"');await click('.dnc-refresh');
+  await run('selectedPreset="【DND】浮士德预设v1.0";prompt("dnd-cot-battle-map-v01").id="missing"');await click('.dnc-refresh');
   await check('document.querySelector("[data-feature=battlemap] [data-value=on]").disabled&&document.querySelector("[data-feature=battlemap]").textContent.includes("未适配")','matching preset without planning is reported and disabled');
   await run('prompt("missing").id="dnd-cot-battle-map-v01";entry(2).content="<wrong>wrong tag</wrong>"');await click('.dnc-refresh');
   await check('document.querySelector("[data-feature=battlemap] [data-value=on]").disabled','missing or mismatched base rule blocks partial toggles');

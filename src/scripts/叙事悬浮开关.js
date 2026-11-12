@@ -11,7 +11,7 @@
   const owner = ctx().characterId, group = ctx().groupId;
   const identity = () => JSON.stringify([ctx().characterId, ctx().groupId, ctx().getCurrentChatId?.() || ctx().chatId]);
   const presetName = () => ctx().mainApi === 'openai' ? api('getLoadedPresetName')() : '';
-  const matching = name => name.startsWith('【明月秋青】');
+  const matching = name => name.startsWith('【DND】浮士德预设v');
   const STORE = 'dnd_setup_flow', POS = 'dnd-narrative-orb-position';
   const features = [
     {key: 'module', name: '玩模组', uid: 12, tag: '模组主持规则', prompt: 'dnd-cot-module-v01'},
@@ -101,7 +101,7 @@
       if (f.rules?.length === 0) {
         unavailable = !prompt;
         selected = prompt ? (prompt.enabled ? 'on' : 'off') : null;
-        detail = !state?.preset ? '需使用配套明月秋青预设' : !prompt ? '请导入 vf.0.4.15 配套预设或合并对应条目' : '预设 ' + (prompt.enabled ? '开' : '关');
+        detail = !state?.preset ? '需使用配套浮士德预设' : !prompt ? '请导入 vf.0.4.15 配套预设或合并对应条目' : '预设 ' + (prompt.enabled ? '开' : '关');
       } else if (unavailable) detail = '未找到对应标签条目';
       else if (f.key === 'opening') {
         selected = state.vars[STORE]?.mode || 'off';
@@ -177,7 +177,7 @@
       before = await read(); check(start);
       const rules = f.rules || [f], entries = rules.map(rule => entryFor(before.entries, rule));
       if (entries.some(e => !e)) throw Error('没有找到对应世界书条目');
-      if (!rules.length && !before.preset) throw Error('需使用配套明月秋青预设');
+      if (!rules.length && !before.preset) throw Error('需使用配套浮士德预设');
       if (f.key === 'opening') {
         if (typeof host.__dndDmPersonas?.refreshOpeningFlow !== 'function' || host.__dndDmPersonas.openingFlowBook !== start.book) throw Error('开团脚本缺失或世界书不匹配');
         modeAttempted = true;
@@ -185,7 +185,7 @@
         check(start); await host.__dndDmPersonas.refreshOpeningFlow(); check(start);
       } else {
         const target = value === 'on', prompt = before.preset && f.prompt ? promptFor(before.preset, f) : null;
-        if (before.preset && f.prompt && !prompt) throw Error('这个明月秋青预设尚未适配此开关');
+        if (before.preset && f.prompt && !prompt) throw Error('这个浮士德预设尚未适配此开关');
         if (f.key === 'module') {
           moduleAttempted = true; await host.__dndModuleRunner.setEnabled(target); check(start);
         } else {

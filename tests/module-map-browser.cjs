@@ -19,7 +19,7 @@ window.TavernHelper={
  getVariables:()=>vars,updateVariablesWith:async fn=>{vars=await fn(vars);localStorage.setItem('fixture-vars',JSON.stringify(vars));return vars},
  getCharWorldbookNames:()=>({primary:'自定义绑定书'}),getWorldbookNames:()=>['自定义绑定书'],getWorldbook:async()=>structuredClone(entries),
  updateWorldbookWith:async(name,fn)=>{if(name!=='自定义绑定书')throw Error('wrong book');entries=await fn(structuredClone(entries));bookWrites.push(name);localStorage.setItem('fixture-book',JSON.stringify(entries));return entries},
- getLoadedPresetName:()=> '【明月秋青】fixture',getPreset:()=>structuredClone(preset),replacePreset:async(name,value)=>{if(failPreset){failPreset=false;throw Error('fixture preset save failure')}preset=value;}
+ getLoadedPresetName:()=> '【DND】浮士德预设v1.0',getPreset:()=>structuredClone(preset),replacePreset:async(name,value)=>{if(failPreset){failPreset=false;throw Error('fixture preset save failure')}preset=value;}
 };
 `;
 const encode=s=>JSON.stringify(s).replaceAll('<','\\u003c');
