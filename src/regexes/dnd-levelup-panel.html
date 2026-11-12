@@ -1339,10 +1339,55 @@ function enrichSpellVariables(variables) {
     }
   }
 
+  // Explicit permanent choices repair skill ranks; temporary grants stay in switchable effects.
+  function syncExpertise(c) {
+    const detail=c.职业详情 || c.classDetail || {};
+    const data=detail.classData || detail.职业数据 || {};
+    const wizard=c.法师数据 || c.wizard_data || c.wizardData || data.wizard || {};
+    const choices=c.成长选择 || {},feats=c.特性?.专长 || {};
+    const owned=name=>Object.keys(feats).find(key=>key.split(/[A-Za-z]/,1)[0].trim()===name);
+    const selected=new Set([
+      ...list(wizard.学者专精 ?? wizard.scholarSkill),
+      ...Object.values(data).flatMap(record=>list(record.专精技能 ?? record.expertise)),
+      ...['cleric_knowledge_skills','eb_feat_艾伦诺专精_skill','feat_技艺专家_expertise','feat_博学多才之恩惠_expertise'].flatMap(key=>list(choices[key]))
+    ]);
+    for (const [feat,skill] of [['静默训练','隐匿'],['异变内构','察觉'],['惊魂落魄之恩惠','威吓']]) if (owned(feat)) selected.add(skill);
+    if (selected.size) { c.熟练配置 ||= {}; c.熟练配置.技能 ||= {}; }
+    let changed=0;
+    for (const skill of selected) {
+      const current=c.熟练配置.技能[skill];
+      const key=object(current) ? ['等级','level','rank','code'].find(k=>Object.hasOwn(current,k)) || '等级' : '';
+      const rank=key ? current[key] : current;
+      if (rank==='专精' || /^(?:[+-]?\d+)?e$/i.test(String(rank)) || Number(rank)>=2) continue;
+      if (key) current[key]=2; else c.熟练配置.技能[skill]=2;
+      changed++;
+    }
+    // 'upgrade' raises the check's proficiency floor; it cannot stack two expertise grants.
+    // Apply the floor before ordinary skill bonuses, without changing permanent proficiency.
+    const abilities={运动:'str',特技:'dex',巧手:'dex',隐匿:'dex',奥秘:'int',历史:'int',调查:'int',自然:'int',宗教:'int',驯兽:'wis',洞悉:'wis',医药:'wis',察觉:'wis',求生:'wis',欺瞒:'cha',威吓:'cha',表演:'cha',游说:'cha'};
+    for (const [feat,id,label,skills,expertise,enabled] of [
+      ['散塔林会战术','zhentarim-expertise','万能佣兵：当前专精',[],list(choices.feat_散塔林会战术_expertise),true],
+      ['灵魂回响','raven-echo-skills','灵魂回响：当前技能',list(choices.feat_灵魂回响_skills),list(choices.feat_灵魂回响_expertise),true],
+      ['专用人格','persona-expertise','专家面具：变形后启用，还原时关闭',[],list(choices.eb_feat_专用人格_personaSkill),false]
+    ]) {
+      const feature=feats[owned(feat)];
+      if (!object(feature)) continue;
+      const changes=[...new Set([...skills,...expertise])].map(skill=>({target:'skill.'+skill,mode:'upgrade',value:`${expertise.includes(skill)?2:1}*@pb+@${abilities[skill]}mod`}));
+      const index=(feature.effects || []).findIndex(effect=>effect.id===id);
+      if (!changes.length) { if (index>=0) feature.effects.splice(index,1); continue; }
+      feature.effects ||= [];
+      const previous=feature.effects[index];
+      const effect=canonicalDndEffect({...previous,id,name:label,enabled:previous?.enabled ?? enabled,priority:-100,changes},0);
+      if (index<0) feature.effects.push(effect); else feature.effects[index]=effect;
+    }
+    return changed;
+  }
+
   function compactCharacter(raw, name) {
     if (!object(raw)) return clone(raw);
     const c = clone(raw);
     normalizeDndRootEffects({角色列表:{[name || '角色']:c}});
+    syncExpertise(c);
     const levels = getLevels(c);
     if (Object.keys(levels).length) {
       c.职业 = levels; delete c.等级; delete c.classLevels;
@@ -1431,6 +1476,7 @@ function enrichSpellVariables(variables) {
     if (!object(raw)) return clone(raw);
     const c=clone(raw);
     normalizeDndRootEffects({角色列表:{[name || '角色']:c}});
+    syncExpertise(c);
     DndArmor.syncCharacter(c);
     c.姓名 ??= name;
     Object.assign(c,ui[name] || {});
@@ -1507,7 +1553,7 @@ function enrichSpellVariables(variables) {
     const root=clone(vars?.stat_data);
     normalizeDndRootEffects(root);
     DndArmor.syncRoot(root);
-    for (const [,c] of entries(root?.角色列表)) normalizeSpellPreparation(c);
+    for (const [,c] of entries(root?.角色列表)) { syncExpertise(c); normalizeSpellPreparation(c); }
     ui=clone(vars?.mvu_lite_ui || {});
     return root;
   }
@@ -1547,7 +1593,7 @@ function enrichSpellVariables(variables) {
       await window.replaceVariables(next,scope);
     }
   }
-  return {racialMagicInfo,applyRacialMagic,wizardPreparedLimit,compactCharacter,expandCharacter,compactRoot:r=>mapRoot(r,compactCharacter),expandRoot:r=>mapRoot(r,expandCharacter),mergeStatus,write,prune,readRoot,stripDefaults};
+  return {syncExpertise,racialMagicInfo,applyRacialMagic,wizardPreparedLimit,compactCharacter,expandCharacter,compactRoot:r=>mapRoot(r,compactCharacter),expandRoot:r=>mapRoot(r,expandCharacter),mergeStatus,write,prune,readRoot,stripDefaults};
 })();
 
 </script>
@@ -4752,6 +4798,7 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
       ]);
     }
     function syncSelectionRoots(charObj,classDataMap=null){
+      MvuLite.syncExpertise(charObj);
       const map=classDataMap||state.classDataMap||getClassDataMap(charObj,state.classLevels);
       const masteries=getKnownWeaponMasteries(charObj,map);
       if(masteries.length||Object.hasOwn(charObj,"武器精通")||Object.hasOwn(charObj,"weaponMasteries")){
@@ -12107,21 +12154,7 @@ const EB={"books":[{"id":"efa","name":"艾伯伦：奇械锻炉","edition":"本�
 const RAVEN_LANGUAGES=['通用语','通用手语','龙语','矮人语','精灵语','巨人语','侏儒语','地精语','半身人语','兽人语','深渊语','天界语','深潜语','炼狱语','原初语','木族语','地底通用语'];
 const RAVEN_CATALYSTS=['1：看见特定的月相','2：闻到特定种类花的香气','3：听见神庙的钟声','4：听见特定的旋律','5：用裸露的皮肤触碰纯银','6：看见与某个特定人物相似的人'];
 const RAVEN_FEAT_SPELLS={'汇灵低语':['传讯术','卜筮术'],'活体阴影':['法师之手'],'第二面目':['变身术'],'死亡之触':['颤栗之触'],'监视者':['野兽感官','动物交谈']};
-function ravenApplyTraits(c){
-  const feats=c.特性.专长,choices=c.成长选择;
-  if(feats['异变内构'])ebApplyProficiency(c,'both',['察觉']);
-  const echo=feats['灵魂回响'];
-  if(echo){
-    const skills=choices.feat_灵魂回响_skills||[],expertise=choices.feat_灵魂回响_expertise||[];
-    const changes=[...new Set([...skills,...expertise])].flatMap(name=>{
-      const raw=c.熟练配置.技能[name],base=['专精','e','2'].includes(String(raw))?2:raw?1:0;
-      const extra=Math.max(0,(expertise.includes(name)?2:1)-base);
-      return extra?[{target:'skill.'+name,mode:'add',value:extra+'*@pb'}]:[];
-    });
-    echo.effects=(echo.effects||[]).filter(e=>e.id!=='raven-echo-skills');
-    if(changes.length)echo.effects.push({id:'raven-echo-skills',name:'灵魂回响：当前技能',changes});
-  }
-}
+function ravenApplyTraits(c){ MvuLite.syncExpertise(c); }
 
 const EB_FEATS = EB.books.flatMap(b=>b.feats);
 const EB_SKILLS = ['运动','特技','巧手','隐匿','奥秘','历史','调查','自然','宗教','驯兽','洞悉','医药','察觉','求生','欺瞒','威吓','表演','游说'];
@@ -14078,8 +14111,9 @@ function growthRenderMode(){
     const hexblade=Number(state.classLevels?.warlock||0)>=3&&subclassSpellIdentity('warlock',state.classDataMap?.warlock)==='legacy_hexblade';
     const ranger=Number(state.classLevels?.ranger||0)>=11;
     const racial=!!MvuLite.racialMagicInfo(state.charObj||{});
-    configButton.hidden=!hexblade&&!ranger&&!racial&&growthMode!=='config';
-    configButton.textContent=growthMode==='config'?'返回升级':racial?'种族施法／配置':ranger?'自制游侠特性／配置':'长休换选精通';
+    const expertise=Object.keys(state.charObj?.特性?.专长||{}).some(name=>/散塔林会战术|灵魂回响|专用人格/.test(name));
+    configButton.hidden=!hexblade&&!ranger&&!racial&&!expertise&&growthMode!=='config';
+    configButton.textContent=growthMode==='config'?'返回升级':racial?'种族施法／配置':ranger?'自制游侠特性／配置':expertise?'专精／配置':'长休换选精通';
     configButton.onclick=()=>{
       if(Object.keys(state.pending||{}).length&&!confirm('切换会清除未提交的选择，已保存的人物不受影响。继续？'))return;
       growthMode=growthMode==='config'?'upgrade':'config';state.pending={};state.plan=buildPlan(state.pending);renderUI();
