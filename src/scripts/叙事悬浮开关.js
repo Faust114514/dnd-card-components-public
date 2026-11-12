@@ -17,11 +17,14 @@
     {key: 'module', name: '玩模组', uid: 12, tag: '模组主持规则', prompt: 'dnd-cot-module-v01'},
     {key: 'combat', name: '战斗检查', uid: 781428, tag: '战斗准则', prompt: 'dnd-cot-combat-v01'},
     {key: 'battlemap', name: '战场生成', rules: [{uid: 2, tag: '战斗面板规则'}, {uid: 781429, tag: '战场生成规则'}], prompt: 'dnd-cot-battle-map-v01'},
-    {key: 'dnj', name: 'DNJ 风格', uid: 8, tag: 'DNJ风格规则'},
     {key: 'opening', name: '开团流程', uid: 5, tag: '开局流程'},
+    {key: 'dnj', name: 'DNJ 风格', group: 'personal', uid: 8, tag: 'DNJ风格规则'},
+    {key: 'partyxp', name: '经验只分玩家队伍', group: 'personal', rules: [], prompt: 'dnd-house-party-xp-v01', detail: '协力 NPC 不分经验；不增加奖励总额。'},
+    {key: 'nameStyle', name: '适当美化', group: 'personal', rules: [], prompt: 'dnd-style-names-v01', detail: '少量术语着色，中文上方标注英文。'},
+    {key: 'sceneStyle', name: '场景小巧思', group: 'personal', rules: [], prompt: 'ab695962-b420-4731-b14c-3f6860909fd9', marker: '<DND场景小巧思>', detail: '实际查看菜单、任务单、悬赏等物件时，偶尔展示小卡片。'},
   ];
   const entryFor = (entries, feature) => entries.find(e => e.uid === feature.uid && e.content.trim().startsWith('<' + feature.tag + '>') && e.content.trim().endsWith('</' + feature.tag + '>'));
-  const promptFor = (preset, feature) => preset.prompts.find(p => p.id === feature.prompt);
+  const promptFor = (preset, feature) => preset.prompts.find(p => p.id === feature.prompt && (!feature.marker || p.content.includes(feature.marker)));
   let disposed = false, writing = false, generating = false, serial = 0, state = null, dragging = null, dragged = false;
   const removers = [];
   const root = doc.createElement('div');
@@ -40,6 +43,9 @@
     #dnd-narrative-controls .dnc-version{font-size:10px;letter-spacing:.16em;color:#bcaa83}
     #dnd-narrative-controls .dnc-close{width:44px;padding:0;background:transparent;border:0;border-radius:8px;font-size:23px}
     #dnd-narrative-controls .dnc-badge{display:inline-block;font-size:12px;color:#dbc89f;margin-top:10px}
+    #dnd-narrative-controls .dnc-tabs{display:flex;gap:4px;padding:4px;margin-top:14px;background:#131b19;border-radius:10px}
+    #dnd-narrative-controls .dnc-tabs button{flex:1;border:0;border-radius:7px;background:transparent;color:#b9c0ba;font-weight:600}
+    #dnd-narrative-controls .dnc-tabs button[aria-selected=true]{background:#d6bd86;color:#202820}
     #dnd-narrative-controls .dnc-row{padding:14px 0;border-bottom:1px solid #ffffff16}
     #dnd-narrative-controls .dnc-line{display:flex;align-items:center;justify-content:space-between;gap:10px}
     #dnd-narrative-controls .dnc-label{font-weight:600;font-size:15px}
@@ -53,13 +59,14 @@
     #dnd-narrative-controls .dnc-refresh,#dnd-narrative-controls .dnc-update{background:transparent;border:1px solid #52635a;border-radius:8px;width:100%;margin-top:10px}
     @media(prefers-reduced-motion:no-preference){#dnd-narrative-controls button{transition:background .12s}}
   </style>
-  <button class="dnc-orb" type="button" aria-label="冒险开关，拖动可移动" aria-expanded="false" aria-controls="dnc-panel" title="冒险开关 · 可拖动">
+  <button class="dnc-orb" type="button" aria-label="冒险设置，拖动可移动" aria-expanded="false" aria-controls="dnc-panel" title="冒险设置 · 可拖动">
     <svg viewBox="0 0 32 32" fill="none" stroke="#e2c58b" stroke-width="1.4" aria-hidden="true"><path d="M16 2 29 10v13L16 30 3 23V10Z M16 2 9 20h14L16 2M3 10l6 10-6 3m26-13-6 10 6 3M9 20l7 10 7-10M3 10h26"/></svg>
   </button>
   <section class="dnc-panel" id="dnc-panel" role="dialog" aria-labelledby="dnc-title" hidden>
-    <div class="dnc-head"><div><div class="dnc-version">DND · VF.0.4.14</div><h2 id="dnc-title">冒险开关</h2></div><button class="dnc-close" type="button" aria-label="关闭面板">×</button></div>
+    <div class="dnc-head"><div><div class="dnc-version">DND · VF.0.4.15</div><h2 id="dnc-title">冒险设置</h2></div><button class="dnc-close" type="button" aria-label="关闭面板">×</button></div>
     <div class="dnc-badge"></div>
-    ${features.map(f => `<div class="dnc-row" data-feature="${f.key}"><div class="dnc-line"><span class="dnc-label">${f.name}</span><div class="dnc-options" role="group" aria-label="${f.name}">${(f.key === 'opening' ? [['auto','自动'],['on','开'],['off','关']] : [['on','开'],['off','关']]).map(([v,t]) => `<button type="button" data-value="${v}" aria-pressed="false" disabled>${t}</button>`).join('')}</div></div><div class="dnc-detail">读取中…</div></div>`).join('')}
+    <div class="dnc-tabs" role="tablist" aria-label="设置分类"><button type="button" role="tab" id="dnc-tab-functional" aria-controls="dnc-functional" aria-selected="true" tabindex="0">功能</button><button type="button" role="tab" id="dnc-tab-personal" aria-controls="dnc-personal" aria-selected="false" tabindex="-1">个性化</button></div>
+    ${['functional','personal'].map(group => `<div id="dnc-${group}" role="tabpanel" aria-labelledby="dnc-tab-${group}" tabindex="0" ${group === 'personal' ? 'hidden' : ''}>${features.filter(f => (f.group || 'functional') === group).map(f => `<div class="dnc-row" data-feature="${f.key}"><div class="dnc-line"><span class="dnc-label">${f.name}</span><div class="dnc-options" role="group" aria-label="${f.name}">${(f.key === 'opening' ? [['auto','自动'],['on','开'],['off','关']] : [['on','开'],['off','关']]).map(([v,t]) => `<button type="button" data-value="${v}" aria-pressed="false" disabled>${t}</button>`).join('')}</div></div>${f.detail ? `<div class="dnc-detail">${f.detail}</div>` : ''}<div class="dnc-detail dnc-state">读取中…</div></div>`).join('')}</div>`).join('')}
     <p class="dnc-note">联动修改当前预设；长期保留请在酒馆保存预设。世界书开关会影响共用它的聊天。</p>
     <div class="dnc-status" role="status" aria-live="polite"></div>
     <button class="dnc-refresh" type="button">刷新状态</button>
@@ -91,7 +98,11 @@
     for (const f of features) {
       const row = rowFor(f.key), entries = (f.rules || [f]).map(rule => state && entryFor(state.entries, rule)), entry = entries[0], prompt = state?.preset && f.prompt ? promptFor(state.preset, f) : null;
       let detail = '', selected = null, unavailable = entries.some(e => !e), warning = false;
-      if (unavailable) detail = '未找到对应标签条目';
+      if (f.rules?.length === 0) {
+        unavailable = !prompt;
+        selected = prompt ? (prompt.enabled ? 'on' : 'off') : null;
+        detail = !state?.preset ? '需使用配套明月秋青预设' : !prompt ? '请导入 vf.0.4.15 配套预设或合并对应条目' : '预设 ' + (prompt.enabled ? '开' : '关');
+      } else if (unavailable) detail = '未找到对应标签条目';
       else if (f.key === 'opening') {
         selected = state.vars[STORE]?.mode || 'off';
         unavailable = typeof host.__dndDmPersonas?.refreshOpeningFlow !== 'function' || host.__dndDmPersonas.openingFlowBook !== state.book;
@@ -112,8 +123,8 @@
           unavailable = true; detail = '请先在“模组地图”选择模组，再切换同步';
         }
       }
-      row.querySelector('.dnc-detail').textContent = detail;
-      row.querySelector('.dnc-detail').dataset.warning = String(warning || unavailable);
+      row.querySelector('.dnc-state').textContent = detail;
+      row.querySelector('.dnc-state').dataset.warning = String(warning || unavailable);
       for (const button of row.querySelectorAll('button')) {
         button.disabled = locked || unavailable;
         button.setAttribute('aria-pressed', String(button.dataset.value === selected));
@@ -166,6 +177,7 @@
       before = await read(); check(start);
       const rules = f.rules || [f], entries = rules.map(rule => entryFor(before.entries, rule));
       if (entries.some(e => !e)) throw Error('没有找到对应世界书条目');
+      if (!rules.length && !before.preset) throw Error('需使用配套明月秋青预设');
       if (f.key === 'opening') {
         if (typeof host.__dndDmPersonas?.refreshOpeningFlow !== 'function' || host.__dndDmPersonas.openingFlowBook !== start.book) throw Error('开团脚本缺失或世界书不匹配');
         modeAttempted = true;
@@ -183,8 +195,8 @@
         if (prompt && prompt.enabled !== target) {presetAttempted = true; await setPreset(start, f, target, prompt.enabled); check(start);}
       }
       const after = await read(); check(start);
-      const entryAfter = entryFor(after.entries, rules[0]);
       if (f.key === 'opening') {
+        const entryAfter = entryFor(after.entries, rules[0]);
         const completed = after.vars[STORE]?.completed === true || (ctx().chat || []).some(m => !m.is_user && !m.is_system && /<!--\s*dnd-setup-complete\s*-->/.test(m.mes || ''));
         const enabled = value === 'on' || (value === 'auto' && !completed);
         if (after.vars[STORE]?.mode !== value || entryAfter?.enabled !== enabled) throw Error('开团流程未同步成功');
@@ -244,6 +256,24 @@
   }
   function close(focus = false) {panel.hidden = true; orb.setAttribute('aria-expanded', 'false'); if (focus) orb.focus();}
   function listen(target, event, fn, options) {target.addEventListener(event, fn, options); removers.push(() => target.removeEventListener(event, fn, options));}
+  const tabs = [...root.querySelectorAll('[role="tab"]')];
+  function selectTab(selected) {
+    for (const tab of tabs) {
+      tab.setAttribute('aria-selected', String(tab === selected));
+      tab.tabIndex = tab === selected ? 0 : -1;
+      doc.getElementById(tab.getAttribute('aria-controls')).hidden = tab !== selected;
+    }
+    placePanel();
+  }
+  for (const tab of tabs) {
+    listen(tab, 'click', () => selectTab(tab));
+    listen(tab, 'keydown', event => {
+      if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+      event.preventDefault();
+      const next = tabs[event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (tabs.indexOf(tab) + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
+      selectTab(next); next.focus();
+    });
+  }
   listen(orb, 'pointerdown', event => {
     if (event.button !== 0) return;
     dragging = {id: event.pointerId, x: event.clientX, y: event.clientY, left: position.x, top: position.y}; dragged = false;

@@ -36,7 +36,7 @@ assert latest['empty_regexes'] == expected_empty
 assert latest['added_regexes'] == expected_added
 assert latest['worldbook_path'] == 'src/worldbook/updates.json'
 patches = json.loads((ROOT / latest['worldbook_path']).read_bytes())
-assert [p['uid'] for p in patches] == [18, 643316, 781421, 12, 207976]
+assert [p['uid'] for p in patches] == [18, 643316, 781421, 12, 207976, 6, 781420]
 assert all(isinstance(p['previous'], str) and isinstance(p['content'], str) and p['content'].strip() for p in patches)
 permitted_root = {'.gitignore', 'README.md', 'latest.json', 'components.json'}
 for path in ROOT.rglob('*'):
