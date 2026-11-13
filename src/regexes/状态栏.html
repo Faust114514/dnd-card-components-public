@@ -1656,6 +1656,7 @@ function enrichSpellVariables(variables) {
         .header-icon-btn:hover { background-color: #6c757d; transform: scale(1.1); }
         .is-collapsed #collapse-toggle-btn { transform: rotate(180deg); }
         #char-class-level { margin-left: auto; }
+        #char-experience { flex-basis: 100%; margin: 0; text-align: right; font-size: 14px; color: var(--ink-muted); overflow-wrap: anywhere; }
         #main-content-collapsible { display: grid; grid-template-columns: 280px 1fr; gap: 24px; flex-grow: 1; min-height: 0; min-width: 0; transition: max-height 0.5s ease-in-out, opacity 0.3s ease, transform 0.5s ease-in-out; max-height: 10000px; transform-origin: top; }
         .main-container.is-collapsed #main-content-collapsible { max-height: 0; overflow: hidden; opacity: 0; transform: scaleY(0.9); }
         .left-sidebar { background-color: #343a40; border-radius: 12px; padding: 24px; display: flex; flex-direction: column; gap: 20px; min-height: 0; min-width: 0; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
@@ -2067,6 +2068,7 @@ function enrichSpellVariables(variables) {
         body.mobile-mode #main-header { flex-direction: column; align-items: flex-start; gap: 8px; }
         body.mobile-mode #main-header-actions { width: 100%; display: flex; justify-content: flex-start; gap: 8px; flex-wrap: wrap; }
         body.mobile-mode #char-class-level { margin-left: 0; }
+        body.mobile-mode #char-experience { flex-basis: auto; width: 100%; text-align: left; }
         body.mobile-mode #portrait-mode-modal { align-items: flex-start; }
         body.mobile-mode .character-portrait { width: min(200px, 70vw); height: auto; aspect-ratio: 3 / 4; }
         body.mobile-mode .roll-log { width: min(90vw, 280px); right: 10px; left: auto; }
@@ -2162,6 +2164,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     <button id="edit-toggle-button" title="编辑模式"><i class="fa-solid fa-wrench"></i></button>
                 </div>
                 <p id="char-class-level" class="text-md text-gray-400"></p>
+                <p id="char-experience"></p>
             </header>
             <div id="main-content-collapsible">
                 <aside class="left-sidebar">
@@ -5223,6 +5226,11 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
             
             function renderHeader() {
                 document.getElementById('char-name').textContent = characterData.name;
+                const rawExperience = characterData.__mvuSource?.经验值;
+                const experience = typeof rawExperience === 'number' || (typeof rawExperience === 'string' && rawExperience.trim()) ? Number(rawExperience) : NaN;
+                const experienceText = rawExperience == null || rawExperience === '' ? '未记录'
+                    : Number.isFinite(experience) && experience >= 0 ? experience.toLocaleString('zh-CN') : '数据异常';
+                document.getElementById('char-experience').textContent = '累计经验 (XP)：' + experienceText;
                 if (isEditing) {
                     document.getElementById('char-class-level').innerHTML = 
                         `<input class="edit-input text-center" id="edit-class" value="${characterData.class}"> <input type="number" class="edit-input edit-input-sm" id="edit-level" value="${characterData.level}">`;
