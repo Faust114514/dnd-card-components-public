@@ -1656,7 +1656,6 @@ function enrichSpellVariables(variables) {
         .header-icon-btn:hover { background-color: #6c757d; transform: scale(1.1); }
         .is-collapsed #collapse-toggle-btn { transform: rotate(180deg); }
         #char-class-level { margin-left: auto; }
-        #char-experience { flex-basis: 100%; margin: 0; text-align: right; font-size: 14px; color: var(--ink-muted); overflow-wrap: anywhere; }
         #main-content-collapsible { display: grid; grid-template-columns: 280px 1fr; gap: 24px; flex-grow: 1; min-height: 0; min-width: 0; transition: max-height 0.5s ease-in-out, opacity 0.3s ease, transform 0.5s ease-in-out; max-height: 10000px; transform-origin: top; }
         .main-container.is-collapsed #main-content-collapsible { max-height: 0; overflow: hidden; opacity: 0; transform: scaleY(0.9); }
         .left-sidebar { background-color: #343a40; border-radius: 12px; padding: 24px; display: flex; flex-direction: column; gap: 20px; min-height: 0; min-width: 0; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
@@ -2068,7 +2067,6 @@ function enrichSpellVariables(variables) {
         body.mobile-mode #main-header { flex-direction: column; align-items: flex-start; gap: 8px; }
         body.mobile-mode #main-header-actions { width: 100%; display: flex; justify-content: flex-start; gap: 8px; flex-wrap: wrap; }
         body.mobile-mode #char-class-level { margin-left: 0; }
-        body.mobile-mode #char-experience { flex-basis: auto; width: 100%; text-align: left; }
         body.mobile-mode #portrait-mode-modal { align-items: flex-start; }
         body.mobile-mode .character-portrait { width: min(200px, 70vw); height: auto; aspect-ratio: 3 / 4; }
         body.mobile-mode .roll-log { width: min(90vw, 280px); right: 10px; left: auto; }
@@ -2164,7 +2162,6 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     <button id="edit-toggle-button" title="编辑模式"><i class="fa-solid fa-wrench"></i></button>
                 </div>
                 <p id="char-class-level" class="text-md text-gray-400"></p>
-                <p id="char-experience"></p>
             </header>
             <div id="main-content-collapsible">
                 <aside class="left-sidebar">
@@ -2193,6 +2190,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     </div>
 
                     <details class="text-xs text-gray-400"><summary>先攻计算明细</summary><div id="initiative-breakdown" class="whitespace-pre-wrap mt-1"></div></details>
+                    <div id="experience-container"></div>
                     <div class="space-y-3 mt-auto">
                         <div id="hitdice-container"></div>
                         <div id="deathsaves-container" class="bg-gray-800 p-2 rounded-md"></div>
@@ -2595,6 +2593,8 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                 return merged;
             };
 
+            // 本地不全书：玩家手册2024 / 创建角色 / 等级提升，角色升级表（累计经验）。
+            const CHARACTER_XP_THRESHOLDS = [0,300,900,2700,6500,14000,23000,34000,48000,64000,85000,100000,120000,140000,165000,195000,225000,265000,305000,355000];
             const defaultCharacterData = {
                 name: "初始模板",
                 playerName: "",
@@ -3075,6 +3075,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                 base.playerName = normalizeString(schemaChar.玩家名 ?? schemaChar.玩家 ?? baseInfo.玩家, base.playerName);
                 base.class = normalizeString(schemaChar.职业 ?? baseInfo.职业, base.class);
                 base.level = normalizeNumber(schemaChar.等级 ?? baseInfo.等级, base.level);
+                base.experience = schemaChar.经验值;
                 base.race = normalizeString(schemaChar.种族, base.race);
                 base.background = normalizeString(schemaChar.背景, base.background);
                 base.alignment = normalizeString(schemaChar.阵营, base.alignment);
@@ -3611,6 +3612,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     });
                 });
 
+                if (char.experience !== undefined) schemaChar.经验值 = char.experience;
                 const packed = MvuLite.compactCharacter(MvuLite.mergeStatus(char.__mvuSource, schemaChar), id);
                 return char.__mvuBaseline ? MvuLite.stripDefaults(MvuLite.compactCharacter(char.__mvuSource,id),packed,char.__mvuBaseline) : packed;
             }
@@ -5226,11 +5228,6 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
             
             function renderHeader() {
                 document.getElementById('char-name').textContent = characterData.name;
-                const rawExperience = characterData.__mvuSource?.经验值;
-                const experience = typeof rawExperience === 'number' || (typeof rawExperience === 'string' && rawExperience.trim()) ? Number(rawExperience) : NaN;
-                const experienceText = rawExperience == null || rawExperience === '' ? '未记录'
-                    : Number.isFinite(experience) && experience >= 0 ? experience.toLocaleString('zh-CN') : '数据异常';
-                document.getElementById('char-experience').textContent = '累计经验 (XP)：' + experienceText;
                 if (isEditing) {
                     document.getElementById('char-class-level').innerHTML = 
                         `<input class="edit-input text-center" id="edit-class" value="${characterData.class}"> <input type="number" class="edit-input edit-input-sm" id="edit-level" value="${characterData.level}">`;
@@ -5244,6 +5241,26 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
             }
 
             function renderSidebar() {
+                const rawExperience = characterData.experience;
+                const experience = typeof rawExperience === 'number' || (typeof rawExperience === 'string' && rawExperience.trim()) ? Number(rawExperience) : NaN;
+                const validExperience = Number.isFinite(experience) && experience >= 0;
+                const experienceText = rawExperience == null || rawExperience === '' ? '未记录'
+                    : validExperience ? experience.toLocaleString('zh-CN') : '数据异常';
+                const nextLevelXp = CHARACTER_XP_THRESHOLDS[characterData.level];
+                const maxLevel = characterData.level >= 20;
+                const hasTarget = Number.isFinite(nextLevelXp) && nextLevelXp > 0;
+                const xpMax = maxLevel ? 1 : nextLevelXp;
+                const xpValue = maxLevel ? 1 : Math.min(experience, nextLevelXp);
+                const xpPercent = maxLevel ? 100 : Math.min(100, experience / nextLevelXp * 100);
+                document.getElementById('experience-container').innerHTML = `
+                    <div class="flex justify-between items-center gap-2 text-sm mb-1 px-1">
+                        <span class="shrink-0">经验值${maxLevel ? '（满级）' : ''}</span>
+                        <div class="flex items-center justify-end gap-1 min-w-0">
+                            ${isEditing ? `<input id="edit-experience" type="number" min="0" step="1" class="edit-input text-right" style="width:7em" aria-label="累计经验值" placeholder="未记录" value="${validExperience ? experience : ''}">` : `<span id="char-experience" class="font-bold">${experienceText}</span>`}
+                            ${hasTarget ? `<span class="font-bold whitespace-nowrap">/ ${nextLevelXp.toLocaleString('zh-CN')}</span>` : ''}
+                        </div>
+                    </div>
+                    ${!isEditing && validExperience && (hasTarget || maxLevel) ? `<div id="experience-progress" class="w-full bg-gray-800 rounded-full h-3" role="progressbar" aria-label="经验值升级进度" aria-valuemin="0" aria-valuemax="${xpMax}" aria-valuenow="${xpValue}" aria-valuetext="${maxLevel ? '已达到20级' : experienceText + ' / ' + nextLevelXp.toLocaleString('zh-CN')}"><div class="bg-yellow-600 h-3 rounded-full transition-all duration-300" style="width:${xpPercent}%"></div></div>` : ''}`;
                 document.getElementById('character-portrait-img').src = getPortraitSrc(characterData.portrait);
                 const portraitContainer = document.getElementById('portrait-container');
                 if (portraitContainer) {
@@ -6230,6 +6247,8 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
             }
 
             function toggleEditMode() {
+                const experienceInput = document.getElementById('edit-experience');
+                if (isEditing && experienceInput && !experienceInput.reportValidity()) return;
                 isEditing = !isEditing;
                 if (!isEditing) { saveEdits(); }
                 isEditingSpellSlots = false;
@@ -6260,6 +6279,10 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                 const classInput = getInput('edit-class');
                 if (classInput) characterData.class = classInput.value;
                 characterData.level = getNumber('edit-level', characterData.level || 1);
+                const experienceInput = getInput('edit-experience');
+                if (experienceInput && experienceInput.checkValidity() && experienceInput.value !== '' && experienceInput.value !== String(characterData.experience ?? '')) {
+                    characterData.experience = experienceInput.valueAsNumber;
+                }
                 const walkSpeedInput = getNumber('edit-speed-walk', getNumber('edit-speed', characterData.speed || 30));
                 characterData.speed = walkSpeedInput;
                 characterData.speeds = characterData.speeds || {};
