@@ -20,8 +20,8 @@
     {key: 'opening', name: '开团流程', uid: 5, tag: '开局流程'},
     {key: 'dnj', name: 'DNJ 风格', group: 'personal', uid: 8, tag: 'DNJ风格规则'},
     {key: 'partyxp', name: '经验只分玩家队伍', group: 'personal', rules: [], prompt: 'dnd-house-party-xp-v01', detail: '协力 NPC 不分经验；不增加奖励总额。'},
-    {key: 'nameStyle', name: '适当美化', group: 'personal', rules: [], prompt: 'dnd-style-names-v01', detail: '少量术语着色，中文上方标注英文。'},
-    {key: 'sceneStyle', name: '场景小巧思', group: 'personal', rules: [], prompt: 'ab695962-b420-4731-b14c-3f6860909fd9', marker: '<DND场景小巧思>', detail: '实际查看菜单、任务单、悬赏等物件时，偶尔展示小卡片。'},
+    {key: 'nameStyle', name: '适当美化', group: 'personal', rules: [], prompt: 'dnd-style-names-v01', detail: '法术、特性等中英装饰框与画外说明美化，不限次数。'},
+    {key: 'sceneStyle', name: '场景小巧思', group: 'personal', rules: [], prompt: 'ab695962-b420-4731-b14c-3f6860909fd9', marker: '<DND场景小巧思>', detail: '实际阅读菜单、任务单等物件时展示卡片，不限张数。'},
   ];
   const entryFor = (entries, feature) => entries.find(e => e.uid === feature.uid && e.content.trim().startsWith('<' + feature.tag + '>') && e.content.trim().endsWith('</' + feature.tag + '>'));
   const promptFor = (preset, feature) => preset.prompts.find(p => p.id === feature.prompt && (!feature.marker || p.content.includes(feature.marker)));
@@ -63,7 +63,7 @@
     <svg viewBox="0 0 32 32" fill="none" stroke="#e2c58b" stroke-width="1.4" aria-hidden="true"><path d="M16 2 29 10v13L16 30 3 23V10Z M16 2 9 20h14L16 2M3 10l6 10-6 3m26-13-6 10 6 3M9 20l7 10 7-10M3 10h26"/></svg>
   </button>
   <section class="dnc-panel" id="dnc-panel" role="dialog" aria-labelledby="dnc-title" hidden>
-    <div class="dnc-head"><div><div class="dnc-version">DND · VF.0.4.18</div><h2 id="dnc-title">冒险设置</h2></div><button class="dnc-close" type="button" aria-label="关闭面板">×</button></div>
+    <div class="dnc-head"><div><div class="dnc-version">DND · VF.0.4.19</div><h2 id="dnc-title">冒险设置</h2></div><button class="dnc-close" type="button" aria-label="关闭面板">×</button></div>
     <div class="dnc-badge"></div>
     <div class="dnc-tabs" role="tablist" aria-label="设置分类"><button type="button" role="tab" id="dnc-tab-functional" aria-controls="dnc-functional" aria-selected="true" tabindex="0">功能</button><button type="button" role="tab" id="dnc-tab-personal" aria-controls="dnc-personal" aria-selected="false" tabindex="-1">个性化</button></div>
     ${['functional','personal'].map(group => `<div id="dnc-${group}" role="tabpanel" aria-labelledby="dnc-tab-${group}" tabindex="0" ${group === 'personal' ? 'hidden' : ''}>${features.filter(f => (f.group || 'functional') === group).map(f => `<div class="dnc-row" data-feature="${f.key}"><div class="dnc-line"><span class="dnc-label">${f.name}</span><div class="dnc-options" role="group" aria-label="${f.name}">${(f.key === 'opening' ? [['auto','自动'],['on','开'],['off','关']] : [['on','开'],['off','关']]).map(([v,t]) => `<button type="button" data-value="${v}" aria-pressed="false" disabled>${t}</button>`).join('')}</div></div>${f.detail ? `<div class="dnc-detail">${f.detail}</div>` : ''}<div class="dnc-detail dnc-state">读取中…</div></div>`).join('')}</div>`).join('')}
