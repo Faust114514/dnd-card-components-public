@@ -130,15 +130,30 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
   }};
 }
 
-function planDndWorldbook(book, patches, kept = []) {
+function planDndWorldbook(book, patches, kept = [], additions = []) {
   const allowed = new Set([18, 643316, 781421, 12, 207976, 6, 781420]);
-  return patches.map(patch => {
+  const plan = patches.map(patch => {
     if (!allowed.delete(patch.uid) || typeof patch.previous !== 'string' || typeof patch.content !== 'string' || !patch.content.trim()) throw Error('世界书更新条目无效');
     const entry = book.entries[patch.uid];
     if (!entry || entry.uid !== patch.uid || typeof entry.content !== 'string') throw Error('绑定世界书缺少规则：' + patch.name);
     const action = entry.content === patch.content ? 'current' : kept.includes(patch.uid) ? 'keep' : entry.content === patch.previous ? 'replace' : '';
     return {...patch, before: entry.content, action};
   });
+  const addable = new Set([781430]);
+  for (const template of additions) {
+    if (!addable.delete(template.uid) || typeof template.content !== 'string' ||
+        !template.content.startsWith('<长途旅行规则>') || !template.content.endsWith('</长途旅行规则>') ||
+        template.constant !== true || template.disable !== false) throw Error('新增世界书条目无效');
+    // Earlier releases also supported manually pasting this rule under a host-assigned UID.
+    const matches = Object.values(book.entries).filter(entry => typeof entry.content === 'string' && entry.content.trimStart().startsWith('<长途旅行规则>'));
+    if (matches.length > 1) throw Error('世界书已有多条长途旅行规则，请先保留需要的一条');
+    const entry = matches[0] || book.entries[template.uid];
+    if (entry && !matches.length && entry.comment !== template.comment) throw Error('新增规则编号已被其他条目占用：' + template.uid);
+    if (entry && (book.entries[entry.uid] !== entry || typeof entry.content !== 'string')) throw Error('世界书条目编号或正文无效');
+    plan.push({uid: entry ? entry.uid : template.uid, name: template.comment, content: template.content,
+      before: entry?.content, template, action: !entry ? 'add' : entry.content === template.content ? 'current' : kept.includes(entry.uid) ? 'keep' : ''});
+  }
+  return plan;
 }
 
 function dndVersionIsNewer(next, current) {
@@ -235,17 +250,23 @@ function dndVersionIsNewer(next, current) {
     const name = api('getCharWorldbookNames')('current').primary;
     if (!name) throw Error('当前卡尚未绑定主世界书');
     const patches = JSON.parse(await github(candidate.worldbook_path, candidate.version)); guard(start);
+    let additions = [];
+    if (candidate.worldbook_additions_path) {
+      if (candidate.worldbook_additions_path !== 'src/worldbook/长途旅行规则.json') throw Error('新增世界书路径无效');
+      additions = Object.values(JSON.parse(await github(candidate.worldbook_additions_path, candidate.version)).entries); guard(start);
+      if (additions.length !== 1) throw Error('新增世界书条目数量无效');
+    }
     const book = await ctx().loadWorldInfo(name); guard(start);
     if (api('getCharWorldbookNames')('current').primary !== name) throw Error('绑定世界书已切换，请重新检查更新');
     const receipt = current().data.extensions.dnd_component_updates?.worldbook;
     const same = receipt?.name === name && receipt.version === candidate.version;
-    const entries = planDndWorldbook(book, patches, same ? receipt.kept : []);
-    bookPlan = {name, entries, pending: !same || entries.some(entry => entry.action === 'replace' || !entry.action)};
+    const entries = planDndWorldbook(book, patches, same ? receipt.kept : [], additions);
+    bookPlan = {name, entries, pending: !same || entries.some(entry => entry.action === 'add' || entry.action === 'replace' || !entry.action)};
     const box = dialog.querySelector('.dpu-worldbook'), title = doc.createElement('p');
     title.textContent = '世界书 · ' + name; box.append(title);
     for (const entry of entries) {
       const row = doc.createElement('div');
-      row.textContent = entry.name + ' · ' + ({current:'已同步', keep:'沿用个人修改', replace:'更新正文'}[entry.action] || '发现个人修改');
+      row.textContent = entry.name + ' · ' + ({current:'已同步', keep:'沿用个人修改', replace:'更新正文', add:'补入新条目（常开）'}[entry.action] || '发现个人修改');
       box.append(row);
       if (entry.action) continue;
       const details = doc.createElement('details'), summary = doc.createElement('summary');
@@ -311,15 +332,27 @@ function dndVersionIsNewer(next, current) {
       if (bookPlan) {
         const live = await ctx().loadWorldInfo(bookPlan.name); guard(start);
         const next = structuredClone(live);
+        if (bookPlan.entries.some(entry => entry.action === 'add') &&
+            Object.values(next.entries).some(entry => typeof entry.content === 'string' && entry.content.trimStart().startsWith('<长途旅行规则>'))) throw Error('长途旅行规则已被添加，请重新检查更新');
         for (const entry of bookPlan.entries) {
           if (next.entries[entry.uid]?.content !== entry.before) throw Error('规则已被修改，请重新检查：' + entry.name);
+          if (entry.action === 'add') {
+            if (Object.hasOwn(next.entries, entry.uid)) throw Error('新增规则编号已被占用，请重新检查：' + entry.name);
+            const added = structuredClone(entry.template);
+            added.displayIndex = Math.max(-1, ...Object.values(next.entries).map(item => Number.isInteger(item.displayIndex) ? item.displayIndex : -1)) + 1;
+            added.extensions.display_index = added.displayIndex;
+            next.entries[entry.uid] = added;
+          }
           if (entry.action === 'replace') next.entries[entry.uid].content = entry.content;
         }
         if (bookPlan.pending) {
           bookAttempted = true;
           await ctx().saveWorldInfo(bookPlan.name, next, true); guard(start);
           const verified = await (await local('/api/worldinfo/get', {name: bookPlan.name})).json(); guard(start);
-          for (const entry of bookPlan.entries) if (verified.entries[entry.uid]?.content !== next.entries[entry.uid].content) throw Error('世界书保存后读回不一致：' + entry.name);
+          for (const entry of bookPlan.entries) {
+            if (verified.entries[entry.uid]?.content !== next.entries[entry.uid].content) throw Error('世界书保存后读回不一致：' + entry.name);
+            if (entry.action === 'add' && ['uid', 'constant', 'disable'].some(field => verified.entries[entry.uid][field] !== next.entries[entry.uid][field])) throw Error('新增世界书设置保存不完整：' + entry.name);
+          }
         }
         update.extensions.dnd_component_updates.worldbook = {name: bookPlan.name, version: release.version,
           kept: bookPlan.entries.filter(entry => entry.action === 'keep').map(entry => entry.uid)};

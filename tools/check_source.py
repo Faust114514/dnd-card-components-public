@@ -38,6 +38,10 @@ assert latest['worldbook_path'] == 'src/worldbook/updates.json'
 patches = json.loads((ROOT / latest['worldbook_path']).read_bytes())
 assert [p['uid'] for p in patches] == [18, 643316, 781421, 12, 207976, 6, 781420]
 assert all(isinstance(p['previous'], str) and isinstance(p['content'], str) and p['content'].strip() for p in patches)
+assert latest['worldbook_additions_path'] == 'src/worldbook/长途旅行规则.json'
+additions = json.loads((ROOT / latest['worldbook_additions_path']).read_bytes())['entries']
+assert list(additions) == ['781430']
+assert additions['781430']['content'] == (ROOT / 'src/worldbook/长途旅行规则.txt').read_text(encoding='utf8').strip()
 permitted_root = {'.gitignore', 'README.md', 'latest.json', 'components.json'}
 for path in ROOT.rglob('*'):
     if not path.is_file() or '.git' in path.relative_to(ROOT).parts:

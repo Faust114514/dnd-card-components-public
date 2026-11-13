@@ -94,6 +94,7 @@ check(importedResult.extensions.tavern_helper.scripts.find(s=>s.id===updaterId).
 assert.throws(()=>merge(imported,latest,sources,'not-in-current-card'));checks.push('runtime updater must belong to current card');
 const duplicateSelf=structuredClone(imported);duplicateSelf.data.extensions.tavern_helper.scripts.push(structuredClone(self));assert.throws(()=>merge(duplicateSelf,latest,sources,runningId));checks.push('duplicate runtime updater ID still rejected');
 const patches=JSON.parse(fs.readFileSync(path.join(root,latest.worldbook_path)));
+const additions=Object.values(JSON.parse(fs.readFileSync(path.join(root,latest.worldbook_additions_path))).entries);
 const book={entries:Object.fromEntries(patches.map(p=>[p.uid,{uid:p.uid,content:p.previous,disable:true,extra:{keep:true}}]))};
 const plan=context.planDndWorldbook(book,patches);
 check(plan.every(p=>p.action==='replace'),'untouched shipped worldbook entries can update');
@@ -105,6 +106,22 @@ check(context.planDndWorldbook(book,patches)[0].action==='current','already upda
 const wrongBook=structuredClone(book);delete wrongBook.entries[18];
 assert.throws(()=>context.planDndWorldbook(wrongBook,patches));checks.push('wrong or incomplete bound worldbook stops update');
 assert.throws(()=>context.planDndWorldbook(book,[...patches,patches[0]]));checks.push('duplicate worldbook patch rejected');
+const travel=additions[0],travelPlan=(value,kept=[])=>context.planDndWorldbook(value,patches,kept,additions).at(-1);
+check(travelPlan(book).action==='add'&&!book.entries[travel.uid],'missing travel rule is planned without mutating the book');
+const mention=structuredClone(book);mention.entries[950]={uid:950,content:'Reference to <长途旅行规则> elsewhere'};
+check(travelPlan(mention).action==='add','mentioning the travel tag inside another rule does not misidentify that rule');
+const manual=structuredClone(book);manual.entries[travel.uid]=structuredClone(travel);
+check(travelPlan(manual).action==='current','existing travel rule is not duplicated');
+manual.entries[travel.uid].content+=' personal edit';manual.entries[travel.uid].disable=true;
+check(travelPlan(manual).action===''&&travelPlan(manual,[travel.uid]).action==='keep','custom travel rule requires a choice and respects saved keep');
+manual.entries[950]={...manual.entries[travel.uid],uid:950};delete manual.entries[travel.uid];
+check(travelPlan(manual).uid===950&&travelPlan(manual,[950]).action==='keep','manually pasted travel rule keeps the host-assigned UID');
+manual.entries[travel.uid]=structuredClone(travel);
+assert.throws(()=>travelPlan(manual));checks.push('two travel rules require manual resolution instead of creating a third');
+manual.entries[950].content='personal unrelated rule';manual.entries[travel.uid].content='unrelated';manual.entries[travel.uid].comment='personal rule';
+assert.throws(()=>travelPlan(manual));checks.push('occupied UID is not overwritten');
+assert.throws(()=>context.planDndWorldbook(book,patches,[],[...additions,...additions]));checks.push('duplicate addition rejected');
+assert.throws(()=>context.planDndWorldbook(book,patches,[],[{...travel,uid:123}]));checks.push('unlisted addition rejected');
 const previousRules=structuredClone(original);
 previousRules.data.extensions.regex_scripts=previousRules.data.extensions.regex_scripts.filter(r=>!r.id.startsWith('dnd-clean-'));
 for(const [id,field] of [['0d8967e6-d2e8-4afb-9770-d22e332c301c','promptOnly'],['b179c655-147d-4572-a6ea-1c0326363009','promptOnly'],['918ecc02-7af0-4700-89c5-cbf05735c7e9','markdownOnly']])previousRules.data.extensions.regex_scripts.find(r=>r.id===id)[field]=true;
@@ -150,11 +167,14 @@ if(baselinePath){
 const selected=latest.components.filter(c=>['c3c9ad44-9e9b-4c6e-ae93-f2b098a20125','480d6777-f90d-4eba-a811-64cb2f1ffb00','736c0e4e-67b4-4113-a021-b3890714ba28','01c632e5-1071-4a08-aebd-6a0e5424ea99','36bab6c1-2a4d-44de-b9a7-256c8a68c50d',...archiveIds].includes(c.id));
 const fixtureManifest={...latest,components:selected,empty_regexes:latest.empty_regexes.filter(c=>archiveIds.includes(c.id))};
 const withWorldbook=process.argv.includes('--worldbook');
+const bootstrap=process.argv.includes('--bootstrap');
+if(bootstrap)assert.ok(withWorldbook,'bootstrap test requires --worldbook');
 // Include the map cleanup needed by the current pattern migration.
 fixtureManifest.added_regexes=latest.added_regexes.filter(r=>r.id==='dnd-clean-old-battle-map');
-if(!withWorldbook)delete fixtureManifest.worldbook_path;
+if(!withWorldbook){delete fixtureManifest.worldbook_path;delete fixtureManifest.worldbook_additions_path;}
 const fixtureSources=Object.fromEntries(selected.map(c=>[c.path,sources[c.path]]));
 if(withWorldbook)fixtureSources[latest.worldbook_path]=JSON.stringify(patches);
+if(withWorldbook)fixtureSources[latest.worldbook_additions_path]=JSON.stringify({entries:{[travel.uid]:travel}});
 const fixture=structuredClone(original);fixture.data.extensions.tavern_helper.scripts=fixture.data.extensions.tavern_helper.scripts.filter(s=>selected.some(c=>c.id===s.id)||s.id==='user-added');
 fixture.data.extensions.tavern_helper.scripts[0].content='old DM';fixture.data.extensions.regex_scripts=fixture.data.extensions.regex_scripts.filter(r=>selected.some(c=>c.id===r.id)||archiveIds.includes(r.id)||r.id==='dnd-clean-old-battle-map');
 // Receipt-loss verification revisits the earlier display/prompt migration too.
@@ -174,6 +194,7 @@ const jsJSON=value=>JSON.stringify(value).replaceAll('<','\\u003c');
 const setup=`
 window.fixtureCard=${jsJSON(fixture)};window.initialCard=structuredClone(fixtureCard);window.remoteManifest=${jsJSON(fixtureManifest)};window.remoteSources=${jsJSON(fixtureSources)};
 window.fixtureBook=${jsJSON(book)};fixtureBook.entries[18].content='personal edit';
+fixtureBook.personalMetadata={keep:true};fixtureBook.entries[999]={uid:999,comment:'personal',content:'keep',disable:true,displayIndex:80,unknown:{keep:true}};
 window.errors=[];window.calls=[];window.saves=0;window.reloads=0;window.failure=null;window.delayNext=null;window.frozenCalls=[];
 addEventListener('error',e=>errors.push(e.message));addEventListener('unhandledrejection',e=>errors.push(String(e.reason)));
 const listeners=new Map();window.events={on:(e,f)=>{if(!listeners.has(e))listeners.set(e,new Set());listeners.get(e).add(f);},removeListener:(e,f)=>listeners.get(e)?.delete(f)};
@@ -181,7 +202,7 @@ window.emit=(e,...args)=>{for(const f of [...(listeners.get(e)||[])])f(...args);
 window.context={characterId:0,groupId:null,chatId:'a',characters:[fixtureCard],getCurrentChatId:()=>context.chatId,getRequestHeaders:()=>({'Content-Type':'application/json','X-CSRF-Token':'fixture-local'}),eventSource:events,event_types:{CHAT_CHANGED:'chat',GENERATION_STARTED:'start',GENERATION_ENDED:'end',GENERATION_STOPPED:'stop'}};
 window.SillyTavern={getContext:()=>context};window.__fixtureReload=()=>{reloads++;};
 context.loadWorldInfo=async()=>structuredClone(fixtureBook);
-context.saveWorldInfo=async(name,data)=>{fixtureBook=structuredClone(data);};
+context.saveWorldInfo=async(name,data)=>{if(failure==='world-save'){failure=null;throw Error('fixture world save failed');}fixtureBook=structuredClone(data);if(failure==='world-settings'){fixtureBook.entries[781430].constant=false;failure=null;}};
 window.TavernHelper={getCharWorldbookNames:()=>({primary:fixtureCard.data.extensions.world}),getButtonEvent:()=> 'update-button',eventOn:(name,fn)=>{events.on(name,fn);return{stop:()=>events.removeListener(name,fn)};}};
 window.fetch=async(url,options={})=>{
  calls.push({url,method:options.method,body:options.body});
@@ -243,11 +264,21 @@ addEventListener('DOMContentLoaded',async()=>{
    }
   }
   await check();await install();assert(saves===1&&reloads===1,'all sources saved in one native merge then verified before reload / '+q('.dpu-status').textContent);
+  if(${bootstrap}){
+   assert(!fixtureBook.entries[781430],'actual vf.0.4.16 updater ignores the new manifest field and installs new code successfully');
+   const previous=window.__dndPrivateUpdates;window.useUpdatedRuntime=true;document.querySelector('iframe').src='/helper';
+   await wait(()=>window.__dndPrivateUpdates!==previous,'updated script startup');window.__dndPrivateUpdates.open();
+   await check();assert(!q('.dpu-install').disabled&&q('.dpu-worldbook').textContent.includes('补入新条目'),'new updater detects missing rule despite same component version receipt');
+   await install();assert(saves===2&&reloads===2&&!!fixtureBook.entries[781430],'second install adds the rule without manually importing a script or worldbook');
+  }
   if(${withWorldbook}){
    const receipt=fixtureCard.data.extensions.dnd_component_updates.worldbook;
    assert(Object.keys(receipt).join(',')==='kept,name,version','native reordered receipt accepted without false failure');
    assert(receipt.kept.length===1&&receipt.kept[0]===18&&fixtureBook.entries[18].content==='personal edit','personal worldbook choice preserved in receipt');
    assert(fixtureBook.entries[643316].content===JSON.parse(remoteSources[remoteManifest.worldbook_path]).find(p=>p.uid===643316).content,'shipped worldbook content saved and verified');
+   const expected=${jsJSON(travel)};expected.displayIndex=81;expected.extensions.display_index=81;
+   assert(JSON.stringify(fixtureBook.entries[781430])===JSON.stringify(expected),'travel rule added with all shipped settings and appended display position');
+   assert(fixtureBook.personalMetadata.keep&&fixtureBook.entries[999].unknown.keep&&fixtureBook.entries[999].content==='keep'&&fixtureBook.entries[643316].disable,'unrelated book data and existing rule switches remain intact');
   }
   assert(fixtureCard.data.extensions.dnd_component_updates.version===remoteManifest.version&&fixtureCard.data.character_version===initialCard.data.character_version,'component version updated without pretending whole card upgraded');
   assert(fixtureCard.data.post_history_instructions==='','native merge removes shipped post-history instruction and verifies it');
@@ -261,7 +292,7 @@ addEventListener('DOMContentLoaded',async()=>{
   assert(archiveRules.find(rule=>rule.id===${jsJSON(archiveIds[0])}).maxDepth===0&&archiveRules.find(rule=>rule.id===${jsJSON(archiveIds[1])}).minDepth===1,'archive display and prompt depths persist as latest-only');
   assert(fixtureCard.data.extensions.dnd_component_updates.rules_version==='vf.0.4.5','same-version installation records the archive depth migration');
   if(${sameVersionRepair}){
-    const files=new Set(calls.filter(call=>call.url.startsWith('https://')&&!call.url.endsWith('/latest.json')&&!decodeURIComponent(call.url).endsWith('/'+remoteManifest.worldbook_path)).map(call=>call.url));
+    const files=new Set(calls.filter(call=>call.url.startsWith('https://')&&!call.url.endsWith('/latest.json')&&!decodeURIComponent(call.url).endsWith('/'+remoteManifest.worldbook_path)&&!decodeURIComponent(call.url).endsWith('/'+remoteManifest.worldbook_additions_path)).map(call=>call.url));
     assert(files.size===1&&[...files].every(file=>file.includes('/src/regexes/')),'same-version repair downloads the display template only');
   }
   await check();assert(q('.dpu-install').disabled&&q('.dpu-status').textContent.includes('最新'),'next check reports current after saving the patterns');
@@ -277,14 +308,43 @@ addEventListener('DOMContentLoaded',async()=>{
   fixtureCard.data.extensions.regex_scripts.find(r=>r.id===mapFixes[1][0]).findRegex=mapFixes[1][1];
   await check();assert(!q('.dpu-install').disabled,'cleanup-only mismatch remains installable');
   await install();await check();assert(q('.dpu-install').disabled,'cleanup-only repair persists');
+  if(${withWorldbook}){
+   const clean=structuredClone(fixtureBook);
+   assert(Object.values(fixtureBook.entries).filter(entry=>entry.content.includes('<长途旅行规则>')).length===1,'repeat checks and repair installs do not create duplicate travel entries');
+   fixtureBook.entries[781430].disable=true;fixtureBook.entries[781430].constant=false;fixtureBook.entries[781430].key=['personal'];
+   fixtureBook.entries[781430].content+=' personal edit';
+   await check();assert(!q('.dpu-install').disabled,'custom travel text uses the existing conflict choice');
+   await install();assert(fixtureBook.entries[781430].content.endsWith(' personal edit')&&fixtureBook.entries[781430].disable,'keep choice preserves personal travel text and disabled state');
+   await check();assert(q('.dpu-install').disabled,'keep choice is remembered on repeat check');
+   fixtureCard.data.extensions.dnd_component_updates.worldbook.kept=[18];
+   await check();const select=q('.dpu-worldbook select');select.value='replace';select.dispatchEvent(new Event('change'));await install();
+   assert(fixtureBook.entries[781430].content===clean.entries[781430].content&&fixtureBook.entries[781430].disable&&!fixtureBook.entries[781430].constant&&fixtureBook.entries[781430].key[0]==='personal','overwrite updates only text, retaining existing entry settings');
+   fixtureBook.entries[950]={...fixtureBook.entries[781430],uid:950};delete fixtureBook.entries[781430];
+   await check();assert(q('.dpu-install').disabled&&!fixtureBook.entries[781430],'manual host-assigned UID is recognized without duplicate addition');
+   fixtureBook.entries[950].content+=' another edit';await check();await install();
+   assert(fixtureCard.data.extensions.dnd_component_updates.worldbook.kept.includes(950)&&fixtureBook.entries[950].content.endsWith(' another edit'),'manual UID also supports keep and receipt persistence');
+   fixtureBook=structuredClone(clean);delete fixtureBook.entries[781430];await check();
+   const beforeSave=saves,beforeReload=reloads;failure='world-save';await install();
+   assert(!fixtureBook.entries[781430]&&saves===beforeSave&&reloads===beforeReload&&q('.dpu-status').textContent.includes('fixture world save failed'),'worldbook save failure does not save card or reload');
+   await check();failure='world-settings';await install();
+   assert(saves===beforeSave&&reloads===beforeReload&&q('.dpu-status').textContent.includes('新增世界书设置保存不完整'),'readback detects lost always-on setting before saving card');
+   fixtureBook=structuredClone(clean);delete fixtureBook.entries[781430];await check();
+   fixtureBook.entries[781430]={uid:781430,comment:'personal collision',content:'do not replace'};await install();
+   assert(saves===beforeSave&&fixtureBook.entries[781430].content==='do not replace'&&q('.dpu-status').textContent.includes('重新检查'),'UID occupied after check stops installation without overwrite');
+   fixtureBook=structuredClone(clean);delete fixtureBook.entries[781430];await check();
+   fixtureBook.entries[950]={...clean.entries[781430],uid:950};await install();
+   assert(saves===beforeSave&&!fixtureBook.entries[781430]&&q('.dpu-status').textContent.includes('已被添加'),'manual addition after check prevents a duplicate');
+   fixtureBook=structuredClone(clean);await check();assert(q('.dpu-install').disabled,'existing full-card travel rule needs no additional installation');
+  }
   assert(errors.length===0,'no browser errors');
   assert(calls.filter(c=>c.url.startsWith('https://')).every(c=>c.method==='GET'&&!c.body),'remote server receives only GET requests without card data');
   document.getElementById('fixture-result').textContent=JSON.stringify({passed:true,checks});
  }catch(e){document.getElementById('fixture-result').textContent=JSON.stringify({passed:false,error:e.stack,checks,errors});}
 });`;
 const runtime=source.replace('host.location.reload();','host.__fixtureReload();');assert.notEqual(runtime,source);
+const oldRuntime=bootstrap?require('node:child_process').execFileSync('git',['show','vf.0.4.16:src/scripts/私有组件更新.js'],{cwd:root,encoding:'utf8',windowsHide:true}).replace('host.location.reload();','host.__fixtureReload();'):'';
 const html=`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Public updater isolated check</title><style>body{background:#111a18}</style><pre id="fixture-result" hidden>pending</pre><script>${setup.replaceAll('</script','<\/script')}${test}</script><iframe id="TH-script--character--${runningId}" src="/helper" hidden></iframe>`;
-const helper=`<!doctype html><script>window.TavernHelper=parent.TavernHelper;window.getScriptId=()=>window.frameElement.id.replace(/TH-script--.+--/,'');${runtime.replaceAll('</script','<\/script')}</script>`;
+const helper=`<!doctype html><script>window.TavernHelper=parent.TavernHelper;window.getScriptId=()=>window.frameElement.id.replace(/TH-script--.+--/,'');${(bootstrap?'if(parent.useUpdatedRuntime){'+runtime+'}else{'+oldRuntime+'}':runtime).replaceAll('</script','<\/script')}</script>`;
 (async()=>{
  const server=http.createServer((req,res)=>{res.setHeader('Content-Type','text/html; charset=utf-8');res.end(req.url==='/helper'?helper:html);});await new Promise(r=>server.listen(0,'127.0.0.1',r));
  try{
