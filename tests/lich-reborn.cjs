@@ -41,7 +41,7 @@ async function shot(name){const r=await send('Page.captureScreenshot',{format:'p
 async function navigate(route){await send('Page.navigate',{url:'http://127.0.0.1:'+server.address().port+route});await wait("document.readyState==='complete'");}
 async function runScenarios(){
  await navigate('/creator');await wait("document.getElementById('char-species-search')&&!minimalRenderMode");
- await choose('char-species','Reborn');await set('char-class','战士');await choose('char-background','Soldier');
+ await choose('char-species','Reborn');await set('char-class','战士');await choose('char-background','Soldier');await run("ebCreatorState().eb_background_tool=['骰子'];requestRender();");await sleep(100);
  await set('char-name','复生者测试','input');await set('char-gender','女');
  await click('[data-mode="27buy"]');await click('#attr-recommend');await click('input[name="bonus-mode"][value="1+1+1"]');
  await run("state.fightingStyle='防御';requestRender();");await sleep(100);

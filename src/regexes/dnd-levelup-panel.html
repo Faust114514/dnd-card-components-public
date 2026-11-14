@@ -2589,6 +2589,7 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
       ["战地施法者 War Caster","等级4+，施法或契约魔法特性", { points:1, allowed:["int","wis","cha"] }],
       ["武器大师 Weapon Master","等级4+", { points:1, allowed:["str","dex"] }]
     ].map(([name, prerequisite, abilityBonus]) => ({ name, prerequisite, abilityBonus: abilityBonus || null }));
+    GENERAL_FEATS.push(...[{"name": "巧匠 Crafter", "prerequisite": "", "abilityBonus": null, "repeatable": false, "description": "起源专长 你获得以下增益。 工具熟练Tool Proficiency。 你从快速制作表中自选三项不同的工匠工具并获得其熟练。 折扣Discount。 你在购买非魔法物品时具有20%的折扣。 快速制作Fast Crafting。 当你完成一次长休时，你可以制作一件快速制作栏中的装备。你必须拥有与该物品对应的工匠工具以及与这些工具对应的工具熟练才能尝试制作。造出的物品会持续存在到你下次完成长休，随后该物品解体坏损。 快速制作Fast Crafting 工匠工具 可制造的装备 木匠工具Carpenter's Tools 梯子、火把 皮匠工具Leatherworker's Tools 小箱子、卷轴匣、小包 石匠工具Mason's Tools 滑轮组 陶匠工具Potter's Tools 壶、油灯 铁匠工具Smith's Tools 滚珠、桶、铁蒺藜、爪钩、铁锅 修补工具Tinker's Tools 铃铛、铲子、火绒盒 织布工具Weaver's Tools 篮子、绳索、捕网、帐篷 木雕工具Woodcarver's Tools 短棒、巨棒、长棍", "cat": "起源"}, {"name": "音乐家 Musician", "prerequisite": "", "abilityBonus": null, "repeatable": false, "description": "起源专长 你获得以下增益。 乐器训练Instrument Training。 你获得三种自选的乐器的熟练。 鼓舞之歌Encouraging Song。 作为你完成短休或长休的一部分，你可以用你熟练的乐器演奏一首歌曲，并令听到这首乐歌的盟友获得 英雄激励 。以这种方式所能影响的盟友数量最多等于你的熟练加值。", "cat": "起源"}, {"name": "熟习 Skilled", "prerequisite": "", "abilityBonus": null, "repeatable": true, "description": "起源专长 你获得共计三项自选的技能和工具熟练。 复选Repeatable。 你可多次选择本专长。", "cat": "起源"}]);
     const EPIC_FEATS = [
       "英勇战斗之恩惠 Boon of Combat Prowess","次元旅行之恩惠 Boon of Dimensional Travel","能量抗性之恩惠 Boon of Energy Resistance","扭曲命运之恩惠 Boon of Fate",
       "超凡强韧之恩惠 Boon of Fortitude","无敌攻势之恩惠 Boon of Irresistible Offense","强力恢复之恩惠 Boon of Recovery","博学多才之恩惠 Boon of Skill",
@@ -4406,6 +4407,7 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
       const prof=ensureObjectField(charObj,["熟练配置"],tpl.熟练配置,"熟练配置");
       ensureObjectField(prof,["技能"],tpl.熟练配置.技能,"技能");
       ensureObjectField(prof,["豁免"],tpl.熟练配置.豁免,"豁免");
+      if(Array.isArray(prof.工具)||typeof prof.工具==="string")prof.工具=Object.fromEntries(growthList(prof.工具).map(name=>[name,1]));
       ensureObjectField(prof,["工具"],tpl.熟练配置.工具,"工具");
       ensureObjectField(charObj,["状态"],tpl.状态,"状态");
       ensureObjectField(charObj,["资源"],tpl.资源,"资源");
@@ -5596,7 +5598,7 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
           gained.push("强化幻术：获得戏法“次级幻象”（不计入戏法上限）");
         }
       }
-      if(WIZARD_ASI_LEVELS.includes(to)) req.push({id:"asi_or_feat",kind:"asi_or_feat",label:"属性值提升 或 通用专长",options:GENERAL_FEATS});
+      if(WIZARD_ASI_LEVELS.includes(to)) req.push({id:"asi_or_feat",kind:"asi_or_feat",label:"属性值提升 或 专长",options:GENERAL_FEATS});
       if(to===19) req.push({id:"epic_feat",kind:"feat_pick",label:"选择传奇恩惠专长（或满足先决条件的通用专长）",options:[...EPIC_FEATS.map(f=>({...f,cat:"传奇"})),...GENERAL_FEATS.map(f=>({name:f.name,prerequisite:f.prerequisite,cat:"通用"}))]});
       appendFeatGrantedSpellReqs(req,pending,"asi_or_feat");
       appendFeatGrantedSpellReqs(req,pending,"epic_feat");
@@ -5814,7 +5816,7 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
       }
       if((def.subclassFeatureLevels||[]).includes(to) && subclassId && !["fighter","wizard"].includes(classId)) gained.push(`${subclassLabel(subclassId,classId)} 子职特性`);
       if((def.featureMap?.[to]||[]).includes("传奇恩惠")) req.push({id:"epic_feat",kind:"feat_pick",label:"选择传奇恩惠专长（或满足先决条件的通用专长）",options:[...EPIC_FEATS.map(f=>({...f,cat:"传奇"})),...GENERAL_FEATS.map(f=>({name:f.name,prerequisite:f.prerequisite,cat:"通用"}))]});
-      if((def.featureMap?.[to]||[]).includes("属性值提升")) req.push({id:"asi_or_feat",kind:"asi_or_feat",label:"属性值提升 或 通用专长",options:GENERAL_FEATS});
+      if((def.featureMap?.[to]||[]).includes("属性值提升")) req.push({id:"asi_or_feat",kind:"asi_or_feat",label:"属性值提升 或 专长",options:GENERAL_FEATS});
       appendFeatGrantedSpellReqs(req,pending,"asi_or_feat");
       appendFeatGrantedSpellReqs(req,pending,"epic_feat");
 
@@ -12268,7 +12270,28 @@ function ravenApplyTraits(c){ MvuLite.syncExpertise(c); }
 const EB_FEATS = EB.books.flatMap(b=>b.feats);
 const EB_SKILLS = ['运动','特技','巧手','隐匿','奥秘','历史','调查','自然','宗教','驯兽','洞悉','医药','察觉','求生','欺瞒','威吓','表演','游说'];
 const EB_TOOLS = ['炼金工具','酿酒工具','书法工具','木匠工具','制图工具','鞋匠工具','厨师工具','玻璃工匠工具','珠宝匠工具','皮匠工具','泥瓦匠工具','画家工具','陶工工具','铁匠工具','修补工具','织布工具','木雕工具'];
-const EB_ALL_TOOLS = [...EB_TOOLS,'草药工具','盗贼工具','易容工具','制毒工具','文书伪造工具','领航工具','骰子','纸牌','龙棋','风笛','鼓','扬琴','长笛','鲁特琴','里拉琴','号角','排箫','芦笙','提琴'];
+const EB_ALL_TOOLS = [...EB_TOOLS,'草药工具','盗贼工具','易容工具','制毒工具','文书伪造工具','领航工具','骰子','纸牌','龙棋','三龙牌','风笛','鼓','扬琴','长笛','鲁特琴','里拉琴','号角','排箫','芦笙','提琴'];
+// 本地不全书：PHB2024、费伦与阿斯代伦背景；沿用本卡已有工具译名。
+const BACKGROUND_TOOLS={
+  '侍僧':['书法工具'],'工匠':EB_TOOLS,'骗子':['文书伪造工具'],'罪犯':['盗贼工具'],
+  '艺人':EB_ALL_TOOLS.slice(-10),'农民':['木匠工具'],'警卫':['骰子','纸牌','龙棋','三龙牌'],
+  '向导':['制图工具'],'隐士':['草药工具'],'商人':['领航工具'],'贵族':['骰子','纸牌','龙棋','三龙牌'],
+  '智者':['书法工具'],'贤者':['书法工具'],'水手':['领航工具'],'抄写员':['书法工具'],
+  '士兵':['骰子','纸牌','龙棋','三龙牌'],'流浪者':['盗贼工具'],
+  '琼达斯海盗':['织布工具'],'死魔法区住民':['皮匠工具'],'龙巫教信徒':['书法工具'],
+  '翠绿闲庭庇护者':['草药工具'],'焰拳佣兵':['铁匠工具'],'巨灵接触者':['玻璃工匠工具'],
+  '竖琴手':['易容工具'],'冰上钓客':['木雕工具'],'臂铠骑士':['铁匠工具'],
+  '领主联盟臣属':['书法工具'],'月井朝圣者':['画家工具'],'穆尔霍兰德盗墓者':['泥瓦匠工具'],
+  '迷锁守卫者':['珠宝匠工具'],'紫龙骑士侍从':['领航工具'],'莱瑟曼流浪者':['制图工具'],
+  '影宗放逐者':['盗贼工具'],'咒火学徒':['骰子','纸牌','龙棋','三龙牌'],'散塔林会佣兵':['文书伪造工具'],
+  '狂欢者':['骰子','纸牌','龙棋','三龙牌'],'血徒':['厨师工具'],'吸血鬼幸存者':['木雕工具']
+};
+function backgroundToolOptions(name){
+  if(BACKGROUND_TOOLS[name])return BACKGROUND_TOOLS[name];
+  const tool=EB.backgrounds.find(b=>b.name===name)?.tool;
+  if(!tool)return [];
+  return tool.includes('工匠')?EB_TOOLS:tool.includes('乐器')?EB_ALL_TOOLS.slice(-10):tool.includes('赌具')?['骰子','纸牌','龙棋','三龙牌']:tool.includes('选择')?['盗贼工具','制毒工具','文书伪造工具']:[tool];
+}
 const ebBook = id=>EB.books.find(b=>b.id===id).name;
 const ebEscape = v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const ebCN = s=>String(s).split(/[A-Za-z]/,1)[0].trim();
@@ -14093,7 +14116,7 @@ function growthRule(plan,pending,key,label,kind,values,count=1,extra={}){
   const id='growth_'+key,other=new Set();
   for(const req of plan.req)if(req.growth?.kind===kind&&req.id!==id&&!req.growth.mutable)for(const v of growthList(pending[req.id]))other.add(v);
   let options=values.map(value=>typeof value==='string'?{value,label:value}:value).map(o=>{
-    const owned=!extra.mutable&&growthOwned(kind,o.value),conflict=!extra.mutable&&kind!=='config'&&other.has(o.value);
+    const owned=!extra.mutable&&!extra.recordOwned&&growthOwned(kind,o.value),conflict=!extra.mutable&&kind!=='config'&&other.has(o.value);
     return {...o,disabled:owned||conflict,reason:owned?'已掌握':conflict?'本次其他选项已选择':''};
   });
   if(kind==='expertise'){
@@ -14177,17 +14200,20 @@ function growthClassChoices(plan,pending,classId,level,from){
   if(name==='苏生师')config(5,'companion_mods','苏生伴兵改造',['魔导：以伴兵空间施法；每回合一次相关法术伤害加智力调整值','凶残：恐怖横扫伤害骰变为d6',...(level>=9?['肿胀：大型，命中推离至多10尺，自爆加智力调整值','枯瘦：速度45尺及攀爬速度，附近目标可能恐慌','湿滑：游泳速度，穿过1寸空间，近处攻击者受强酸伤害']:[])],level>=9?2:1,'创造伴兵时选择');
 }
 function growthFeatChoices(plan,pending,name,slot=''){
-  const prefix='feat_'+choiceKey(name),add=(key,label,kind,values,count=1,extra={})=>growthRule(plan,pending,prefix+'_'+key,label,kind,values,count,extra);
+  const prefix='feat_'+choiceKey(name)+(/Skilled|^熟习|^熟练(?:_\d+)?$/.test(name)&&slot?'_level_'+plan.totalTo:''),add=(key,label,kind,values,count=1,extra={})=>growthRule(plan,pending,prefix+'_'+key,label,kind,values,count,extra);
   const fixed=(key,label,kind,values)=>growthFixed(plan,prefix+'_'+key,label,kind,values);
+  if(!slot&&/Skilled|^熟习|^熟练(?:_\d+)?$/.test(name)&&Object.keys(state.charObj?.成长选择||{}).some(k=>k.startsWith(prefix+'_level_')))return;
+  if(/Chef|^大厨/.test(name))fixed('tools','大厨：工具熟练','tool',['厨师工具']);
+  if(/Poisoner|^毒师/.test(name))fixed('tools','毒师：工具熟练','tool',['制毒工具']);
   if(/Skill Expert|技艺专家/.test(name)){add('skill','技艺专家：技能熟练','skill',GROWTH_SKILLS);add('expertise','技艺专家：专精','expertise',GROWTH_SKILLS);}
   if(/Keen Mind|敏锐心灵/.test(name))add('knowledge','敏锐心灵：熟练或专精','upgradeSkill',['奥秘','历史','调查','自然','宗教']);
   if(/Observant|观察力/.test(name))add('perception','观察力：熟练或专精','upgradeSkill',['洞悉','调查','察觉']);
   if(/Resilient|强健身心/.test(name)&&!slot)add('save','强健身心：补记原先选择的豁免（不重复加属性）','save',GROWTH_ABILITIES);
   if(/Elemental Adept|元素掌控/.test(name))add('element','元素掌控：伤害类型','config',GROWTH_ELEMENTS);
   if(/Weapon Master\b|^武器大师/.test(name)&&!/Great/.test(name))add('mastery','武器大师：武器精通','mastery',WEAPON_DATA.map(w=>w.name));
-  if(/Skilled|^熟习/.test(name))add('skills','熟习：技能或工具','mixed',[...GROWTH_SKILLS,...GROWTH_TOOLS,...GROWTH_MUSIC,'盗贼工具','草药工具','毒药工具','易容工具','文书伪造工具'],3);
-  if(/Musician|^乐师/.test(name))add('music','乐师：乐器熟练','tool',GROWTH_MUSIC,3);
-  if(/Crafter|^工匠/.test(name))add('tools','工匠：工具熟练','tool',['木匠工具','皮匠工具','泥瓦匠工具','陶工工具','铁匠工具','修补工具','织布工具','木雕工具'],3);
+  if(/Skilled|^熟习|^熟练(?:_\d+)?$/.test(name))add('skills',slot?'熟习：技能或工具':'熟习：补记原有三项技能或工具（已有选择请照原样登记）','mixed',[...GROWTH_SKILLS,...EB_ALL_TOOLS],3,{recordOwned:!slot});
+  if(/Musician|^乐师|^音乐家/.test(name))add('music','乐师：乐器熟练','tool',GROWTH_MUSIC,3,{recordOwned:!slot});
+  if(/Crafter|^工匠|^巧匠/.test(name))add('tools','工匠：工具熟练','tool',['木匠工具','皮匠工具','泥瓦匠工具','陶工工具','铁匠工具','修补工具','织布工具','木雕工具'],3,{recordOwned:!slot});
   if(/能量抗性之恩惠|Boon of Energy Resistance/.test(name))add('resistances','能量抗性之恩惠','config',[...GROWTH_ELEMENTS,'暗蚀','毒素','心灵','光耀'],2,{mutable:true,timing:'长休可更换'});
   if(/博学多才之恩惠|Boon of Skill\b/.test(name)){fixed('skills','博学多才之恩惠','skill',GROWTH_SKILLS);add('expertise','博学多才之恩惠：专精','both',GROWTH_SKILLS);}
   if(name.includes('紫龙新兵'))add('skill','紫龙新兵：技能熟练','skill',['洞悉','表演','游说']);
@@ -14214,6 +14240,9 @@ function growthFeatChoices(plan,pending,name,slot=''){
 function growthPlan(plan,pending){
   if(!plan)return plan;
   plan.req=plan.req.filter(r=>r.id!=='book_feature_choices');
+  const tools=backgroundToolOptions(state.charObj?.背景);
+  if(tools.length===1)growthFixed(plan,'eb_background_tool','背景：工具熟练','tool',tools);
+  else if(tools.length)growthRule(plan,pending,'eb_background_tool','背景：补记工具熟练','tool',tools,1,{recordOwned:true});
   if(growthMode==='config')for(const [id,level]of Object.entries(state.classLevels||{})){if(level>0)growthClassChoices(plan,pending,id,Number(level),Number(level));}
   else growthClassChoices(plan,pending,plan.classNorm,plan.classTo,plan.classFrom);
   for(const slot of ['asi_or_feat','epic_feat'])if(pending[slot]?.feat&&pending[slot]?.mode!=='asi')growthFeatChoices(plan,pending,pending[slot].feat,slot);
@@ -14235,6 +14264,7 @@ function growthApplyValue(kind,values,label){
 function growthApply(){
   const plan=state.plan,picks=arcanaSubmitting||{};if(!plan)return;
   const c=state.charObj;c.成长选择||={};
+  for(const slot of ['asi_or_feat','epic_feat']){const pick=picks[slot],meta=getFeatMeta(pick?.feat);if(pick?.mode!=='asi'&&meta?.description)c.特性.专长[pick.feat]={描述:meta.description};}
   for(const auto of plan.growthAuto||[]){growthApplyValue(auto.kind,auto.values,auto.label);c.成长选择[auto.key]=auto.values;}
   for(const req of plan.req.filter(r=>r.growth)){
     const values=growthList(picks[req.id]);if(!values.length)continue;
@@ -14243,7 +14273,7 @@ function growthApply(){
   }
   growthMagicApply(plan,picks);
   const previousMode=growthMode;try{growthMode='config';growthConfigPlan({});}finally{growthMode=previousMode;}
-  for(const [key,values]of Object.entries(c.成长选择)){const meta=growthMeta.get(key);if(meta&&['config','note'].includes(meta.kind))growthApplyValue(meta.kind,values,meta.label);}
+  for(const [key,values]of Object.entries(c.成长选择)){const meta=growthMeta.get(key);if(meta&&['config','note','tool','mixed'].includes(meta.kind))growthApplyValue(meta.kind,values,meta.label);}
 }
 function growthConfigPlan(pending){return growthPlan({classNorm:state.classNorm,classFrom:state.classLevels[state.classNorm]||0,classTo:state.classLevels[state.classNorm]||0,totalTo:state.level,req:[],gained:[],hpGain:0},pending);}
 let growthSaving=false;
@@ -14265,8 +14295,9 @@ function growthRenderMode(){
     const reborn=state.charObj?.种族==='复生者';
     const lich=Object.keys(state.charObj?.特性?.专长||{}).some(n=>bookFeat(n)?.sourceBook==='ua-lich');
     const expertise=Object.keys(state.charObj?.特性?.专长||{}).some(name=>/散塔林会战术|灵魂回响|专用人格/.test(name));
-    configButton.hidden=!hexblade&&!ranger&&!racial&&!expertise&&!reborn&&!lich&&growthMode!=='config';
-    configButton.textContent=growthMode==='config'?'返回升级':reborn?'复生者／配置':lich?'巫妖道途／配置':racial?'种族施法／配置':ranger?'自制游侠特性／配置':expertise?'专精／配置':'长休换选精通';
+    const tools=backgroundToolOptions(state.charObj?.背景).length>0||Object.keys(state.charObj?.特性?.专长||{}).some(name=>/Skilled|^熟习|^熟练|Crafter|^巧匠|^工匠|Musician|^音乐家|^乐师|Chef|^大厨|Poisoner|^毒师/.test(name));
+    configButton.hidden=!hexblade&&!ranger&&!racial&&!expertise&&!reborn&&!lich&&!tools&&growthMode!=='config';
+    configButton.textContent=growthMode==='config'?'返回升级':reborn?'复生者／配置':lich?'巫妖道途／配置':racial?'种族施法／配置':ranger?'自制游侠特性／配置':expertise?'专精／配置':tools?'熟练／配置':'长休换选精通';
     configButton.onclick=()=>{
       if(Object.keys(state.pending||{}).length&&!confirm('切换会清除未提交的选择，已保存的人物不受影响。继续？'))return;
       growthMode=growthMode==='config'?'upgrade':'config';state.pending={};state.plan=buildPlan(state.pending);renderUI();
@@ -14769,7 +14800,7 @@ function growthValidate(plan,picks){
       if(!sub&&pending.fighter_subclass) sub=String(pending.fighter_subclass);
       if(sub&&SUBCLASS_FEATURES[sub]&&SUBCLASS_FEATURES[sub][to]) gained.push(...SUBCLASS_FEATURES[sub][to]);
 
-      if(ASI_LEVELS.includes(to)) req.push({id:"asi_or_feat",kind:"asi_or_feat",label:"属性值提升 或 通用专长",options:GENERAL_FEATS});
+      if(ASI_LEVELS.includes(to)) req.push({id:"asi_or_feat",kind:"asi_or_feat",label:"属性值提升 或 专长",options:GENERAL_FEATS});
       if(to===19) req.push({id:"epic_feat",kind:"feat_pick",label:"选择传奇恩惠专长（或满足先决条件的通用专长）",options:[...EPIC_FEATS.map(f=>({...f,cat:"传奇"})),...GENERAL_FEATS.map(f=>({name:f.name,prerequisite:f.prerequisite,cat:"通用"}))]});
       appendFeatGrantedSpellReqs(req,pending,"asi_or_feat");
       appendFeatGrantedSpellReqs(req,pending,"epic_feat");
@@ -15490,6 +15521,7 @@ function briefRestoreDescriptions(c,before={}){
       if (/艾伯伦：奇械锻炉|探秘艾伯伦|鸦阁魔域|UA：邪恶道途/.test(String(entry.来源||'')) || EB.species.some(r=>name===r.name+'规则')) { group[name]=entry; continue; }
       const previous=before.特性?.[bucket]?.[name];
       const now=String(entry.描述||''),old=typeof previous==='string'?previous:previous?.描述||'';
+      if(bucket==='专长'&&GENERAL_FEATS.some(f=>f.description&&choiceKey(f.name)===choiceKey(name))){entry.描述=old||now||getFeatMeta(name)?.description||'';delete entry.完整描述;group[name]=entry;continue;}
       const numbers=now.match(/【当前数值】[^\n]*/)?.[0]||'';
       const candidates=BRIEF_RULE_BANK.features.filter(r=>r.key===briefDescriptionKey(name)&&allowed(r)&&(!r.classId||Number(levels[r.classId]||0)>=r.level));
       const source=String(entry.来源||'');

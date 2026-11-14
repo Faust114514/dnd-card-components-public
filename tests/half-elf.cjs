@@ -47,7 +47,7 @@ async function runScenarios(){
  check(await run("document.querySelector('#dnd-name-options').innerText.includes('半精灵（自设）')"),'Chinese search finds the independent half-elf option');
  await choose('char-species','Half-Elf');
  check(await run("state.species==='半精灵（自设）'"),'English search selects the new half-elf');
- await set('char-class','战士');await choose('char-background','Soldier');
+ await set('char-class','战士');await choose('char-background','Soldier');await run("ebCreatorState().eb_background_tool=['骰子'];requestRender();");await sleep(100);
  await set('char-name','半精灵测试','input');await set('char-gender','女');
  await click('[data-mode="27buy"]');await click('#attr-recommend');await click('input[name="bonus-mode"][value="1+1+1"]');
  await run("state.fightingStyle='防御';requestRender();");await sleep(100);
@@ -72,7 +72,7 @@ async function runScenarios(){
  }return true})()`),'both species retain tool choice, Medium, all three casting abilities and the recovery rule');
  await navigate('/creator');await wait("document.getElementById('char-species-search')&&!minimalRenderMode");
  check(await run("getVariables().stat_data.角色列表.半精灵测试.成长选择.eb_race_ability[0]==='感知'"),'reloading preserves the saved choice');
- await set('char-class','战士');await choose('char-background','Soldier');await choose('char-species','Khoravar');
+ await set('char-class','战士');await choose('char-background','Soldier');await run("ebCreatorState().eb_background_tool=['骰子'];requestRender();");await sleep(100);await choose('char-species','Khoravar');
  check(await run("state.species==='科拉瓦'&&document.body.innerText.includes('人类与精灵的后裔')"),'original Khoravar remains searchable with the changed introduction');
  await navigate('/levelup');await wait('window.fixtureReady');await run('loadData()');
  check(await run("state.charObj.种族==='半精灵（自设）'&&state.classLevels.fighter===1"),'upgrade loads the actual newly saved half-elf');

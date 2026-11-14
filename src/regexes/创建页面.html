@@ -3890,10 +3890,10 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
         </div>
 
         <div class="section" data-step="skilledFeat" id="skilled-feat-section" style="display: none;">
-            <h2 id="skilled-feat-title">5. 熟练专长技能</h2>
+            <h2 id="skilled-feat-title">5. 熟习：技能或工具</h2>
             <div class="section-content">
                 <div class="info-box">
-                    <p>如果你的背景或人类起源专长选择了<b>熟练 (Skilled)</b>，可以从任意技能中再选择 3 项获得熟练。</p>
+                    <p>如果你的背景或人类起源专长选择了<b>熟习 (Skilled)</b>，可以从技能和工具中合计选择 3 项获得熟练；获得两次时合计选择 6 项。</p>
                 </div>
                 <div id="skilled-feat-selector"></div>
                 <div class="section-validation" id="validation-skilled-feat"></div>
@@ -4641,27 +4641,27 @@ const SPECIES = {
 // ========== 背景数据 ==========
 const BACKGROUNDS = {
     '侍僧': { name: 'Acolyte', desc: '你在一座寺庙中全心全意的侍奉，或是挂单在城镇中，或是幽居在圣所。你在那里执掌祭仪崇敬一位神祇或是众神。多亏了你的祭司教导和你的虔诚，你也掌握了如何引导一点点神力来为你的崇敬祈祷和在那里祷告的人们提供司教服务。', abilities: ['感知', '智力', '魅力'], feat: 'Magic Initiate', skills: ['洞悉', '宗教'], featDesc: '魔法启蒙(牧师)', gold: 50 },
-    '工匠': { name: 'Artisan', desc: '你在力气足以提起水桶时，就开始于工匠工坊里以拖地和擦洗度日，每天挣那么几个铜板。当你长到成为学徒的年龄时，你学会了自己制作基本的手工艺品，还有面对刁钻客户时该说什么好话。你的买卖也让你对消息琐事有敏锐的洞察力。', abilities: ['智力', '敏捷', '体质'], feat: 'Crafter', skills: ['调查', '游说'], featDesc: '工匠', gold: 50 },
+    '工匠': { name: 'Artisan', desc: '你在力气足以提起水桶时，就开始于工匠工坊里以拖地和擦洗度日，每天挣那么几个铜板。当你长到成为学徒的年龄时，你学会了自己制作基本的手工艺品，还有面对刁钻客户时该说什么好话。你的买卖也让你对消息琐事有敏锐的洞察力。', abilities: ['智力', '敏捷', '体质'], feat: 'Crafter', skills: ['调查', '游说'], featDesc: '巧匠', gold: 50 },
     '骗子': { name: 'Charlatan', desc: '在你长到能买酒的年纪后，你立刻就在家乡方圆十里内的所有酒吧拥有了自己专属的钟意座位。当你在各个酒吧间穿梭时，你学会了如何用善意的谎言去安抚那些需要安慰的可怜人——也许是一剂包治百病的良方或是一份伪造的血统证明。', abilities: ['魅力', '敏捷', '智力'], feat: 'Skilled', skills: ['欺瞒', '巧手'], featDesc: '熟练者', gold: 50 },
-    '罪犯': { name: 'Criminal', desc: '你潜藏在阴暗的小巷里，靠着偷鸡摸狗苟且偷生。也许你曾与一帮称兄道弟的法外狂徒患难与共。又或者，你也许是一个孤勇者，自力更生的同时与当地的盗贼公会乃至更可怕的违法者们明争暗斗。', abilities: ['敏捷', '智力', '魅力'], feat: 'Alert', skills: ['巧手', '隐匿'], featDesc: '警觉', gold: 50 },
+    '罪犯': { name: 'Criminal', desc: '你潜藏在阴暗的小巷里，靠着偷鸡摸狗苟且偷生。也许你曾与一帮称兄道弟的法外狂徒患难与共。又或者，你也许是一个孤勇者，自力更生的同时与当地的盗贼公会乃至更可怕的违法者们明争暗斗。', abilities: ['敏捷', '智力', '魅力'], feat: 'Alert', skills: ['巧手', '隐匿'], featDesc: '警戒', gold: 50 },
     '艺人': { name: 'Entertainer', desc: '你年轻时大部分时间都在参加巡回演出和嘉年华会，为音乐家和杂技演员们做零工以换取学习的机会。你可能已经学会了如何走钢丝，如何弹奏风格独特的鲁特琴，或是用怎样无可挑剔的发音方式吟诵诗歌。而现如今，你在喝彩声中茁壮成长，渴望登上舞台。', abilities: ['魅力', '敏捷', '体质'], feat: 'Musician', skills: ['特技', '表演'], featDesc: '音乐家', gold: 50 },
-    '农民': { name: 'Farmer', desc: '你从小就生在农家地，长在农家地。多年照料动物和耕种土地回报你以耐心和一个倍儿棒的健康身体。你对大自然的甘霖充满感激之情，也对自然之怒抱以敬畏之心。', abilities: ['体质', '感知', '力量'], feat: 'Tough', skills: ['驯兽', '自然'], featDesc: '坚韧', gold: 50 },
-    '警卫': { name: 'Guard', desc: '你脚上的疼痛让你无法忘怀在塔楼驻岗上站班的无数时光。你曾被训练一只眼睛紧盯着墙外，小心提防那附近森林而来的掠夺者，而另一只眼睛则要盯着墙内，细细查探小偷小摸和惹是生非之人。', abilities: ['力量', '感知', '体质'], feat: 'Alert', skills: ['运动', '察觉'], featDesc: '警觉', gold: 50 },
+    '农民': { name: 'Farmer', desc: '你从小就生在农家地，长在农家地。多年照料动物和耕种土地回报你以耐心和一个倍儿棒的健康身体。你对大自然的甘霖充满感激之情，也对自然之怒抱以敬畏之心。', abilities: ['体质', '感知', '力量'], feat: 'Tough', skills: ['驯兽', '自然'], featDesc: '健壮', gold: 50 },
+    '警卫': { name: 'Guard', desc: '你脚上的疼痛让你无法忘怀在塔楼驻岗上站班的无数时光。你曾被训练一只眼睛紧盯着墙外，小心提防那附近森林而来的掠夺者，而另一只眼睛则要盯着墙内，细细查探小偷小摸和惹是生非之人。', abilities: ['力量', '感知', '体质'], feat: 'Alert', skills: ['运动', '察觉'], featDesc: '警戒', gold: 50 },
     '向导': { name: 'Guide', desc: '你在野外长大，远离定居区。你的家就在你决定打开铺盖的任何地方。荒野中自有奇妙之处——奇特的怪物、原始的森林和溪流；如今杂草丛生的、曾被巨人踏过的大殿废墟。在探索它们的过程中你学会了保护自己。而时不时的，你会遇到亲爱的自然祭司，他们会指导你掌握怎样运用荒野的魔法。', abilities: ['感知', '敏捷', '体质'], feat: 'Magic Initiate', skills: ['隐匿', '求生'], featDesc: '魔法启蒙(德鲁伊)', gold: 50 },
     '隐士': { name: 'Hermit', desc: '你早年住在远离聚集地的、与世隔绝的小屋或是隐修院中。在那些日子里，你唯一的伙伴是森林中的生灵，以及那些偶尔带来给养和外界消息的访客。孤独让你花了很多时间琢磨天道的未解之谜。', abilities: ['感知', '体质', '智力'], feat: 'Healer', skills: ['医药', '宗教'], featDesc: '医者', gold: 50 },
     '商人': { name: 'Merchant', desc: '你曾作为一名学徒学习着商业的基础知识，你的师傅是一名商贩、商队的领队或是某位商铺的店主。你旅行八方，靠着买入和卖出工匠们所需的原材料和这些工匠的制品赚钱谋生。你可能曾在多地之间运输过不少货物（通过船、货车、商队之类的），又或是从旅行商人那里订货，然后在自己店里销售。', abilities: ['魅力', '感知', '智力'], feat: 'Lucky', skills: ['驯兽', '游说'], featDesc: '幸运', gold: 50 },
     '贵族': { name: 'Noble', desc: '权力、财富还有荣耀伴随你在城堡中长大，你那贵不可言的小家族确保你受到了一流的教育，其中有些教导令你感激，而有些则只让你觉得愤慨。在城堡中的时光，尤其是在长久以来耳濡目染于宫廷中的家族往来，也培养了你足以胜任领袖的许多才能。', abilities: ['魅力', '智力', '感知'], feat: 'Skilled', skills: ['历史', '游说'], featDesc: '熟练者', gold: 50 },
     '智者': { name: 'Sage', desc: '你长大的岁月便在宅邸和修行院之间的奔波中过去，做着各式各样的零活和服务，以此访问他们的图书馆藏。你花了那么多漫长的夜晚学习书籍和卷册，阅览多元宇宙的见闻，甚至涉猎魔法的本质——而你的心灵正渴望着了解更多。', abilities: ['智力', '感知', '魅力'], feat: 'Magic Initiate', skills: ['奥秘', '历史'], featDesc: '魔法启蒙(法师)', gold: 50 },
     '水手': { name: 'Sailor', desc: '你作为一名海员生活，背上吹的是海风，脚下站的是摇晃的甲板。你在停泊港总是坐在酒吧的高脚凳上，回忆你曾直面猛烈的风暴，与那些在波涛下生活的人们高谈阔论着过去。', abilities: ['力量', '敏捷', '体质'], feat: 'Tavern Brawler', skills: ['运动', '察觉'], featDesc: '酒馆斗殴者', gold: 50 },
-    '抄写员': { name: 'Scribe', desc: '你成长的时期都在缮写室度过，那是一座致力于保存知识的修道院，或是某个政府机关。你在那里学会了如何书写思维敏锐有逻辑的文字和怎样制作得体的书面文本，有时你会抄录政府文件或是誊抄文献巨著。你可能有一些诗歌写作的技艺、叙事的技巧或是学术上的研究。最重要的是，你对琐碎处的关注很细致。这能帮助你避免在誊录和撰写文稿时出现错误。', abilities: ['智力', '敏捷', '感知'], feat: 'Magic Initiate', skills: ['调查', '历史'], featDesc: '魔法启蒙(法师)', gold: 50 },
-    '士兵': { name: 'Soldier', desc: '你从成年开始便接受战阵训练，鲜少有拿起武器之前的生活回忆，战斗已融入你的血液。有时候你会发现自己正在反复操练着最初学会的基本战斗训练。而最终，你会将这些训练运用到战场上，在战争中行使武力，保护你的王国。', abilities: ['力量', '体质', '敏捷'], feat: 'Savage Attacker', skills: ['运动', '威吓'], featDesc: '野蛮攻击者', gold: 50 },
+    '抄写员': { name: 'Scribe', desc: '你成长的时期都在缮写室度过，那是一座致力于保存知识的修道院，或是某个政府机关。你在那里学会了如何书写思维敏锐有逻辑的文字和怎样制作得体的书面文本，有时你会抄录政府文件或是誊抄文献巨著。你可能有一些诗歌写作的技艺、叙事的技巧或是学术上的研究。最重要的是，你对琐碎处的关注很细致。这能帮助你避免在誊录和撰写文稿时出现错误。', abilities: ['智力', '敏捷', '感知'], feat: 'Skilled', skills: ['调查', '察觉'], featDesc: '熟习', gold: 50 },
+    '士兵': { name: 'Soldier', desc: '你从成年开始便接受战阵训练，鲜少有拿起武器之前的生活回忆，战斗已融入你的血液。有时候你会发现自己正在反复操练着最初学会的基本战斗训练。而最终，你会将这些训练运用到战场上，在战争中行使武力，保护你的王国。', abilities: ['力量', '体质', '敏捷'], feat: 'Savage Attacker', skills: ['运动', '威吓'], featDesc: '凶蛮打手', gold: 50 },
     '流浪者': { name: 'Wayfarer', desc: '你在街头长大，身边都是同样命途多舛的孤儿，有些是朋友有些是对头。你露宿街头，只靠着打零工来换取食物。有些时候你会感到饥饿难耐，但却只能以盗窃维生。尽管如此，你从未抛你的自尊，也从未放弃希望。命运还没有就此关上大门。', abilities: ['敏捷', '魅力', '感知'], feat: 'Lucky', skills: ['洞悉', '隐匿'], featDesc: '幸运', gold: 50 },
     // ===== Faerûn backgrounds =====
     '琼达斯海盗': {
         name: 'Chondathan Freebooter',
         desc: '虽然琼达斯的大部分年轻人都需要义务服四年兵役，但你却对专制政府试图操纵你的人生而感到不满。你抛弃了自己的国民身份，抛弃了自己的姓名，并在第一艘接纳了自己的船上成为了海盗。自此，你便航行于维洪海域Vilhon Reach之中。虽然你从未在离陆地距离超过几十里格的海域航行过，但你与当地的深刻联系以及广泛的人生阅历弥补了这一点。',
         abilities: ['力量', '敏捷', '感知'],
-        feat: '熟习',
+        feat: 'Skilled',
         skills: ['运动', '巧手'],
         featDesc: '熟习',
         gold: 38
@@ -4699,14 +4699,14 @@ const BACKGROUNDS = {
         abilities: ['力量', '体质', '魅力'],
         feat: 'Tough',
         skills: ['威吓', '察觉'],
-        featDesc: '坚韧',
+        featDesc: '健壮',
         gold: 50
     },
     '巨灵接触者': {
         name: 'Genie Touched',
         desc: '虽然巨灵已不再统治卡林珊，但在你的家乡，巨灵魔法依然很常见。你可能不小心就从某个魔法油灯里面召唤出了一位气巨灵，又或者可能偶然来到一片由某位水巨灵守卫着的绿洲。可能有一位土巨灵在山体滑坡时将你救了下来，还可能是你与某位火巨灵在为了某笔稍纵即逝的财富而讨价还价。无论你是通过什么方式而与某位巨灵产生了命运的交集，这种经历都给予了你敏锐的眼光，伶俐的口舌，而不仅仅只是些许魔法。',
         abilities: ['敏捷', '感知', '魅力'],
-        feat: '魔法学徒（法师）',
+        feat: 'Magic Initiate',
         skills: ['察觉', '游说'],
         featDesc: '魔法学徒（法师）',
         gold: 50
@@ -4726,7 +4726,7 @@ const BACKGROUNDS = {
         abilities: ['力量', '敏捷', '体质'],
         feat: 'Alert',
         skills: ['驯兽', '运动'],
-        featDesc: '警觉',
+        featDesc: '警戒',
         gold: 32
     },
     '臂铠骑士': {
@@ -4751,7 +4751,7 @@ const BACKGROUNDS = {
         name: 'Moonwell Pilgrim',
         desc: '与许多来自月影群岛的人一样，你从小便崇对这片圣洁的岛屿，岛上独一无二的神明，以及被称作月井的神秘圣坛充满了敬畏。作为一位月井朝圣者，你踏上了探访地图上（或地图外）每座月井并通过它们来与神明对话的旅途。在你如田园牧歌一般的旅途当中，你收集了许多月影群岛人Moonshavian的民歌，画出了许多曾见过的迷人风景，甚至学会了如何支配一些原初魔法。',
         abilities: ['体质', '感知', '魅力'],
-        feat: '魔法学徒（德鲁伊）',
+        feat: 'Magic Initiate',
         skills: ['自然', '表演'],
         featDesc: '魔法学徒（德鲁伊）',
         gold: 50
@@ -4771,7 +4771,7 @@ const BACKGROUNDS = {
         abilities: ['智力', '感知', '魅力'],
         feat: 'Crafter',
         skills: ['奥秘', '历史'],
-        featDesc: '工匠',
+        featDesc: '巧匠',
         gold: 50
     },
     '紫龙骑士侍从': {
@@ -4789,14 +4789,14 @@ const BACKGROUNDS = {
         abilities: ['力量', '体质', '魅力'],
         feat: 'Tough',
         skills: ['威吓', '察觉'],
-        featDesc: '坚韧',
+        featDesc: '健壮',
         gold: 50
     },
     '影宗放逐者': {
         name: 'Shadowmasters Exile',
         desc: '你毕生训练便是为了成为在幕后控制着赛斯克Thesk的神秘盗贼协会——影宗的一员。潜行与快速反应的能力只是你影宗课程的开始，你还需要变得更加残忍无情，以此来保障协会秘密的安全。但某个错误之举导致你被逐出了协会。现在你必须走上自己的道路。',
         abilities: ['敏捷', '智力', '魅力'],
-        feat: '凶蛮打手',
+        feat: 'Savage Attacker',
         skills: ['特技', '隐匿'],
         featDesc: '凶蛮打手',
         gold: 50
@@ -4834,7 +4834,7 @@ const BACKGROUNDS = {
         abilities: ['力量', '体质', '魅力'],
         feat: '血族玩物',
         skills: ['游说', '隐匿'],
-        featDesc: '血族玩物',
+        featDesc: '吸血鬼玩物',
         gold: 50
     },
     '吸血鬼幸存者': {
@@ -4843,10 +4843,10 @@ const BACKGROUNDS = {
         abilities: ['敏捷', '体质', '感知'],
         feat: '血族猎人',
         skills: ['洞悉', '宗教'],
-        featDesc: '血族猎人',
+        featDesc: '吸血鬼猎人',
         gold: 50
     },
-    '自定义': { name: 'Custom', desc: '一段独特的过往经历...', abilities: ['力量', '敏捷', '体质'], feat: 'Alert', skills: [], featDesc: '警觉', gold: 50 }
+    '自定义': { name: 'Custom', desc: '一段独特的过往经历...', abilities: ['力量', '敏捷', '体质'], feat: 'Alert', skills: [], featDesc: '警戒', gold: 50 }
 };
 
 const FAERUN_FEATS_FILE = '费伦专长.txt';
@@ -4872,12 +4872,12 @@ const CLASS_RECOMMENDED_BACKGROUNDS = {
 // ========== 起源专长数据 ==========
 const ORIGIN_FEATS = {
     'Alert': {
-        name: '警觉',
+        name: '警戒',
         desc: '你获得下述益处：<br>- 先攻熟练：你在投掷先攻时将你的熟练加值加入结果。<br>- 先攻交换：当你掷完先攻，你可以立即与处于同一场战斗中的一名自愿的盟友交换先攻。如果该生物处于失能状态，则不能进行交换。'
     },
     'Crafter': {
-        name: '工匠',
-        desc: '你获得下述益处：<br>- 工具熟练：你可以获得三种由你选择的不同的工具或者工匠工具的熟练。<br>- 折扣：在购买非魔法物品时，你有20%的折扣。<br>- 快速制作：在完成一次长休时，你可以制作一件在快速制作表中的装备，前提是你拥有该物品对应的工具熟练，以及制作这些工具对应的工具和材料。能制作物品仅限于护甲、弹药箭矢类装备。'
+        name: '巧匠',
+        desc: "起源专长 你获得以下增益。 工具熟练Tool Proficiency。 你从快速制作表中自选三项不同的工匠工具并获得其熟练。 折扣Discount。 你在购买非魔法物品时具有20%的折扣。 快速制作Fast Crafting。 当你完成一次长休时，你可以制作一件快速制作栏中的装备。你必须拥有与该物品对应的工匠工具以及与这些工具对应的工具熟练才能尝试制作。造出的物品会持续存在到你下次完成长休，随后该物品解体坏损。 快速制作Fast Crafting 工匠工具 可制造的装备 木匠工具Carpenter's Tools 梯子、火把 皮匠工具Leatherworker's Tools 小箱子、卷轴匣、小包 石匠工具Mason's Tools 滑轮组 陶匠工具Potter's Tools 壶、油灯 铁匠工具Smith's Tools 滚珠、桶、铁蒺藜、爪钩、铁锅 修补工具Tinker's Tools 铃铛、铲子、火绒盒 织布工具Weaver's Tools 篮子、绳索、捕网、帐篷 木雕工具Woodcarver's Tools 短棒、巨棒、长棍"
     },
     'Healer': {
         name: '医疗师',
@@ -4896,11 +4896,11 @@ const ORIGIN_FEATS = {
         desc: '你获得下述益处：<br>- 乐器训练：你可以获得三种由你选择的乐器熟练。<br>- 鼓舞之歌：作为完成短休或长休的一部分，你可以为你自己和你听力范围内的友方生物演奏一首歌曲，以此方式你可以给予最多等同于你的熟练加值数量的友方生物英雄灵感。这种方式给予的英雄灵感数量不能超过你的熟练加值。'
     },
     'Savage Attacker': {
-        name: '野蛮攻击者',
+        name: '凶蛮打手',
         desc: '此专长训练你进行特别破坏性的攻击。每回合一次，当你使用武器命中目标时，你可以将武器的伤害骰重投，并选择在两个应用于目标上。'
     },
     'Skilled': {
-        name: '熟练',
+        name: '熟习',
         desc: '你获得三种由你选择的技能和工具熟练。<br><br>可选：可多次选择此专长。'
     },
     'Tavern Brawler': {
@@ -4908,7 +4908,7 @@ const ORIGIN_FEATS = {
         desc: '你获得下述益处：<br>- 强化徒手打击：当你使用徒手打击造成钝击伤害时，它可以造成1d4+你的力量调整值的钝击伤害，取代徒手打击的原始伤害。<br>- 伤害重投：当你为徒手打击掷伤害骰时，如果骰子掷出了1，你可以重投骰子，并且必须使用新掷的结果。<br>- 临时武器专长：你拥有临时武器的熟练。<br>- 推动：在你的回合中，在你连用一次攻击动作进行一次徒手打击或一次即兴武器对目标造成伤害的同时，你可以将它推动5尺。每回合只能使用此能力一次。'
     },
     'Tough': {
-        name: '坚韧',
+        name: '健壮',
         desc: '获得此专长时，你的生命值上限增加等同于你当前角色等级的两倍。此后，每当你升级时，你的生命值上限都将额外增加2点。'
     },
     // ===== Faerûn feats =====
@@ -4949,11 +4949,11 @@ const ORIGIN_FEATS = {
         desc: '当一名位于你60尺内可见的盟友消耗英雄激励时，若你没有英雄激励，则你获得英雄激励。你可使用此增益的次数等同于你的熟练加值，在完成短休或长休后你重获所有已消耗的使用次数。'
     },
     '血族猎人': {
-        name: '血族猎人 Vampire Hunter',
+        name: '吸血鬼猎人 Vampire Hunter',
         desc: '你获得以下增益：<br>- 灵巧脱身 Adroit Escap：你为逃脱受擒状态或非魔法约束所进行的属性检定具有优势。<br>- 活力守御 Vitality Ward：当你受到暗蚀伤害时，你能以反应减少伤害。投掷数量等于你熟练加值的d6，并将结果相加。以此总和减少你受到的暗蚀伤害。此增益一经使用，直至完成短休或长休你都无法再次使用。'
     },
     '血族玩物': {
-        name: '血族玩物 Vampire\'s Plaything',
+        name: '吸血鬼玩物 Vampire\'s Plaything',
         desc: '你获得以下增益：<br>- 倾注 Decanting：当你完成长休时，只要你有空的小瓶或扁瓶，你就可以制造一瓶治疗药水 Potion of Healing 或一瓶抗毒剂 Antitoxin。这些液体会在你完成长休后蒸发。<br>- 及时撤退 Timely Retreat：你能够以附赠动作执行疾走或撤离动作。你能够使用此增益的次数等于你的熟练加值次，当你完成长休时，你重获所有已消耗的使用次数。<br>- 血族链接 Vampiric Connection：由DM决定你曾经的吸血鬼主人的命运。若你与你曾经的吸血鬼主人身处同一存在位面，该吸血鬼可以与你进行心灵感应沟通，并且你可以选择允许该吸血鬼通过你的感官进行感知。'
     },
 };
@@ -5110,6 +5110,8 @@ async function loadFaerunData() {
 
     const extraBgs = parseFaerunBackgrounds(faerunBgText);
     Object.entries(extraBgs).forEach(([key, val]) => {
+        const aliases = {熟习:'Skilled',熟练:'Skilled',警戒:'Alert',警觉:'Alert',巧匠:'Crafter',工匠:'Crafter',健壮:'Tough',坚韧:'Tough',凶蛮打手:'Savage Attacker',野蛮攻击者:'Savage Attacker','魔法学徒（法师）':'Magic Initiate','魔法学徒（德鲁伊）':'Magic Initiate','魔法学徒（牧师）':'Magic Initiate'};
+        val.feat = aliases[val.feat] || val.feat;
         if (val.feat && !ORIGIN_FEATS[val.feat]) {
             ORIGIN_FEATS[val.feat] = { name: val.feat, desc: val.featDesc || '描述缺失' };
         }
@@ -5798,7 +5800,7 @@ const state = {
     equipmentGold: 0,
     customSpecies: { name: '', desc: '', size: '', speed: '', darkvision: '', traits: '' },
     customBg: { name: '', desc: '', feat: '', skills: [] },
-    skilledFeatSkills: [] // 来自“熟练”专长的额外技能选择
+    skilledFeatSkills: [] // 熟习的技能或工具选择，共用名额
 };
 
 const PLACEHOLDER_NAMES = ['初始模板', '模板'];
@@ -7803,7 +7805,7 @@ function renderSkills() {
         }
         else if (isSkilledFeatSkill) {
             className += ' background';
-            label = `${skill} [熟练专长]`;
+            label = `${skill} [熟习专长]`;
 
             if (isExpertise) {
                 className += ' expertise';
@@ -8091,10 +8093,10 @@ function renderHumanFeat() {
 
     const bg = getDynamicBackground();
     const bgFeat = bg.feat;
-    // Magic Initiate可以重复选择，其他专长不可以
+    // 魔法学徒与熟习允许复选。
     const availableFeats = Object.keys(ORIGIN_FEATS).filter(f => {
         const ef=ebFeat(f);if(ef&&(!['起源专长','黑暗赠礼'].includes(ef.category)||ebPrerequisite(ef,state.species,[],1)))return false;
-        if (f === 'Magic Initiate') return true;
+        if (f === 'Magic Initiate' || f === 'Skilled') return true;
         return f !== bgFeat;
     });
 
@@ -8161,9 +8163,9 @@ function renderHumanSkill() {
 
 function renderSkilledFeat() {
     const bg = getDynamicBackground();
-    const hasSkilledFeat = bg?.feat === 'Skilled' || state.humanFeat === 'Skilled';
+    const hasSkilledFeat = getExtraSkillCount() > 0;
     const required = getExtraSkillCount();
-    const selected = state.skilledFeatSkills || [];
+    let selected = state.skilledFeatSkills || [];
 
     elements.skilledFeatSection.style.display = hasSkilledFeat ? 'block' : 'none';
     if (!hasSkilledFeat) {
@@ -8171,19 +8173,19 @@ function renderSkilledFeat() {
         return;
     }
 
-    const badgeClass = selected.length === required ? 'valid' : 'invalid';
-    elements.skilledFeatTitle.innerHTML = `5. 熟练专长技能 <span class="counter-badge ${badgeClass}">${selected.length}/${required}</span>`;
-
     const baseProficiencies = new Set([
         ...bg.skills,
+        ...ebCreatorDefs().filter(d => ['tool','mixed','both'].includes(d.kind)).flatMap(d => d.values.length === 1 ? d.values : (ebCreatorState()[d.key] || [])),
         ...state.skills,
         ...(state.humanSkillChoice ? [state.humanSkillChoice] : []),
         ...(state.species === '精灵' && state.elfSkillChoice ? [state.elfSkillChoice] : [])
     ]);
 
+    selected = state.skilledFeatSkills = selected.filter(v => !baseProficiencies.has(v));
+    elements.skilledFeatTitle.innerHTML = `5. 熟习：技能或工具 <span class="counter-badge ${selected.length === required ? 'valid' : 'invalid'}">${selected.length}/${required}</span>`;
     elements.skilledFeatSelector.innerHTML = `
         <div class="skills-grid" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));">
-            ${SKILLS_LIST.map(skill => {
+            ${[...SKILLS_LIST, ...EB_ALL_TOOLS].map(skill => {
                 const isSelected = selected.includes(skill);
                 const isBlocked = baseProficiencies.has(skill);
                 const limitReached = selected.length >= required && !isSelected;
@@ -8548,7 +8550,7 @@ function validateSteps() {
             errors: (() => {
                 const errs = [];
                 if (hasSkilledFeat && skilledFeatChosen !== skilledFeatRequired) {
-                    errs.push(`熟练专长：请选择 ${skilledFeatRequired} 个技能（当前已选 ${skilledFeatChosen} 个）`);
+                    errs.push(`熟习专长：请选择 ${skilledFeatRequired} 项技能或工具（当前已选 ${skilledFeatChosen} 个）`);
                 }
                 return errs;
             })(),
@@ -8759,7 +8761,7 @@ function updateProgress(validation) {
         { key: 'classFeatures', label: '职业特性', icon: '*' },
         { key: 'humanFeat', label: '人类专长', icon: '*' },
         { key: 'humanSkill', label: '人类技能', icon: '*' },
-        { key: 'skilledFeat', label: '熟练专长', icon: '*' },
+        { key: 'skilledFeat', label: '熟习专长', icon: '*' },
         { key: 'elfSkill', label: '精灵技能', icon: '*' },
         { key: 'skills', label: '职业技能', icon: '*' },
         { key: 'equipment', label: '初始装备', icon: '*' },
@@ -8904,7 +8906,7 @@ function renderSummary() {
         racialSkills.push(state.humanSkillChoice);
     }
 
-    const allSkills = [...new Set([...bg.skills, ...state.skills, ...state.skilledFeatSkills, ...racialSkills])];
+    const allSkills = [...new Set([...bg.skills, ...state.skills, ...state.skilledFeatSkills.filter(s => SKILLS_LIST.includes(s)), ...racialSkills])];
     let speciesText = state.species;
     if (state.lineage) speciesText += ` (${state.lineage})`;
     
@@ -9325,7 +9327,7 @@ function setupEventListeners() {
             return;
         }
 
-        // 游荡者点击熟练专长技能（已熟练）
+        // 游荡者点击熟习专长技能（已熟练）
         if (isRogue && isSkilledFeatSkill) {
             if (isExpertise) {
                 const expertiseIdx = state.expertise.indexOf(skill);
@@ -9745,7 +9747,7 @@ function buildMvuCharacterSheet() {
         racialSkills.push(state.humanSkillChoice);
     }
 
-    const allProfSkills = new Set([...bg.skills, ...state.skills, ...state.skilledFeatSkills, ...racialSkills]);
+    const allProfSkills = new Set([...bg.skills, ...state.skills, ...state.skilledFeatSkills.filter(s => SKILLS_LIST.includes(s)), ...racialSkills]);
     const skillRecord = {};
     const expertiseSet = new Set(state.expertise || []);
     allProfSkills.forEach(skill => {
@@ -9766,7 +9768,7 @@ function buildMvuCharacterSheet() {
     const weaponCategorySet = new Set(['简易武器', '军用武器']);
     const weaponProficiencies = [];
     const armorProficiencies = [];
-    const toolRecord = {};
+    const toolRecord = Object.fromEntries(state.skilledFeatSkills.filter(s => EB_ALL_TOOLS.includes(s)).map(s => [s, 1]));
 
     effectiveProficiencies.forEach(prof => {
         if (armorProficiencySet.has(prof)) {
@@ -11836,7 +11838,28 @@ function ravenApplyTraits(c){ MvuLite.syncExpertise(c); }
 const EB_FEATS = EB.books.flatMap(b=>b.feats);
 const EB_SKILLS = ['运动','特技','巧手','隐匿','奥秘','历史','调查','自然','宗教','驯兽','洞悉','医药','察觉','求生','欺瞒','威吓','表演','游说'];
 const EB_TOOLS = ['炼金工具','酿酒工具','书法工具','木匠工具','制图工具','鞋匠工具','厨师工具','玻璃工匠工具','珠宝匠工具','皮匠工具','泥瓦匠工具','画家工具','陶工工具','铁匠工具','修补工具','织布工具','木雕工具'];
-const EB_ALL_TOOLS = [...EB_TOOLS,'草药工具','盗贼工具','易容工具','制毒工具','文书伪造工具','领航工具','骰子','纸牌','龙棋','风笛','鼓','扬琴','长笛','鲁特琴','里拉琴','号角','排箫','芦笙','提琴'];
+const EB_ALL_TOOLS = [...EB_TOOLS,'草药工具','盗贼工具','易容工具','制毒工具','文书伪造工具','领航工具','骰子','纸牌','龙棋','三龙牌','风笛','鼓','扬琴','长笛','鲁特琴','里拉琴','号角','排箫','芦笙','提琴'];
+// 本地不全书：PHB2024、费伦与阿斯代伦背景；沿用本卡已有工具译名。
+const BACKGROUND_TOOLS={
+  '侍僧':['书法工具'],'工匠':EB_TOOLS,'骗子':['文书伪造工具'],'罪犯':['盗贼工具'],
+  '艺人':EB_ALL_TOOLS.slice(-10),'农民':['木匠工具'],'警卫':['骰子','纸牌','龙棋','三龙牌'],
+  '向导':['制图工具'],'隐士':['草药工具'],'商人':['领航工具'],'贵族':['骰子','纸牌','龙棋','三龙牌'],
+  '智者':['书法工具'],'贤者':['书法工具'],'水手':['领航工具'],'抄写员':['书法工具'],
+  '士兵':['骰子','纸牌','龙棋','三龙牌'],'流浪者':['盗贼工具'],
+  '琼达斯海盗':['织布工具'],'死魔法区住民':['皮匠工具'],'龙巫教信徒':['书法工具'],
+  '翠绿闲庭庇护者':['草药工具'],'焰拳佣兵':['铁匠工具'],'巨灵接触者':['玻璃工匠工具'],
+  '竖琴手':['易容工具'],'冰上钓客':['木雕工具'],'臂铠骑士':['铁匠工具'],
+  '领主联盟臣属':['书法工具'],'月井朝圣者':['画家工具'],'穆尔霍兰德盗墓者':['泥瓦匠工具'],
+  '迷锁守卫者':['珠宝匠工具'],'紫龙骑士侍从':['领航工具'],'莱瑟曼流浪者':['制图工具'],
+  '影宗放逐者':['盗贼工具'],'咒火学徒':['骰子','纸牌','龙棋','三龙牌'],'散塔林会佣兵':['文书伪造工具'],
+  '狂欢者':['骰子','纸牌','龙棋','三龙牌'],'血徒':['厨师工具'],'吸血鬼幸存者':['木雕工具']
+};
+function backgroundToolOptions(name){
+  if(BACKGROUND_TOOLS[name])return BACKGROUND_TOOLS[name];
+  const tool=EB.backgrounds.find(b=>b.name===name)?.tool;
+  if(!tool)return [];
+  return tool.includes('工匠')?EB_TOOLS:tool.includes('乐器')?EB_ALL_TOOLS.slice(-10):tool.includes('赌具')?['骰子','纸牌','龙棋','三龙牌']:tool.includes('选择')?['盗贼工具','制毒工具','文书伪造工具']:[tool];
+}
 const ebBook = id=>EB.books.find(b=>b.id===id).name;
 const ebEscape = v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const ebCN = s=>String(s).split(/[A-Za-z]/,1)[0].trim();
@@ -11882,6 +11905,8 @@ function ebFeatChoices(name){
   const defs=[];
   const add=(key,label,kind,values,count=1)=>defs.push({key:'eb_feat_'+name+'_'+key,label:name+'：'+label,kind,values,count});
   const raven=(key,label,kind,values,count=1)=>defs.push({key:'feat_'+name+'_'+key,label:name+'：'+label,kind,values,count});
+  if(name==='音乐家')raven('music','乐器熟练','tool',EB_ALL_TOOLS.slice(-10),3);
+  if(name==='工匠'||name==='巧匠')raven('tools','工具熟练','tool',['木匠工具','皮匠工具','泥瓦匠工具','陶工工具','铁匠工具','修补工具','织布工具','木雕工具'],3);
   if(name==='灵魂回响'){
     raven('skills','当前技能熟练（长休可更换）','config',EB_SKILLS,2);
     const known=[...getDynamicBackground().skills,...state.skills,...state.skilledFeatSkills,state.humanSkillChoice,...(ebCreatorState().eb_race_skill||[]),...(ebCreatorState().feat_灵魂回响_skills||[])];
@@ -11965,9 +11990,9 @@ function ebCreatorDefs(){
   const defs=ebRaceChoices(state.species),bg=EB.backgrounds.find(b=>b.name===state.background);
   if(state.species.startsWith('达坎'))defs.push({key:'eb_dhakaani_background',label:'达坎背景可选规则（替换起源专长须经 DM 许可）',kind:'config',values:['保留背景专长','达坎之梦','静默训练'],count:1});
   if(bg?.sourceBook==='ravenloft')defs.push({key:'rv_background_feat',label:'背景专长（黑暗赠礼须经DM允许；含代价）',kind:'config',values:[...(['噩梦缠身者','调查员'].includes(bg.name)?[bg.feat]:[]),...EB_FEATS.filter(f=>f.category==='黑暗赠礼').map(f=>f.name)],count:1});
+  const tools=backgroundToolOptions(state.background);
+  if(tools.length)defs.push({key:'eb_background_tool',label:'背景：工具熟练',kind:'tool',values:tools,count:1});
   if(bg){
-    let opts=bg.tool.includes('工匠')?EB_TOOLS:bg.tool.includes('乐器')?EB_ALL_TOOLS.slice(-10):bg.tool.includes('赌具')?['骰子','纸牌','龙棋']:bg.tool.includes('选择')?['盗贼工具','制毒工具','文书伪造工具']:[bg.tool];
-    defs.push({key:'eb_background_tool',label:'背景：工具熟练',kind:'tool',values:opts,count:1});
     defs.push({key:'eb_background_equipment',label:'背景装备（与职业装备分开）',kind:'config',values:['B：50金币','A：按背景原文领取装备'],count:1});
     if(bg.name==='马伦蒂')defs.push({key:'eb_background_impersonated',label:'装备 A：冒充身份的背景及装备清单（与 DM 确认）',kind:'note',values:[],count:1,optional:true});
   }
@@ -11996,7 +12021,7 @@ function renderEberronCreator(){
     }
     if(d.kind==='tool'&&vals.length>1){
       const earlier=defs.slice(0,defs.indexOf(d)).filter(x=>x.kind==='tool').flatMap(x=>choices[x.key]||[]);
-      const known=new Set([...earlier,...CLASSES[state.class].proficiencies.filter(v=>EB_ALL_TOOLS.includes(v))]);
+      const known=new Set([...earlier,...state.skilledFeatSkills,...CLASSES[state.class].proficiencies.filter(v=>EB_ALL_TOOLS.includes(v))]);
       vals=vals.filter(v=>!known.has(v));
     }
     if(d.kind==='integrated')vals=vals.filter(v=>(choices['eb_feat_特使专员_tool']||[]).includes(v)||(choices.eb_race_tool||[]).includes(v)||(choices.eb_background_tool||[]).includes(v)||CLASSES[state.class].proficiencies.includes(v));
@@ -12004,7 +12029,7 @@ function renderEberronCreator(){
       choices[d.key]||=[''];html+='<label style="display:block;margin:12px 0">'+ebEscape(d.label)+'<textarea data-eb="'+ebEscape(d.key)+'" rows="2">'+ebEscape(choices[d.key][0])+'</textarea></label>';continue;
     }
     const previous=choices[d.key]||[];
-    choices[d.key]=Array.from({length:d.count},(_,i)=>vals.includes(previous[i])?previous[i]:'');
+    choices[d.key]=Array.from({length:d.count},(_,i)=>vals.includes(previous[i])?previous[i]:d.kind==='tool'&&vals.length===1&&d.count===1?vals[0]:'');
     html+='<div style="margin:12px 0"><label>'+ebEscape(d.label)+'（选 '+d.count+'）</label><div style="display:flex;gap:12px;flex-wrap:wrap">';
     const featChoice=['rv_background_feat','eb_dhakaani_background'].includes(d.key);
     for(let n=0;n<d.count;n++)html+='<select'+(featChoice?' id="'+d.key+'-'+n+'" data-dnd-name-search="'+ebEscape(d.label)+'"':'')+' style="min-width:150px;max-width:100%" data-eb="'+ebEscape(d.key)+'" data-index="'+n+'"><option value="">请选择</option>'+vals.map(v=>'<option value="'+ebEscape(v)+'"'+(choices[d.key][n]===v?' selected':'')+'>'+ebEscape(featChoice?creatorFeatLabel(v):v)+'</option>').join('')+'</select>';
@@ -12061,6 +12086,7 @@ function applyEberronCreator(c){
     const error=ebPrerequisite(f,state.species,feats,1);if(error)throw new Error(f.name+'：'+error);
     c.特性.专长[f.name]={描述:f.description,来源:ebBook(f.sourceBook)};
   }
+  for(let i=0;i<getExtraSkillCount()/3;i++)c.成长选择['feat_熟习'+(i?i+1:'')+'_skills']=state.skilledFeatSkills.slice(i*3,i*3+3);
   for(const d of defs){
     const vals=choices[d.key]||[];
     if(d.kind!=='note'&&(vals.length!==d.count||new Set(vals).size!==d.count))throw new Error(d.label+'：请选择不重复的 '+d.count+' 项');
