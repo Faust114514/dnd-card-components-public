@@ -11860,7 +11860,7 @@ function ebRaceChoices(name){
   const add=(key,label,kind,values,count=1)=>defs.push({key:'eb_race_'+key,label,kind,values,count});
   const skill=(values,count=1)=>add('skill',name+'：技能熟练','skill',values,count);
   if(name==='人狼裔')skill(['察觉','隐匿','求生']);
-  if(name==='复生者'){skill(all);add('resistance','奇异耐性：伤害抗性','config',['寒冷','暗蚀','毒素']);}
+  if(name==='复生者'){add('type','生物类型（亡灵为自制选项）','config',['类人','亡灵']);skill(all);add('resistance','奇异耐性：伤害抗性','config',['寒冷','暗蚀','毒素']);}
   if(name==='巫咒之子')add('ability','巫咒魔法：施法属性','config',['智力','感知','魅力']);
   if(name==='幻身灵')skill(['欺瞒','洞悉','威吓','表演','游说'],2);
   if(name==='离梦人'||name==='战俑')skill(all);
@@ -11986,6 +11986,7 @@ function renderEberronCreator(){
   root.style.display = hasEberron || defs.length ? '' : 'none';
   const errors=owned.map(n=>ebFeat(n)).filter(Boolean).map(f=>ebPrerequisite(f,state.species,owned,1)).filter(Boolean);
   let html=hasEberron?'<p>来源：EFA、《探秘艾伯伦》与《鸦阁魔域：魔障深藏》。龙纹与黑暗赠礼须用于对应战役，或经 DM 允许移植；黑暗赠礼保留其代价。条件效果由 DM 按原文裁定。</p>':'<p>种族法术的施法属性在一级时决定，升级后继续沿用。种族赠送法术不占职业准备名额。</p>';
+  if(state.species==='复生者')choices.eb_race_type||=['类人'];
   for(const d of defs){
     let vals=d.values;
     if(['skill','mixed','both'].includes(d.kind)){
@@ -12107,7 +12108,11 @@ function applyEberronCreator(c){
   if(state.species==='巫咒之子')ebCreatorGrant(c,'巫咒魔法',['易容术','脆弱诅咒'],ra);
   if(race?.sourceBook==='ravenloft'){
     c.特性.种族['体型']={描述:choices.eb_race_size[0]};
-    if(state.species==='复生者')c.特性.种族['奇异耐性']={描述:'你对'+choices.eb_race_resistance[0]+'伤害具有抗性。'};
+    if(state.species==='复生者'){
+      c.特性.种族['奇异耐性']={描述:'你对'+choices.eb_race_resistance[0]+'伤害具有抗性。'};
+      const type=choices.eb_race_type[0];c.特性.种族['生物类型']={描述:type,来源:'鸦阁魔域·自制生物类型选项'};
+      c.特性.种族['复生者规则'].描述=c.特性.种族['复生者规则'].描述.replace('生物类型：类人','生物类型：'+type+(type==='亡灵'?'（自制选项）':''));
+    }
   }
   for(const name of feats){
     if(RAVEN_FEAT_SPELLS[name])ebCreatorGrant(c,name,RAVEN_FEAT_SPELLS[name],name==='监视者'?'':ebAbility(choices['feat_'+name+'_ability']?.[0]));

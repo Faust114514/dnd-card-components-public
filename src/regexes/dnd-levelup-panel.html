@@ -5176,6 +5176,7 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
     function featPrecheck(name,targetLevel,targetSub){
       const duplicate=featDuplicateCheck(name); if(duplicate)return {ok:false,reason:duplicate};
       const bookCheck=bookPrecheck(name,targetLevel); if(bookCheck&&!bookCheck.ok)return bookCheck;
+      if(bookFeat(name)?.sourceBook==='ua-lich')return bookCheck;
       const auCheck=arcanaPrecheck(name,targetLevel); if(auCheck&&!auCheck.ok)return auCheck;
       const meta=[...GENERAL_FEATS,...EPIC_FEATS.map(f=>({name:f.name,prerequisite:f.prerequisite}))].find(f=>f.name===name);
       if(!meta) return {ok:true};
@@ -10261,6 +10262,107 @@ const BOOK_LIBRARY={
       ],
       "spells": [],
       "references": []
+    },
+    {
+      "id": "ua-lich",
+      "name": "UA：邪恶道途·巫妖道途",
+      "edition": "2024测试内容",
+      "base": "其他/新UA/反派一期",
+      "subclasses": [],
+      "feats": [
+        {
+          "name": "巫妖之始",
+          "nameEN": "Lich Initiate",
+          "sourceBook": "ua-lich",
+          "category": "巫妖道途",
+          "prerequisite": "等级4+，施法或契约魔法特性",
+          "abilityBonus": {
+            "points": 1,
+            "allowed": [
+              "int",
+              "wis",
+              "cha"
+            ],
+            "maxScore": 20
+          },
+          "description": "你踏上了转化为巫妖形态的第一步，包括创造你的命匣，这个神奇的容器能在你的肉体毁灭时将你的灵魂锚定在生者世界。\n你获得以下增益。\n属性值提升Ability Score Increase。\n你的智力、感知或魅力提升1，至多提升至20。\n创造命匣Creating Your Spirit Jar。\n选择一个对你来说意义非凡的微型物件，掷一次命匣表或从中选择一个结果，以此启发这个物件。你花费一次长休将你的灵魂锚定在此物件上，使你能吞噬生者之魂强化自身实力。你同时能拥有的命匣数上限为一。若你创造第二个命匣，旧的命匣将被摧毁。\n1d6\n你的命匣是......\n1\n一颗来自毁灭已久的森林的橡果\n2\n一封来自已故爱人的情书\n3\n你用来书写第一条法术或祷文的墨水瓶\n4\n来自你厌弃神明被玷污的圣物\n5\n一口钟，每收集一道灵魂它的钟声就会变得更低\n6\n一块曾属于你的熟人或你自己的干尸——例如眼睛、手指或犄角\n摧毁命匣 Spirit Jar Destruction。\n你命匣的护甲等级等于你的法术豁免DC，其生命值等于你的法术调整值加你的角色等级。若你的命匣被摧毁，你获得2级力竭，且无法使用灵魂汲取能力，直至你创造一个新的命匣。\n灵魂汲取 Soul Siphon。\n当你将一名类人敌人的生命值降至0时，你能吞噬其灵魂来获得奥术能量的增长（无需动作）。在你的下个回合中，你以攻击命中的第一名生物额外受到等于1d6加你的施法属性调整值的暗蚀伤害。若有他人令一名位于你10尺内的类人敌人的生命值降至0，你也能获得此增益。以此法被吞噬的灵魂只能被\n完全复生术True Resurrection\n或\n祈愿术Wish\n恢复。",
+          "sourceFile": "其他/新UA/反派一期/邪恶道途-巫妖道途.htm"
+        },
+        {
+          "name": "奥能还复",
+          "nameEN": "Arcane Restoration",
+          "sourceBook": "ua-lich",
+          "category": "巫妖道途",
+          "prerequisite": "巫妖之始专长",
+          "abilityBonus": {
+            "points": 1,
+            "allowed": [
+              "int",
+              "wis",
+              "cha"
+            ],
+            "maxScore": 20
+          },
+          "description": "你获得以下增益。\n属性值提升 Ability Score Increase。\n你的智力、感知或魅力提升1，至多提升至20。\n魂髓复苏 Essence Rejuvenation。\n当你使用灵魂汲取吞噬灵魂时，你能够选择恢复一枚或更多已消耗的法术位。所恢复的法术位环阶总和不得大于四。此特性一经使用，直至完成短休或长休你都无法再次使用。",
+          "sourceFile": "其他/新UA/反派一期/邪恶道途-巫妖道途.htm"
+        },
+        {
+          "name": "命魂移转",
+          "nameEN": "Transfer Life",
+          "sourceBook": "ua-lich",
+          "category": "巫妖道途",
+          "prerequisite": "巫妖之始专长",
+          "abilityBonus": {
+            "points": 1,
+            "allowed": [
+              "int",
+              "wis",
+              "cha"
+            ],
+            "maxScore": 20
+          },
+          "description": "你获得以下增益。\n属性值提升 Ability Score Increase。\n你的智力、感知或魅力提升1，至多提升至20。\n灵魂转化 Soul Transference。\n当你使用灵魂汲取吞噬灵魂时，你能选择一名位于你60尺内的生物获得等于你熟练加值加你的施法属性调整值的临时生命值（至少为1）。",
+          "sourceFile": "其他/新UA/反派一期/邪恶道途-巫妖道途.htm"
+        },
+        {
+          "name": "亡灵之攫",
+          "nameEN": "Undead Grasp",
+          "sourceBook": "ua-lich",
+          "category": "巫妖道途",
+          "prerequisite": "巫妖之始专长",
+          "abilityBonus": {
+            "points": 1,
+            "allowed": [
+              "int",
+              "wis",
+              "cha"
+            ],
+            "maxScore": 20
+          },
+          "description": "你获得以下增益。\n属性值提升 Ability Score Increase。\n你的智力、感知或魅力提升1，至多提升至20。\n麻痹之触 Paralyzing Touch。\n你知晓戏法\n颤栗之触Chill Touch\n。若你已知晓之，则改为习得另一道你选择的戏法。你的该法术的施法属性是智力、感知或魅力（当你选取此专长时选择）。\n当你以颤栗之触Chill Touch造成伤害时，你能够消耗一枚一环及以上的法术位来尝试麻痹目标。目标额外受到消耗的法术位每环阶1d10的暗蚀伤害，且必须成功通过一次对抗你法术豁免DC的体质豁免，否则陷入麻痹状态，直至你的下个回合开始。",
+          "sourceFile": "其他/新UA/反派一期/邪恶道途-巫妖道途.htm"
+        },
+        {
+          "name": "巫妖堕冥",
+          "nameEN": "Lich Ascension",
+          "sourceBook": "ua-lich",
+          "category": "巫妖道途",
+          "prerequisite": "等级12+，至少两个巫妖道途专长",
+          "abilityBonus": {
+            "points": 1,
+            "allowed": [
+              "int",
+              "wis",
+              "cha"
+            ],
+            "maxScore": 20
+          },
+          "description": "你获得以下增益。\n属性值提升 Ability Score Increase。\n你的智力、感知或魅力提升1，至多提升至20。\n亡灵 Undead。\n你的生物类型变为亡灵。\n不洁本质 Unholy Anatomy。\n你对暗蚀和毒素伤害具有抗性。你不会因脱水、饥饿或窒息获得力竭等级。\n骇人凝视 Frightening Gaze。\n若你还未知晓法术\n恐惧术Fear\n，你习得之并始终准备着该法术。你的该法术的施法属性是智力、感知或魅力（当你选取此专长时选择）。你可以无需法术位地施展该法术若干次，次数等于你的施法属性调整值（至少1次），且当你完成长休时，你重获所有已消耗的使用次数。\n复生 Rejuvenation。\n若你死亡，只要你具有命匣且未被提前复活，你将在1d10天后重生。你的新身体将在距离命匣最近的5尺内的未占据空间内以满生命值显现。",
+          "sourceFile": "其他/新UA/反派一期/邪恶道途-巫妖道途.htm"
+        }
+      ],
+      "spells": [],
+      "references": []
     }
   ],
   "artificerCore": [
@@ -12287,6 +12389,17 @@ function bookPrecheck(name,level){
   const feat=bookFeat(name);if(!feat)return null;
   if(!bookEnabled.has(feat.sourceBook))return {ok:false,reason:'未启用'+bookName(feat.sourceBook)};
   const min=Number(feat.prerequisite.match(/等级\s*(\d+)/)?.[1]||0);if(level<min)return {ok:false,reason:'需要等级'+min+'+'};
+  if(feat.sourceBook==='ua-lich'){
+    if(feat.name==='巫妖之始'){
+      const caster=Object.entries(state.classLevels||{}).some(([id,level])=>Number(level)>0&&['wizard','cleric','bard','druid','sorcerer','warlock','paladin','ranger','artificer'].includes(id))
+        ||Number(state.classLevels?.fighter)>=3&&subclassSpellIdentity('fighter',state.classDataMap?.fighter,state.pending)==='eldritch_knight'
+        ||Number(state.classLevels?.rogue)>=3&&subclassSpellIdentity('rogue',state.classDataMap?.rogue,state.pending)==='arcane_trickster';
+      if(!caster)return {ok:false,reason:'需要施法或契约魔法特性（仅种族或专长施法不满足）'};
+    }else if(feat.name==='巫妖堕冥'){
+      if(bookAllFeats.filter(f=>f.sourceBook==='ua-lich'&&f.name!=='巫妖堕冥'&&arcanaHas(f.name)).length<2)return {ok:false,reason:'需要至少两个巫妖道途专长'};
+    }else if(!arcanaHas('巫妖之始'))return {ok:false,reason:'需要巫妖之始专长'};
+    return {ok:true};
+  }
   if(feat.name==='精灵之准'&&!/精灵/.test(String(state.charObj?.种族||'')))return {ok:false,reason:'需要精灵或半精灵'};
   const spellcaster=Object.keys(state.classLevels||{}).some(id=>['wizard','cleric','bard','druid','sorcerer','warlock','paladin','ranger','artificer'].includes(id));
   const martial=Object.keys(state.classLevels||{}).some(id=>['fighter','barbarian','paladin','ranger'].includes(id))||/军用武器/.test(JSON.stringify(state.charObj?.熟练||{}));
@@ -12338,10 +12451,32 @@ function bookApply(finalize=false){
   }
   const gift=bookAllFeats.find(f=>f.category==='黑暗赠礼'&&f.name===picks.book_dark_gift);
   if(gift&&bookEnabled.has('ravenloft'))c.特性.专长[gift.name]={描述:gift.description,来源:bookName(gift.sourceBook)+'·DM授予'};
+  applyLichPath();
   if(!finalize)subclassSpellApply();
   for(const [name,value]of Object.entries(c.施法?.法术书||{})){
     const spell=BOOK_LIBRARY.books.flatMap(b=>b.spells).find(s=>choiceKey(s.name)===choiceKey(name));
     if(spell){value.描述=spell.desc;value.仪式=spell.ritual;value.专注=spell.concentration;delete value.完整描述;}
+  }
+}
+function applyLichPath(){
+  const c=state.charObj,choices=c.成长选择||{},owned=Object.keys(c.特性?.专长||{}).map(ebCN);
+  if(owned.includes('亡灵之攫')&&choices.lich_grasp_cantrip&&choices.lich_亡灵之攫_ability){
+    addGrantedSpellEntry(c,'UA巫妖道途·亡灵之攫',{cantrips:choices.lich_grasp_cantrip,sourceNames:EXTRA_SPELL_SOURCE_NAMES,keyAbility:ebAbility(choices.lich_亡灵之攫_ability[0])});
+    c.施法||={};c.施法.法术书||={};for(const [name,entry]of Object.entries(buildSpellBookFromSources(choices.lich_grasp_cantrip,[],EXTRA_SPELL_SOURCE_NAMES))){c.施法.法术书[name]||=entry;c.施法.法术书[name].准备中='always';}
+  }
+  if(owned.includes('奥能还复')){
+    c.资源||={};const old=c.资源['魂髓复苏'];c.资源['魂髓复苏']={...old,当前值:old?.当前值??1,最大值:1,恢复规则:'短休/长休',描述:'灵魂汲取时可恢复已消耗法术位，环阶总和不超过4。'};
+  }
+  if(owned.includes('巫妖堕冥')){
+    c.特性.种族||={};c.特性.种族['生物类型']={描述:'亡灵',来源:'UA：邪恶道途·巫妖堕冥'};
+    const rule=c.特性.种族['复生者规则'];if(rule)rule.描述=rule.描述.replace(/生物类型：[类人亡灵]+[^\n；;]*/,'生物类型：亡灵（巫妖堕冥）');
+    const ability=ebAbility(choices.lich_巫妖堕冥_ability?.[0]);
+    if(ability){
+      addGrantedSpellEntry(c,'UA巫妖道途·巫妖堕冥',{spells:['恐惧术'],prepared:['恐惧术'],sourceNames:EXTRA_SPELL_SOURCE_NAMES,keyAbility:ability});
+      c.施法||={};c.施法.法术书||={};c.施法.法术书.恐惧术||=buildSpellBookFromSources(['恐惧术'],['恐惧术'],EXTRA_SPELL_SOURCE_NAMES).恐惧术;c.施法.法术书.恐惧术.准备中='always';
+      const score=c.属性?.[({int:'智力',wis:'感知',cha:'魅力'})[ability]],max=Math.max(1,abilityMod(score));
+      c.资源||={};const old=c.资源['骇人凝视'];c.资源['骇人凝视']={...old,当前值:old?.当前值??max,最大值:max,恢复规则:'长休',描述:'无需法术位施展恐惧术；施法属性：'+choices.lich_巫妖堕冥_ability[0]+'。'};
+    }
   }
 }
 function renderBookLibrary(){
@@ -14064,6 +14199,15 @@ function growthFeatChoices(plan,pending,name,slot=''){
   if(name.includes('灵魂回响')){add('skills','灵魂回响：当前技能熟练','config',GROWTH_SKILLS,2,{mutable:true,timing:'长休可更换'});const current=growthList(pending['growth_'+prefix+'_skills']||state.charObj?.成长选择?.[prefix+'_skills']);add('expertise','灵魂回响：当前专精','config',GROWTH_SKILLS.filter(n=>growthRank(n)>0||current.includes(n)),1,{mutable:true,timing:'长休可更换'});add('language','灵魂回响：语言','language',GROWTH_LANGUAGES);}
   if(name.includes('共生存在')){add('skill','共生存在：技能熟练','skill',['奥秘','欺瞒','历史','威吓','洞悉','调查','自然','宗教','察觉','游说']);add('language','共生存在：语言','language',GROWTH_LANGUAGES);}
   if(name.includes('异变内构'))fixed('perception','异变内构：察觉熟练及专精','both',['察觉']);
+  const lich=bookFeat(name);
+  if(lich?.sourceBook==='ua-lich'&&['亡灵之攫','巫妖堕冥'].includes(lich.name)){
+    growthRule(plan,pending,'lich_'+lich.name+'_ability',lich.name+'：施法属性','config',['智力','感知','魅力']);
+    const stored=state.charObj?.成长选择||{},known=Object.keys(state.charObj?.施法?.法术书||{});
+    if(lich.name==='亡灵之攫'&&!stored.lich_grasp_cantrip){
+      if(known.includes('颤栗之触'))growthSpellPicker(plan,'lich_grasp_cantrip','亡灵之攫：已知晓颤栗之触，改选另一道戏法',1,EXTRA_SPELL_SOURCE_NAMES,[0],{exclude:known,ebSave:'lich_grasp_cantrip'});
+      else growthFixed(plan,'lich_grasp_cantrip','亡灵之攫：颤栗之触','config',['颤栗之触']);
+    }
+  }
   if(name.includes('惊魂落魄之恩惠'))fixed('intimidation','惊魂落魄之恩惠：威吓熟练及专精','both',['威吓']);
   if(/翠绿闲庭新羽|咒火火花|汇灵低语|活体阴影|第二面目|死亡之触/.test(name))add('ability',name+'：施法属性','config',['智力','感知','魅力']);
 }
@@ -14118,9 +14262,11 @@ function growthRenderMode(){
     const hexblade=Number(state.classLevels?.warlock||0)>=3&&subclassSpellIdentity('warlock',state.classDataMap?.warlock)==='legacy_hexblade';
     const ranger=Number(state.classLevels?.ranger||0)>=11;
     const racial=!!MvuLite.racialMagicInfo(state.charObj||{});
+    const reborn=state.charObj?.种族==='复生者';
+    const lich=Object.keys(state.charObj?.特性?.专长||{}).some(n=>bookFeat(n)?.sourceBook==='ua-lich');
     const expertise=Object.keys(state.charObj?.特性?.专长||{}).some(name=>/散塔林会战术|灵魂回响|专用人格/.test(name));
-    configButton.hidden=!hexblade&&!ranger&&!racial&&!expertise&&growthMode!=='config';
-    configButton.textContent=growthMode==='config'?'返回升级':racial?'种族施法／配置':ranger?'自制游侠特性／配置':expertise?'专精／配置':'长休换选精通';
+    configButton.hidden=!hexblade&&!ranger&&!racial&&!expertise&&!reborn&&!lich&&growthMode!=='config';
+    configButton.textContent=growthMode==='config'?'返回升级':reborn?'复生者／配置':lich?'巫妖道途／配置':racial?'种族施法／配置':ranger?'自制游侠特性／配置':expertise?'专精／配置':'长休换选精通';
     configButton.onclick=()=>{
       if(Object.keys(state.pending||{}).length&&!confirm('切换会清除未提交的选择，已保存的人物不受影响。继续？'))return;
       growthMode=growthMode==='config'?'upgrade':'config';state.pending={};state.plan=buildPlan(state.pending);renderUI();
@@ -15340,7 +15486,8 @@ function briefRestoreDescriptions(c,before={}){
     if(!group||typeof group!=='object'||Array.isArray(group))continue;
     for(const [name,value]of Object.entries(group)){
       const entry=value&&typeof value==='object'?value:{描述:String(value||'')};
-      if (/艾伯伦：奇械锻炉|探秘艾伯伦|鸦阁魔域/.test(String(entry.来源||'')) || EB.species.some(r=>name===r.name+'规则')) { group[name]=entry; continue; }
+      if(c.种族==='复生者'&&bucket==='种族'&&['复生者规则','生物类型'].includes(name)){entry.描述=entry.完整描述??entry.描述;delete entry.完整描述;group[name]=entry;continue;}
+      if (/艾伯伦：奇械锻炉|探秘艾伯伦|鸦阁魔域|UA：邪恶道途/.test(String(entry.来源||'')) || EB.species.some(r=>name===r.name+'规则')) { group[name]=entry; continue; }
       const previous=before.特性?.[bucket]?.[name];
       const now=String(entry.描述||''),old=typeof previous==='string'?previous:previous?.描述||'';
       const numbers=now.match(/【当前数值】[^\n]*/)?.[0]||'';
@@ -15855,6 +16002,10 @@ const ebOldGrowthPlan=growthPlan;
 growthPlan=function(plan,pending){
   plan=ebOldGrowthPlan(plan,pending);if(!plan)return plan;
   const c=state.charObj||{},stored=c.成长选择||{},owned=Object.keys(c.特性?.专长||{}).map(ebCN);
+  if(c.种族==='复生者'&&!owned.includes('巫妖堕冥')){
+    pending.growth_eb_race_type||=stored.eb_race_type||['类人'];
+    growthRule(plan,pending,'eb_race_type','复生者：生物类型（自制选项）','config',['类人','亡灵'],1,{mutable:true,timing:'自制规则；原版为类人'});
+  }
   const racial=MvuLite.racialMagicInfo(c,plan.totalTo);
   if(racial){
     if(!racial.fixed&&!stored.eb_race_ability){
@@ -15941,6 +16092,12 @@ growthApply=function(){
   }
   if(picks.growth_select_eb_capstone){choices.eb_capstone=[picks.growth_select_eb_capstone];}
   ebApplyCapstone();
+  if(c.种族==='复生者'&&choices.eb_race_type){
+    c.特性.种族||={};const type=choices.eb_race_type[0];
+    c.特性.种族['生物类型']={描述:type,来源:'鸦阁魔域·自制生物类型选项'};
+    const rule=c.特性.种族['复生者规则'];if(rule)rule.描述=rule.描述.replace(/生物类型：[类人亡灵]+[^\n；;]*/,'生物类型：'+type+(type==='亡灵'?'（自制选项）':''));
+  }
+  applyLichPath();
   MvuLite.applyRacialMagic(c, state.level, name=>getSpellFromSources(EXTRA_SPELL_SOURCE_NAMES,name));
 };
 function ebApplyCapstone(c=state.charObj){
