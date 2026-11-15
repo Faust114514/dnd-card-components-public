@@ -4464,10 +4464,9 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
       const bookNames=Object.keys(spellBook||{});
       const preparedNames=bookNames.filter((name)=>Number(pickU(spellBook[name],["等级","level"],0))>0&&[true,"true"].includes(pickU(spellBook[name],["准备中","prepared"],false)));
       const cantripNames=bookNames.filter((name)=>parseSpellLevelValue(pickU(spellBook[name],["等级","level"],0),0)===0);
-      setByKnownKey(wd,["戏法","cantrips"], unique(pickListU(wd,["戏法","cantrips"],[])), "戏法");
+      setByKnownKey(wd,["戏法","cantrips"], unique(pickListU(wd,["戏法","cantrips"],cantripNames)), "戏法");
       setByKnownKey(wd,["法术书法术","spellbookSpells"], unique([...pickListU(wd,["法术书法术","spellbookSpells"],[]), ...bookNames.filter((name)=>!cantripNames.includes(name))]), "法术书法术");
       setByKnownKey(wd,["已备法术","preparedSpells"], unique(pickListU(wd,["已备法术","preparedSpells"],preparedNames)), "已备法术");
-      setByKnownKey(wd,["戏法","cantrips"], unique([...pickListU(wd,["戏法","cantrips"],[]), ...cantripNames]), "戏法");
       setByKnownKey(wd,["专长","feats"], unique([...pickListU(wd,["专长","feats"],[]), ...pickListU(charObj,["专长","feats"],[])]), "专长");
       setByKnownKey(wd,["传奇恩惠","epicBoons"], unique(pickListU(wd,["传奇恩惠","epicBoons"],[])), "传奇恩惠");
       setByKnownKey(wd,["法术精通","spellMastery"], unique(pickListU(wd,["法术精通","spellMastery"],[])), "法术精通");
@@ -5538,7 +5537,7 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
       const req=[];
       const gained=[...rule.f];
       const wd=state.wizardData||{};
-      const cantrips=pickListU(wd,["戏法","cantrips"],[]).filter(n=>!(wd.附赠戏法||[]).includes(n));
+      const cantrips=getMergedClassSpellState("wizard",["法师"],wd,state.classDataMap).cantrips;
       const book=pickListU(wd,["法术书法术","spellbookSpells"],[]);
       const futureBook=unique([...book, ...(pending.wizard_book_add||[]), ...(pending.wizard_school_spell||[]), ...(pending.au_school_book||[]), ...(subclassSpellIdentity("wizard",wd,pending)==="necromancer"&&to>=3?["寻获魔宠"]:[])]);
       const scholarSkill=pickU(wd,["学者专精","scholarSkill"],"");
@@ -5591,9 +5590,9 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
         req.push({id:"wizard_prepared_pick",kind:"spell_picker",label:`选择已备法术（需 ${rule.prepared||0} 个）`,count:rule.prepared||0,spellClass:"法师",spellLevels,limitToNames:preparedOptions,defaultSelected:preparedSeed});
       }
       if(sub==="illusionist"&&to===3){
-        const hasMinor=cantrips.some((name)=>normalizeSpellLookupKey(name)===normalizeSpellLookupKey("次级幻象"));
+        const hasMinor=Object.keys(getCharacterSpellBook(state.charObj)).some((name)=>normalizeSpellLookupKey(name)===normalizeSpellLookupKey("次级幻象"));
         if(hasMinor){
-          req.push({id:"wizard_illusion_bonus_cantrip",kind:"spell_picker",label:"幻术师：已掌握次级幻象，请额外选择 1 个戏法",count:1,spellClass:"法师",spellLevel:0,exclude:cantrips});
+          req.push({id:"wizard_illusion_bonus_cantrip",kind:"spell_picker",label:"幻术师：已掌握次级幻象，请额外选择 1 个戏法",count:1,spellClass:"法师",spellLevel:0,exclude:Object.keys(getCharacterSpellBook(state.charObj))});
         } else {
           gained.push("强化幻术：获得戏法“次级幻象”（不计入戏法上限）");
         }
@@ -5691,6 +5690,7 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
       const sourceNames=(classId==="rogue"&&subclassId==="arcane_trickster") ? ["法师"] : getClassSpellSourceNames(classId,to);
       const currentSpellState=getMergedClassSpellState(classId,sourceNames,classData,state.classDataMap);
       const currentCantrips=currentSpellState.cantrips;
+      const cantripSources=classId==="bard"?["吟游诗人"]:sourceNames;
       let cantripTarget=(classId==="rogue"&&subclassId==="arcane_trickster")
         ? (THIRD_CASTER_CANTRIPS[to]||0)
         : getClassCantripLimit(classId,to,classData);
@@ -5700,7 +5700,7 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
       const cantripNeed=Math.max(0, cantripTarget-currentCantrips.length-arcaneTricksterReserved);
       if(cantripNeed>0){
         if(sourceNames.length){
-          req.push({id:`${classId}_cantrip_add`,kind:"spell_picker",label:`新增戏法（需 ${cantripNeed} 个）`,count:cantripNeed,spellClass:sourceNames[0],spellSources:sourceNames,spellLevel:0,exclude:currentCantrips});
+          req.push({id:`${classId}_cantrip_add`,kind:"spell_picker",label:`新增戏法（需 ${cantripNeed} 个）`,count:cantripNeed,spellClass:cantripSources[0],spellSources:cantripSources,spellLevel:0,exclude:unique([...currentCantrips,...(arcaneTricksterReserved?["法师之手"]:[])])});
         }
       }
 
@@ -5735,6 +5735,7 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
         });
       }
       appendSpellReplacementReqs(req,{classId,sourceNames,currentCantrips,currentPrepared,spellLevels:spellLevelsForClass,pending});
+      if(classId==="bard")for(const r of req.filter(r=>r.id==="bard_cantrip_replace_to")){r.spellClass="吟游诗人";r.spellSources=["吟游诗人"];}
 
       if(classId==="sorcerer"){
         const currentMetamagic=pickListU(classData,["超魔法","metamagic"],[]);
@@ -12373,7 +12374,7 @@ BOOK_LIBRARY.books.push(...EB.books);
 if(!CLASS_DEFS.artificer){
   CLASS_ID_ORDER.push('artificer');SUPPORTED_CLASS_OPTIONS.push({id:'artificer',label:'奇械师',hitDie:8});MULTICLASS_PREREQS.artificer=[['int']];
   CLASS_DEFS.artificer={label:'奇械师',hitDie:8,primaryAbility:'int',spellList:'奇械师',spellAbility:'int',casting:'half',subclassLevel:3,subclassFeatureLevels:[3,5,9,15],subclasses:[],
-    cantrips:{1:2,10:3,14:4},prepared:Object.fromEntries([2,3,4,5,6,6,7,7,9,9,10,10,11,11,12,12,14,14,15,15].map((n,i)=>[i+1,n])),
+    cantrips:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,i>=13?4:i>=9?3:2])),prepared:Object.fromEntries([2,3,4,5,6,6,7,7,9,9,10,10,11,11,12,12,14,14,15,15].map((n,i)=>[i+1,n])),
     featureMap:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,BOOK_LIBRARY.artificerCore.filter(f=>f.level===i+1).map(f=>f.name)]))};
   for(const lv of [8,12,16])CLASS_DEFS.artificer.featureMap[lv]=['属性值提升'];
   const previousCasterLevel=getCombinedCasterLevel;
@@ -14010,9 +14011,10 @@ getMergedClassSpellState=function(classId,sources,data=null,map=null){
   const pending=subclassPending||{};
   const level=Number(state.classLevels?.[classId]||0)+(subclassPending&&((pending.next_class_choice||state.classNorm)===classId)?1:0);
   const granted=getGrantedSpellState(state.charObj,state.level+(subclassPending?1:0));
-  const extras=unique([...subclassSpellNames(classId,level,data,pending),...getClassAlwaysPreparedSpells(classId,level,data),...granted.spellNames]);
+  const extras=unique([...subclassSpellNames(classId,level,data,pending),...getClassAlwaysPreparedSpells(classId,level,data),...granted.spellNames,...(classId==='wizard'?data.附赠戏法||[]:[])]);
   const keys=new Set(extras.map(normalizeSpellLookupKey));
-  result.cantrips=result.cantrips.filter(n=>!keys.has(normalizeSpellLookupKey(n)));
+  if(classId==='rogue'&&subclassSpellIdentity(classId,data,pending)==='arcane_trickster'&&level>=3)keys.delete(normalizeSpellLookupKey('法师之手'));
+  result.cantrips=Number(state.classLevels?.[classId]||0)>0?result.cantrips.filter(n=>!keys.has(normalizeSpellLookupKey(n))):[];
   result.prepared=result.prepared.filter(n=>!keys.has(normalizeSpellLookupKey(n)));
   return result;
 };
@@ -14281,11 +14283,38 @@ function growthApply(){
     if(['plans','planReplace'].includes(req.growth.kind))continue;
     growthApplyValue(req.growth.kind,values,req.label);c.成长选择[req.growth.key]=values;
   }
+  for(const req of plan.req.filter(r=>r.cantripRecovery)){
+    const {id,known,fixed,mystic,ek}=req.cantripRecovery,names=unique([...growthList(picks[req.id]),...fixed]);
+    if(mystic){c.奥术书选择||={};c.奥术书选择.秘术戏法=unique([...known,...names]);}
+    else{const data=ek?getSubclassData(state.classDataMap[id],'奥法骑士'):state.classDataMap[id];setByKnownKey(data,['戏法','cantrips'],unique([...known,...names]),'戏法');}
+    const book=ensureObjectField(ensureObjectField(c,['施法'],{},'施法'),['法术书'],{},'法术书');
+    for(const [name,spell]of Object.entries(buildSpellBookFromSources(names,[],req.spellSources)))if(!book[name])book[name]=spell;
+  }
   growthMagicApply(plan,picks);
   const previousMode=growthMode;try{growthMode='config';growthConfigPlan({});}finally{growthMode=previousMode;}
   for(const [key,values]of Object.entries(c.成长选择)){const meta=growthMeta.get(key);if(meta&&['config','note','tool','mixed'].includes(meta.kind))growthApplyValue(meta.kind,values,meta.label);}
 }
-function growthConfigPlan(pending){return growthPlan({classNorm:state.classNorm,classFrom:state.classLevels[state.classNorm]||0,classTo:state.classLevels[state.classNorm]||0,totalTo:state.level,req:[],gained:[],hpGain:0},pending);}
+function cantripRecoveryPlan(plan){
+  for(const [id,level]of Object.entries(state.classLevels||{})){
+    if(level<=0)continue;
+    const root=state.classDataMap[id],sub=subclassSpellIdentity(id,root);
+    const ek=id==='fighter'&&sub==='eldritch_knight',at=id==='rogue'&&sub==='arcane_trickster',mystic=id==='monk'&&sub==='mystic_arts';
+    const data=ek?getSubclassData(root,'奥法骑士'):root;
+    let target=ek?eldCantripTarget(level):at?(THIRD_CASTER_CANTRIPS[level]||0):mystic?(level>=10?3:level>=3?2:0):getClassCantripLimit(id,level,data);
+    let sources=ek||at?['法师']:mystic?['术士']:id==='bard'?['吟游诗人']:getClassSpellSourceNames(id,level);
+    const styles=pickListU(data,['战斗风格','fightingStyles'],[]).join(' ');
+    if(id==='paladin'&&/Blessed Warrior|受祝福的勇士/.test(styles)){target=2;sources=['牧师'];}
+    if(id==='ranger'&&/Druidic Warrior|德鲁伊教战士/.test(styles)){target=2;sources=['德鲁伊'];}
+    if(!target||!sources.length)continue;
+    const known=mystic?state.charObj.奥术书选择?.秘术戏法||[]:getMergedClassSpellState(id,sources,data,state.classDataMap).cantrips;
+    const fixed=at&&!known.some(n=>normalizeSpellLookupKey(n)===normalizeSpellLookupKey('法师之手'))?['法师之手']:[];
+    const count=Math.max(0,target-known.length-fixed.length);
+    if(count||fixed.length)plan.req.push({id:'cantrip_recover_'+id,kind:'spell_picker',label:getClassLabel(id)+'：补选当前等级缺少的戏法',count,spellClass:sources[0],spellSources:sources,spellLevel:0,
+      exclude:unique([...known,...fixed,...getGrantedSpellState(state.charObj,state.level).cantrips,...subclassSpellNames(id,level,root),...(id==='wizard'?data.附赠戏法||[]:[])]),cantripRecovery:{id,known,fixed,mystic,ek}});
+  }
+  return plan;
+}
+function growthConfigPlan(pending){return cantripRecoveryPlan(growthPlan({classNorm:state.classNorm,classFrom:state.classLevels[state.classNorm]||0,classTo:state.classLevels[state.classNorm]||0,totalTo:state.level,req:[],gained:[],hpGain:0},pending));}
 let growthSaving=false;
 async function growthSaveConfig(){
   if(growthSaving)return;
@@ -14307,8 +14336,9 @@ function growthRenderMode(){
     const lich=Object.keys(state.charObj?.特性?.专长||{}).some(n=>bookFeat(n)?.sourceBook==='ua-lich');
     const expertise=Object.keys(state.charObj?.特性?.专长||{}).some(name=>/散塔林会战术|灵魂回响|专用人格/.test(name));
     const tools=backgroundToolOptions(state.charObj?.背景).length>0||Object.keys(state.charObj?.特性?.专长||{}).some(name=>/Skilled|^熟习|^熟练|Crafter|^巧匠|^工匠|Musician|^音乐家|^乐师|Chef|^大厨|Poisoner|^毒师/.test(name));
-    configButton.hidden=!hexblade&&!ranger&&!racial&&!expertise&&!reborn&&!lich&&!tools&&!necromancer&&growthMode!=='config';
-    configButton.textContent=growthMode==='config'?'返回升级':necromancer?'死灵师／配置':reborn?'复生者／配置':lich?'巫妖道途／配置':racial?'种族施法／配置':ranger?'自制游侠特性／配置':expertise?'专精／配置':tools?'熟练／配置':'长休换选精通';
+    const cantrips=cantripRecoveryPlan({req:[]}).req.length>0;
+    configButton.hidden=!cantrips&&!hexblade&&!ranger&&!racial&&!expertise&&!reborn&&!lich&&!tools&&!necromancer&&growthMode!=='config';
+    configButton.textContent=growthMode==='config'?'返回升级':cantrips?'戏法补选／配置':necromancer?'死灵师／配置':reborn?'复生者／配置':lich?'巫妖道途／配置':racial?'种族施法／配置':ranger?'自制游侠特性／配置':expertise?'专精／配置':tools?'熟练／配置':'长休换选精通';
     configButton.onclick=()=>{
       if(Object.keys(state.pending||{}).length&&!confirm('切换会清除未提交的选择，已保存的人物不受影响。继续？'))return;
       growthMode=growthMode==='config'?'upgrade':'config';state.pending={};state.plan=buildPlan(state.pending);renderUI();
@@ -14774,7 +14804,7 @@ function growthValidate(plan,picks){
         if(seen.has(key))errors.push(`${req.label}：${name}已在${seen.get(key)}选择`);seen.set(key,req.label);
       }
     }
-    if(req.kind==='spell_picker'&&(req.growthMagic||/magic_initiate|ritual_caster/.test(req.id))){
+    if(req.kind==='spell_picker'&&(req.growthMagic||req.cantripRecovery||/magic_initiate|ritual_caster/.test(req.id))){
       const allowed=buildSpellOptionsFromSources(req.spellSources||[req.spellClass],{spellLevels:req.spellLevels||[req.spellLevel],exclude:req.exclude,onlySchools:req.onlySchools,spellPredicate:req.spellPredicate}).map(s=>normalizeSpellLookupKey(s.name));
       for(const name of growthList(picks[req.id]))if(!allowed.includes(normalizeSpellLookupKey(name)))errors.push(`${req.label}：${name}不属于当前可选范围，请重新选择`);
     }
@@ -14830,7 +14860,8 @@ function growthValidate(plan,picks){
 
       if(sub==="eldritch_knight"&&to>=3){
         const ek=getSubclassData(state.fighterData,"奥法骑士");
-        const can=pickListU(ek,["戏法","cantrips"],[]);
+        const owned=getMergedClassSpellState("fighter",["法师"],ek,state.classDataMap);
+        const can=owned.cantrips;
         const prep=pickListU(ek,["已备法术","preparedSpells"],[]);
         const canNeed=Math.max(0,eldCantripTarget(to)-can.length);
         const prepNeed=Math.max(0,(ELDRITCH_PREPARED[to]||0)-prep.length);
@@ -15761,7 +15792,7 @@ function levelGrowthPreview(selections={}){
         // Seed ordinary lists before adding/replacing spells or changing the caster classes.
         // Creator saves can contain only the combined spell book; grants remain separate.
         for(const [classId, data] of Object.entries(state.classDataMap)){
-          if(classId==="wizard") continue; // Wizard initialization already imports its book and lists.
+          if(classId==="wizard"){setByKnownKey(data,["戏法","cantrips"],getMergedClassSpellState(classId,["法师"],data,state.classDataMap).cantrips,"戏法");continue;}
           const sub=normalizeSubclass(pickU(data,["子职业","subclass"],"")).id;
           const thirdCaster=(classId==="fighter"&&sub==="eldritch_knight")||(classId==="rogue"&&sub==="arcane_trickster");
           const sources=thirdCaster ? ["法师"] : getClassSpellSourceNames(classId,state.classLevels[classId]);
@@ -15771,6 +15802,7 @@ function levelGrowthPreview(selections={}){
           setByKnownKey(target,["戏法","cantrips"],owned.cantrips,"戏法");
           setByKnownKey(target,["已备法术","preparedSpells"],owned.prepared,"已备法术");
         }
+        if(classTo===1)setByKnownKey(getOrCreateClassData(state.charObj,planClass),["戏法","cantrips"],[],"戏法");
         state.classLevels=getOrCreateClassLevels(state.charObj,totalTo);
         state.classLevels[planClass]=classTo;
         state.classNorm=planClass;
