@@ -80,7 +80,7 @@ function validateDndEffects(root, issue) {
         if (!object(change)) { fail(cp,'变化项必须是对象'); return; }
         for (const key of ['path','key','amount','operator']) if (Object.hasOwn(change,key)) fail([...cp,key],'不支持字段别名；请使用 target/mode/value');
         const target = change.target;
-        if (!targets.has(target) && !/^save\.(str|dex|con|int|wis|cha)$/.test(target || '') && !(typeof target === 'string' && target.startsWith('skill.') && skills.has(target.slice(6)))) fail([...cp,'target'],`不支持的效果目标：${target}`);
+        if (!targets.has(target) && !/^(?:save|stat)\.(str|dex|con|int|wis|cha)$/.test(target || '') && !(typeof target === 'string' && target.startsWith('skill.') && skills.has(target.slice(6)))) fail([...cp,'target'],`不支持的效果目标：${target}`);
         const mode = change.mode ?? 'add';
         if (!['add','multiply','override','upgrade','downgrade'].includes(mode)) fail([...cp,'mode'],`不支持的运算方式：${mode}`);
         for (const key of ['enabled']) if (change[key] !== undefined && typeof change[key] !== 'boolean') fail([...cp,key],`${key} 必须是真/假`);
@@ -218,7 +218,7 @@ function convertWeaponFromSchema(name, raw = {}) {
         weight: normalizeNumber(raw.重量, 0),
         value: normalizeString(raw.价值, ''),
         isEquipped: !!raw.已装备,
-        requiresAttunement: !!raw.需要同调,
+        requiresAttunement: !!raw.需要同调 || (raw.规则标签 || []).includes('需同调'),
         isAttuned: !!raw.已同调,
         effects: normalizeEffects(raw.effects)
     };
@@ -241,7 +241,7 @@ function convertEquipmentFromSchema(name, raw = {}, category = 'misc') {
         weight: normalizeNumber(raw.重量, 0),
         value: normalizeString(raw.价值, ''),
         isEquipped: !!raw.已装备,
-        requiresAttunement: !!raw.需要同调,
+        requiresAttunement: !!raw.需要同调 || (raw.规则标签 || []).includes('需同调'),
         isAttuned: !!raw.已同调,
         details: normalizeString(raw.描述, ''),
         tags: normalizeString(raw.属性特征 ?? raw.标签 ?? '', ''),
@@ -444,9 +444,9 @@ function calculateACDetails(mode = (characterData.acMode || 'auto')) {
     if (!characterData || !characterData.stats) return { value: 10, description: '—', usingArmor: false };
     mode = normalizeAcMode(mode, 'auto');
     
-    const dexMod = getModifier(characterData.stats.dex);
-    const conMod = getModifier(characterData.stats.con);
-    const wisMod = getModifier(characterData.stats.wis);
+    const dexMod = getModifier(applyNumericEffects(characterData.stats.dex, ['stat.dex']));
+    const conMod = getModifier(applyNumericEffects(characterData.stats.con, ['stat.con']));
+    const wisMod = getModifier(applyNumericEffects(characterData.stats.wis, ['stat.wis']));
     const useClassUnarmoredDefense = characterData.useUnarmoredDefense !== false;
     const isArmorLike = (item) => {
         if (!item || typeof item !== 'object') return false;
@@ -863,7 +863,7 @@ function applyNumericEffects(baseValue, targetKeys, context = {}, trace = null) 
 // Inserted inside the existing shared derived-stat evaluator, beside its effect helpers.
 function calculateInitiativeDetails() {
   const signed=n=>n>=0?`+${n}`:String(n);
-  const dex=getModifier(characterData.stats.dex);
+  const dex=getModifier(applyNumericEffects(characterData.stats.dex, ['stat.dex']));
   const prof=normalizeNumber(characterData.proficiencyBonus,2);
   const extra=normalizeNumber(characterData.initiativeBonus,0);
   let base=dex+extra;
@@ -891,10 +891,10 @@ function calculateInitiativeDetails() {
       key=legacy?'alert2014':'proficiency';bonus=legacy?5:prof;
       if(!legacy&&!/交换/.test(text))notes.push(`${name}：先攻交换需双方自愿且未失能`);
     }else if(feature&&hare.test(name)){key='proficiency';bonus=prof;
-    }else if(feature&&/恐惧伏击|恐怖伏击|Dread Ambusher/i.test(name)){key='dread-ambusher';bonus=getModifier(characterData.stats.wis);
-    }else if(feature&&/战术之智|Tactical Wit/i.test(name)){key='tactical-wit';bonus=getModifier(characterData.stats.int);
-    }else if(feature&&/时序感知|Temporal Awar(?:e)?ness/i.test(name)){key='temporal-awareness';bonus=getModifier(characterData.stats.int);
-    }else if(feature&&/潇洒无畏|Rakish Audacity/i.test(name)){key='rakish-audacity';bonus=getModifier(characterData.stats.cha);
+    }else if(feature&&/恐惧伏击|恐怖伏击|Dread Ambusher/i.test(name)){key='dread-ambusher';bonus=getModifier(applyNumericEffects(characterData.stats.wis, ['stat.wis']));
+    }else if(feature&&/战术之智|Tactical Wit/i.test(name)){key='tactical-wit';bonus=getModifier(applyNumericEffects(characterData.stats.int, ['stat.int']));
+    }else if(feature&&/时序感知|Temporal Awar(?:e)?ness/i.test(name)){key='temporal-awareness';bonus=getModifier(applyNumericEffects(characterData.stats.int, ['stat.int']));
+    }else if(feature&&/潇洒无畏|Rakish Audacity/i.test(name)){key='rakish-audacity';bonus=getModifier(applyNumericEffects(characterData.stats.cha, ['stat.cha']));
     }else if(feature&&/万事通|Jack of All Trades/i.test(name)){
       if(legacy&&!profSources.length){key='legacy-jack';bonus=Math.floor(prof/2);}
       else if(!legacy)notes.push('万事通（2024）：不适用于先攻');
@@ -1664,13 +1664,13 @@ function enrichSpellVariables(variables) {
       const next={...stored,...payload,stat_data:packed};
       next.mvu_lite_ui={...stored.mvu_lite_ui,...payload.mvu_lite_ui};
       for (const [name,c] of entries(combined.角色列表)) {
-        const prefs=Object.fromEntries(entries(c).filter(([k])=>['头像','玩家名'].includes(k)));
+        const prefs=Object.fromEntries(entries(c).filter(([k])=>['玩家名'].includes(k)));
         if (Object.keys(prefs).length) next.mvu_lite_ui[name]={...next.mvu_lite_ui[name],...prefs};
       }
       for (const name of deletedNames) delete next.mvu_lite_ui[name];
       delete next.mvu_lite_backup;
       delete next.spell_metadata_backup;
-      next.mvu_lite_ui=Object.fromEntries(Object.entries(next.mvu_lite_ui || {}).map(([name,prefs])=>[name,Object.fromEntries(Object.entries(prefs || {}).filter(([key,value])=>['头像','玩家名'].includes(key) && typeof value==='string' && value.trim() && value!=='systems/dnd5e/icons/svg/actors/character.svg'))]).filter(([,prefs])=>Object.keys(prefs).length));
+      next.mvu_lite_ui=Object.fromEntries(Object.entries(next.mvu_lite_ui || {}).map(([name,prefs])=>[name,Object.fromEntries(Object.entries(prefs || {}).filter(([key,value])=>['玩家名'].includes(key) && typeof value==='string' && value.trim()))]).filter(([,prefs])=>Object.keys(prefs).length));
       if (!Object.keys(next.mvu_lite_ui).length) delete next.mvu_lite_ui;
       await window.replaceVariables(next,scope);
     }
@@ -3469,7 +3469,105 @@ function enrichSpellVariables(variables) {
       color: var(--gold);
       margin-bottom: 8px;
     }
-    </style>
+
+        /* AI 帮忙模式面板 */
+        .ai-helper-panel {
+            background: linear-gradient(135deg, rgba(212, 175, 55, 0.12), rgba(30, 26, 22, 0.92));
+            border: 1px solid rgba(212, 175, 55, 0.45);
+            border-radius: 10px;
+            padding: 14px 16px;
+            margin: 12px 0 18px;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+        }
+        .ai-helper-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+        .ai-helper-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--gold, #d4af37);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .ai-helper-sub {
+            font-size: 12px;
+            color: var(--text-muted, #b8ad98);
+        }
+        .ai-helper-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .ai-helper-input {
+            flex: 1 1 280px;
+            min-width: 220px;
+            padding: 9px 12px;
+            border-radius: 6px;
+            border: 1px solid rgba(212, 175, 55, 0.35);
+            background: rgba(15, 13, 11, 0.75);
+            color: var(--text, #f0e6d2);
+            font-size: 13px;
+        }
+        .ai-helper-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .ai-helper-btn {
+            padding: 8px 13px;
+            border-radius: 6px;
+            border: 1px solid rgba(212, 175, 55, 0.55);
+            background: rgba(212, 175, 55, 0.18);
+            color: #f6e7be;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .ai-helper-btn:hover:not(:disabled) {
+            background: rgba(212, 175, 55, 0.34);
+            transform: translateY(-1px);
+        }
+        .ai-helper-btn.primary {
+            background: linear-gradient(135deg, #b8892a, #d4af37);
+            color: #1a140b;
+            border-color: #e6c667;
+        }
+        .ai-helper-btn:disabled {
+            opacity: 0.55;
+            cursor: wait;
+        }
+        .ai-helper-status {
+            margin-top: 8px;
+            font-size: 12px;
+            color: var(--text-muted, #c9beab);
+            min-height: 16px;
+        }
+        .ai-helper-status.error { color: #ff8c8c; }
+        .ai-helper-status.ok { color: #8fe3a1; }
+        .profile-details-box {
+            margin-top: 14px;
+            padding: 12px 14px;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.18);
+            border: 1px solid rgba(212, 175, 55, 0.22);
+        }
+        .profile-details-box summary {
+            cursor: pointer;
+            font-weight: 600;
+            color: var(--gold, #d4af37);
+            font-size: 14px;
+            user-select: none;
+        }
+
+</style>
     <!-- 引入法术数据库 -->
 
 
@@ -3757,6 +3855,22 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
         <span class="resource-link">访问资源 →</span>
     </div>
 </a>
+        <div class="ai-helper-panel" id="ai-helper-panel">
+            <div class="ai-helper-header">
+                <div class="ai-helper-title">✨ AI 帮忙模式</div>
+                <div class="ai-helper-sub">一键帮你选好 1 级 Build（种族/职业/背景/属性/技能/专长/法术/装备）或补全全部个性档案</div>
+            </div>
+            <div class="ai-helper-row">
+                <input type="text" id="ai-helper-concept" class="ai-helper-input" placeholder="输入角色概念或偏好（可选），例如：冷面银发精灵游侠、想走高爆发远程、嘴硬心软...">
+                <div class="ai-helper-actions">
+                    <button type="button" class="ai-helper-btn primary" data-ai-mode="all">🎲 一键完整生成 (Build+个性)</button>
+                    <button type="button" class="ai-helper-btn" data-ai-mode="build">⚔️ 仅帮选 1级 Build</button>
+                    <button type="button" class="ai-helper-btn" data-ai-mode="persona">🖋️ 仅帮填全部个性与档案</button>
+                    <button type="button" class="ai-helper-btn" data-ai-mode="clear" title="清空已填写的姓名、属性加点、背景加值、技能、法术、档案与个性，回到空白卡状态">🧹 一键清除</button>
+                </div>
+            </div>
+            <div class="ai-helper-status" id="ai-helper-status">提示：填写概念后点击按钮，AI 会自动填充并校验规则合法性；生成后你仍可手动调整任何一项。</div>
+        </div>
         <div class="section" data-step="basics">
             <h2>1. 基础设定</h2>
             <div class="section-content">
@@ -3787,6 +3901,7 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
                         <select id="char-background" data-dnd-name-search></select>
                     </div>
                 </div>
+
                 <div id="lineage-selector" style="margin-top: 16px;"></div>
                 <div id="custom-species-editor" style="display: none; margin-top: 16px; background: var(--bg-alt); padding: 16px; border-radius: 8px;">
                     <h4 style="color: var(--gold); margin: 0 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border);">自定义物种设定</h4>
@@ -3897,6 +4012,9 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
                         </button>
                         <button class="mode-btn" data-mode="4d6" style="flex: 1; min-width: 140px; padding: 10px 16px; border: 2px solid var(--border); background: var(--bg); color: var(--ink); border-radius: 6px; cursor: pointer; font-weight: 500; transition: all 0.2s;">
                             4d6取高3（五组选一）
+                        </button>
+                        <button class="mode-btn" data-mode="4d6fixed" style="flex: 1; min-width: 140px; padding: 10px 16px; border: 2px solid var(--border); background: var(--bg); color: var(--ink); border-radius: 6px; cursor: pointer; font-weight: 500; transition: all 0.2s;">
+                            4d6固定顺序 (5次)
                         </button>
                         <button class="mode-btn" data-mode="powergame" style="flex: 1; min-width: 140px; padding: 10px 16px; border: 2px solid var(--border); background: var(--bg); color: var(--ink); border-radius: 6px; cursor: pointer; font-weight: 500; transition: all 0.2s;">
                             数值怪模式
@@ -4722,19 +4840,19 @@ const SPECIES = {
 // ========== 背景数据 ==========
 const BACKGROUNDS = {
     '侍僧': { name: 'Acolyte', desc: '你在一座寺庙中全心全意的侍奉，或是挂单在城镇中，或是幽居在圣所。你在那里执掌祭仪崇敬一位神祇或是众神。多亏了你的祭司教导和你的虔诚，你也掌握了如何引导一点点神力来为你的崇敬祈祷和在那里祷告的人们提供司教服务。', abilities: ['感知', '智力', '魅力'], feat: 'Magic Initiate', skills: ['洞悉', '宗教'], featDesc: '魔法启蒙(牧师)', gold: 50 },
-    '工匠': { name: 'Artisan', desc: '你在力气足以提起水桶时，就开始于工匠工坊里以拖地和擦洗度日，每天挣那么几个铜板。当你长到成为学徒的年龄时，你学会了自己制作基本的手工艺品，还有面对刁钻客户时该说什么好话。你的买卖也让你对消息琐事有敏锐的洞察力。', abilities: ['智力', '敏捷', '体质'], feat: 'Crafter', skills: ['调查', '游说'], featDesc: '巧匠', gold: 50 },
-    '骗子': { name: 'Charlatan', desc: '在你长到能买酒的年纪后，你立刻就在家乡方圆十里内的所有酒吧拥有了自己专属的钟意座位。当你在各个酒吧间穿梭时，你学会了如何用善意的谎言去安抚那些需要安慰的可怜人——也许是一剂包治百病的良方或是一份伪造的血统证明。', abilities: ['魅力', '敏捷', '智力'], feat: 'Skilled', skills: ['欺瞒', '巧手'], featDesc: '熟练者', gold: 50 },
-    '罪犯': { name: 'Criminal', desc: '你潜藏在阴暗的小巷里，靠着偷鸡摸狗苟且偷生。也许你曾与一帮称兄道弟的法外狂徒患难与共。又或者，你也许是一个孤勇者，自力更生的同时与当地的盗贼公会乃至更可怕的违法者们明争暗斗。', abilities: ['敏捷', '智力', '魅力'], feat: 'Alert', skills: ['巧手', '隐匿'], featDesc: '警戒', gold: 50 },
-    '艺人': { name: 'Entertainer', desc: '你年轻时大部分时间都在参加巡回演出和嘉年华会，为音乐家和杂技演员们做零工以换取学习的机会。你可能已经学会了如何走钢丝，如何弹奏风格独特的鲁特琴，或是用怎样无可挑剔的发音方式吟诵诗歌。而现如今，你在喝彩声中茁壮成长，渴望登上舞台。', abilities: ['魅力', '敏捷', '体质'], feat: 'Musician', skills: ['特技', '表演'], featDesc: '音乐家', gold: 50 },
+    '工匠': { name: 'Artisan', desc: '你在力气足以提起水桶时，就开始于工匠工坊里以拖地和擦洗度日，每天挣那么几个铜板。当你长到成为学徒的年龄时，你学会了自己制作基本的手工艺品，还有面对刁钻客户时该说什么好话。你的买卖也让你对消息琐事有敏锐的洞察力。', abilities: ['力量', '敏捷', '智力'], feat: 'Crafter', skills: ['调查', '游说'], featDesc: '巧匠', gold: 50 },
+    '骗子': { name: 'Charlatan', desc: '在你长到能买酒的年纪后，你立刻就在家乡方圆十里内的所有酒吧拥有了自己专属的钟意座位。当你在各个酒吧间穿梭时，你学会了如何用善意的谎言去安抚那些需要安慰的可怜人——也许是一剂包治百病的良方或是一份伪造的血统证明。', abilities: ['敏捷', '体质', '魅力'], feat: 'Skilled', skills: ['欺瞒', '巧手'], featDesc: '熟练者', gold: 50 },
+    '罪犯': { name: 'Criminal', desc: '你潜藏在阴暗的小巷里，靠着偷鸡摸狗苟且偷生。也许你曾与一帮称兄道弟的法外狂徒患难与共。又或者，你也许是一个孤勇者，自力更生的同时与当地的盗贼公会乃至更可怕的违法者们明争暗斗。', abilities: ['敏捷', '体质', '智力'], feat: 'Alert', skills: ['巧手', '隐匿'], featDesc: '警戒', gold: 50 },
+    '艺人': { name: 'Entertainer', desc: '你年轻时大部分时间都在参加巡回演出和嘉年华会，为音乐家和杂技演员们做零工以换取学习的机会。你可能已经学会了如何走钢丝，如何弹奏风格独特的鲁特琴，或是用怎样无可挑剔的发音方式吟诵诗歌。而现如今，你在喝彩声中茁壮成长，渴望登上舞台。', abilities: ['力量', '敏捷', '魅力'], feat: 'Musician', skills: ['特技', '表演'], featDesc: '音乐家', gold: 50 },
     '农民': { name: 'Farmer', desc: '你从小就生在农家地，长在农家地。多年照料动物和耕种土地回报你以耐心和一个倍儿棒的健康身体。你对大自然的甘霖充满感激之情，也对自然之怒抱以敬畏之心。', abilities: ['体质', '感知', '力量'], feat: 'Tough', skills: ['驯兽', '自然'], featDesc: '健壮', gold: 50 },
-    '警卫': { name: 'Guard', desc: '你脚上的疼痛让你无法忘怀在塔楼驻岗上站班的无数时光。你曾被训练一只眼睛紧盯着墙外，小心提防那附近森林而来的掠夺者，而另一只眼睛则要盯着墙内，细细查探小偷小摸和惹是生非之人。', abilities: ['力量', '感知', '体质'], feat: 'Alert', skills: ['运动', '察觉'], featDesc: '警戒', gold: 50 },
+    '警卫': { name: 'Guard', desc: '你脚上的疼痛让你无法忘怀在塔楼驻岗上站班的无数时光。你曾被训练一只眼睛紧盯着墙外，小心提防那附近森林而来的掠夺者，而另一只眼睛则要盯着墙内，细细查探小偷小摸和惹是生非之人。', abilities: ['力量', '智力', '感知'], feat: 'Alert', skills: ['运动', '察觉'], featDesc: '警戒', gold: 50 },
     '向导': { name: 'Guide', desc: '你在野外长大，远离定居区。你的家就在你决定打开铺盖的任何地方。荒野中自有奇妙之处——奇特的怪物、原始的森林和溪流；如今杂草丛生的、曾被巨人踏过的大殿废墟。在探索它们的过程中你学会了保护自己。而时不时的，你会遇到亲爱的自然祭司，他们会指导你掌握怎样运用荒野的魔法。', abilities: ['感知', '敏捷', '体质'], feat: 'Magic Initiate', skills: ['隐匿', '求生'], featDesc: '魔法启蒙(德鲁伊)', gold: 50 },
-    '隐士': { name: 'Hermit', desc: '你早年住在远离聚集地的、与世隔绝的小屋或是隐修院中。在那些日子里，你唯一的伙伴是森林中的生灵，以及那些偶尔带来给养和外界消息的访客。孤独让你花了很多时间琢磨天道的未解之谜。', abilities: ['感知', '体质', '智力'], feat: 'Healer', skills: ['医药', '宗教'], featDesc: '医者', gold: 50 },
-    '商人': { name: 'Merchant', desc: '你曾作为一名学徒学习着商业的基础知识，你的师傅是一名商贩、商队的领队或是某位商铺的店主。你旅行八方，靠着买入和卖出工匠们所需的原材料和这些工匠的制品赚钱谋生。你可能曾在多地之间运输过不少货物（通过船、货车、商队之类的），又或是从旅行商人那里订货，然后在自己店里销售。', abilities: ['魅力', '感知', '智力'], feat: 'Lucky', skills: ['驯兽', '游说'], featDesc: '幸运', gold: 50 },
-    '贵族': { name: 'Noble', desc: '权力、财富还有荣耀伴随你在城堡中长大，你那贵不可言的小家族确保你受到了一流的教育，其中有些教导令你感激，而有些则只让你觉得愤慨。在城堡中的时光，尤其是在长久以来耳濡目染于宫廷中的家族往来，也培养了你足以胜任领袖的许多才能。', abilities: ['魅力', '智力', '感知'], feat: 'Skilled', skills: ['历史', '游说'], featDesc: '熟练者', gold: 50 },
-    '智者': { name: 'Sage', desc: '你长大的岁月便在宅邸和修行院之间的奔波中过去，做着各式各样的零活和服务，以此访问他们的图书馆藏。你花了那么多漫长的夜晚学习书籍和卷册，阅览多元宇宙的见闻，甚至涉猎魔法的本质——而你的心灵正渴望着了解更多。', abilities: ['智力', '感知', '魅力'], feat: 'Magic Initiate', skills: ['奥秘', '历史'], featDesc: '魔法启蒙(法师)', gold: 50 },
-    '水手': { name: 'Sailor', desc: '你作为一名海员生活，背上吹的是海风，脚下站的是摇晃的甲板。你在停泊港总是坐在酒吧的高脚凳上，回忆你曾直面猛烈的风暴，与那些在波涛下生活的人们高谈阔论着过去。', abilities: ['力量', '敏捷', '体质'], feat: 'Tavern Brawler', skills: ['运动', '察觉'], featDesc: '酒馆斗殴者', gold: 50 },
-    '抄写员': { name: 'Scribe', desc: '你成长的时期都在缮写室度过，那是一座致力于保存知识的修道院，或是某个政府机关。你在那里学会了如何书写思维敏锐有逻辑的文字和怎样制作得体的书面文本，有时你会抄录政府文件或是誊抄文献巨著。你可能有一些诗歌写作的技艺、叙事的技巧或是学术上的研究。最重要的是，你对琐碎处的关注很细致。这能帮助你避免在誊录和撰写文稿时出现错误。', abilities: ['智力', '敏捷', '感知'], feat: 'Skilled', skills: ['调查', '察觉'], featDesc: '熟习', gold: 50 },
+    '隐士': { name: 'Hermit', desc: '你早年住在远离聚集地的、与世隔绝的小屋或是隐修院中。在那些日子里，你唯一的伙伴是森林中的生灵，以及那些偶尔带来给养和外界消息的访客。孤独让你花了很多时间琢磨天道的未解之谜。', abilities: ['体质', '感知', '魅力'], feat: 'Healer', skills: ['医药', '宗教'], featDesc: '医者', gold: 50 },
+    '商人': { name: 'Merchant', desc: '你曾作为一名学徒学习着商业的基础知识，你的师傅是一名商贩、商队的领队或是某位商铺的店主。你旅行八方，靠着买入和卖出工匠们所需的原材料和这些工匠的制品赚钱谋生。你可能曾在多地之间运输过不少货物（通过船、货车、商队之类的），又或是从旅行商人那里订货，然后在自己店里销售。', abilities: ['体质', '智力', '魅力'], feat: 'Lucky', skills: ['驯兽', '游说'], featDesc: '幸运', gold: 50 },
+    '贵族': { name: 'Noble', desc: '权力、财富还有荣耀伴随你在城堡中长大，你那贵不可言的小家族确保你受到了一流的教育，其中有些教导令你感激，而有些则只让你觉得愤慨。在城堡中的时光，尤其是在长久以来耳濡目染于宫廷中的家族往来，也培养了你足以胜任领袖的许多才能。', abilities: ['力量', '智力', '魅力'], feat: 'Skilled', skills: ['历史', '游说'], featDesc: '熟练者', gold: 50 },
+    '智者': { name: 'Sage', desc: '你长大的岁月便在宅邸和修行院之间的奔波中过去，做着各式各样的零活和服务，以此访问他们的图书馆藏。你花了那么多漫长的夜晚学习书籍和卷册，阅览多元宇宙的见闻，甚至涉猎魔法的本质——而你的心灵正渴望着了解更多。', abilities: ['体质', '智力', '感知'], feat: 'Magic Initiate', skills: ['奥秘', '历史'], featDesc: '魔法启蒙(法师)', gold: 50 },
+    '水手': { name: 'Sailor', desc: '你作为一名海员生活，背上吹的是海风，脚下站的是摇晃的甲板。你在停泊港总是坐在酒吧的高脚凳上，回忆你曾直面猛烈的风暴，与那些在波涛下生活的人们高谈阔论着过去。', abilities: ['力量', '敏捷', '感知'], feat: 'Tavern Brawler', skills: ['特技', '察觉'], featDesc: '酒馆斗殴者', gold: 50 },
+    '抄写员': { name: 'Scribe', desc: '你成长的时期都在缮写室度过，那是一座致力于保存知识的修道院，或是某个政府机关。你在那里学会了如何书写思维敏锐有逻辑的文字和怎样制作得体的书面文本，有时你会抄录政府文件或是誊抄文献巨著。你可能有一些诗歌写作的技艺、叙事的技巧或是学术上的研究。最重要的是，你对琐碎处的关注很细致。这能帮助你避免在誊录和撰写文稿时出现错误。', abilities: ['敏捷', '智力', '感知'], feat: 'Skilled', skills: ['调查', '察觉'], featDesc: '熟习', gold: 50 },
     '士兵': { name: 'Soldier', desc: '你从成年开始便接受战阵训练，鲜少有拿起武器之前的生活回忆，战斗已融入你的血液。有时候你会发现自己正在反复操练着最初学会的基本战斗训练。而最终，你会将这些训练运用到战场上，在战争中行使武力，保护你的王国。', abilities: ['力量', '体质', '敏捷'], feat: 'Savage Attacker', skills: ['运动', '威吓'], featDesc: '凶蛮打手', gold: 50 },
     '流浪者': { name: 'Wayfarer', desc: '你在街头长大，身边都是同样命途多舛的孤儿，有些是朋友有些是对头。你露宿街头，只靠着打零工来换取食物。有些时候你会感到饥饿难耐，但却只能以盗窃维生。尽管如此，你从未抛你的自尊，也从未放弃希望。命运还没有就此关上大门。', abilities: ['敏捷', '魅力', '感知'], feat: 'Lucky', skills: ['洞悉', '隐匿'], featDesc: '幸运', gold: 50 },
     // ===== Faerûn backgrounds =====
@@ -5833,6 +5951,7 @@ const autoPreparedLookup = {
 const BIOGRAPHY_FIELDS = [["playerName", "玩家名"], ["alignment", "阵营"], ["age", "年龄"], ["height", "身高"], ["weight", "体重"], ["eyes", "眼睛"], ["skin", "皮肤"], ["hair", "发色"], ["description", "外观描述"], ["ideal", "理想"], ["bond", "牵绊"], ["flaw", "缺点"], ["trait", "个性特征"], ["biography", "传记"]];
 
 const state = {
+    rollsRemaining: 5,
     biographyEnabled: true,
     biography: Object.fromEntries(BIOGRAPHY_FIELDS.map(([key])=>[key,''])),
     name: '',
@@ -7529,18 +7648,20 @@ function renderAttributes() {
         '27buy': '标准点数购买：使用27点购买属性（8-15）。8=0点，9=1点，10=2点，11=3点，12=4点，13=5点，14=7点，15=9点。',
         '36buy': '慷慨点数购买：使用36点购买属性（8-15）。点数成本相同，但你有更多点数可用。',
         '4d6': '每项属性投4个d6并取最高3个，六项组成一组。一次生成五组，点击选择一组后可智能分配或手动调整分配；不满意可不限次数重掷五组。',
+        '4d6fixed': '硬核固定顺序（Roll Down the Line）：按【力量→敏捷→体质→智力→感知→魅力】顺序依次投4d6取高3，数值直接锁死在对应属性上不可互换！听凭命运发牌，老DM将为你点评契合职业。',
         'powergame': '数值怪模式：无限点数，可以自由调整属性到最大20点。适合测试极限build。'
     };
     elements.modeDescription.textContent = modeDescriptions[mode] || '请选择分配模式，再分配属性。';
 
     // 根据模式显示/隐藏元素
-        if (mode === '4d6') {
+        if (mode === '4d6' || mode === '4d6fixed') {
             elements.pointsDisplayContainer.style.display = 'none';
             elements.dicePoolSection.style.display = 'block';
             elements.attrRoll.style.display = 'inline-block';
-            elements.attrRoll.textContent = '重掷五组（不限次数）';
-        elements.attrReset.textContent = '清空分配';
-        elements.attrRecommend.style.display = 'inline-block';
+            elements.attrRoll.textContent = mode === '4d6fixed' ? `固定顺序掷点（剩余${state.rollsRemaining}次）` : '重掷五组（不限次数）';
+        elements.attrRoll.disabled = mode === '4d6fixed' && state.rollsRemaining <= 0;
+        elements.attrReset.textContent = mode === '4d6fixed' ? '锁定当前数值' : '清空分配';
+        elements.attrRecommend.style.display = mode === '4d6fixed' ? 'none' : 'inline-block';
         elements.attrRecommend.textContent = '智能分配';
         // 渲染投骰池
         renderDicePool();
@@ -7599,8 +7720,8 @@ function renderAttributes() {
             const nextCost = (baseValue < 13) ? 1 : 2;
             canIncrease = baseValue < 15 && remainingPoints >= nextCost;
             canDecrease = baseValue > 8;
-        } else if (mode === '4d6') {
-            // 4d6结果不允许改点数，只能重新分配骰子
+        } else if (mode === '4d6' || mode === '4d6fixed') {
+            // 4d6结果不允许改点数
             canIncrease = false;
             canDecrease = false;
         } else { // powergame
@@ -7612,6 +7733,8 @@ function renderAttributes() {
             ? `<input type="number" min="3" max="20" data-attribute-value="${attr}" value="${baseValue ?? ''}" placeholder="待填写" aria-label="${attr}" style="width:90px">`
             : mode === '4d6'
             ? `<div class="attr-controls" style="color: var(--text-muted); font-size: 12px;">骰池分配</div>`
+            : mode === '4d6fixed'
+            ? `<div class="attr-controls" style="color: var(--gold); font-size: 12px;">🔒 顺序锁定</div>`
             : `
                 <div class="attr-controls">
                     <button data-attr="${attr}" data-op="dec" ${!canDecrease ? 'disabled' : ''}>-</button>
@@ -7631,9 +7754,10 @@ function renderAttributes() {
     }).join('');
 }
 
-// 渲染投骰池（4d6模式）
+// 渲染投骰池（4d6与4d6fixed模式）
 function renderDicePool() {
-    if (state.attributeMode !== '4d6') return;
+    if (state.attributeMode !== '4d6' && state.attributeMode !== '4d6fixed') return;
+    const isFixedMode = state.attributeMode === '4d6fixed';
 
     const pool = state.dicePool;
     const assigned = state.dicePoolAssigned;
@@ -7647,8 +7771,15 @@ function renderDicePool() {
         return;
     }
 
-    // 计算总和
+    // 计算总和与老DM多维评语
     const total = pool.reduce((sum, item) => sum + item.value, 0);
+    const activeHistory = (state.rollHistory || []).find(entry => JSON.stringify(entry.pool) === JSON.stringify(pool) && Boolean(entry.isFixed) === isFixedMode);
+    let commentMeta = activeHistory && activeHistory.commentMeta
+        ? activeHistory.commentMeta
+        : pick4d6TotalComment(total, pool, isFixedMode);
+    if (activeHistory && !activeHistory.commentMeta) {
+        activeHistory.commentMeta = commentMeta;
+    }
 
     // 判断数值质量的颜色类
     const getValueClass = (value) => {
@@ -7679,25 +7810,55 @@ function renderDicePool() {
         return Object.keys(assigned).find(key => assigned[key] === index);
     };
 
+    const shapeBannerHtml = (!isFixedMode && commentMeta.shapeMeta)
+        ? `<div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.12); font-size: 0.95em;">
+            <span style="display: inline-block; margin-right: 6px; padding: 1px 6px; border-radius: 4px; background: rgba(255,255,255,0.08); color: ${commentMeta.shapeMeta.color}; font-weight: 600;">${commentMeta.shapeMeta.name} · 形态概率 ${commentMeta.shapeMeta.prob}</span>
+            <span style="color: var(--text);">${commentMeta.shapeMeta.comment}</span>
+          </div>`
+        : '';
+
+    const fixedBannerHtml = (isFixedMode && commentMeta.fixedMeta)
+        ? `<div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.12); font-size: 0.95em; display: flex; flex-direction: column; gap: 4px;">
+            <div>
+                <span style="display: inline-block; margin-right: 6px; padding: 1px 6px; border-radius: 4px; background: rgba(255,212,59,0.14); color: var(--gold); font-weight: 600;">${commentMeta.fixedMeta.archTitle}</span>
+                <span style="color: var(--text);">${commentMeta.fixedMeta.archComment}</span>
+            </div>
+            ${commentMeta.fixedMeta.statNotes.map(n => `<div style="font-size: 0.92em; color: #ffd8a8;">• ${n}</div>`).join('')}
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 2px;">
+                <span style="color: #9be7a8; font-weight: 600;">🎯 老DM天命职业建议：${commentMeta.fixedMeta.topClasses.join(' / ')} ${commentMeta.fixedMeta.note || ''}</span>
+                <button type="button" id="apply-fixed-rec-class-btn" data-rec-class="${commentMeta.fixedMeta.bestClass}" style="padding: 3px 10px; font-size: 12px; border-radius: 4px; border: 1px solid var(--gold); background: rgba(240,185,11,0.15); color: var(--gold); cursor: pointer;">一键选为「${commentMeta.fixedMeta.bestClass}」</button>
+            </div>
+          </div>`
+        : '';
+
     // 渲染投骰池
     let dicePoolHTML = `
         <div class="dice-pool-container">
-            <h4 style="margin: 0 0 12px; color: var(--accent);">
-                投骰池
+            <h4 style="margin: 0 0 8px; color: var(--accent);">
+                ${isFixedMode ? '固定顺序六维骰池（位置已锁定）' : '自由分配投骰池（点击数字分配属性）'}
                 <span style="font-size: 0.9em; color: var(--gold);">总和: ${total}</span>
                 <span style="font-size: 0.85em; opacity: 0.7; margin-left: 8px;">
                     (约等于${Math.floor(total * 27 / 73)}点购买)
                 </span>
             </h4>
+            <div class="dice-pool-comment" style="margin: 0 0 12px; padding: 10px 12px; border-radius: 8px; background: rgba(0,0,0,0.24); border-left: 3px solid ${commentMeta.band.color}; font-size: 0.86em; line-height: 1.55;">
+                <div>
+                    <span style="display: inline-block; margin-right: 8px; padding: 1px 6px; border-radius: 4px; background: rgba(255,255,255,0.08); color: ${commentMeta.band.color}; font-weight: 600;">🧙‍♂️ 老DM锐评 · 区间 ${commentMeta.band.label}（理论概率 ${commentMeta.band.prob}）</span>
+                    <span style="color: var(--text);">${commentMeta.comment}</span>
+                </div>
+                ${shapeBannerHtml}
+                ${fixedBannerHtml}
+            </div>
             <div class="dice-pool-grid">
                 ${pool.map((item, index) => {
-                    const assignedAttr = getAssignedAttr(index);
-                    const isUsed = isAssigned(index);
+                    const assignedAttr = isFixedMode ? FIXED_ATTR_ORDER[index] : getAssignedAttr(index);
+                    const isUsed = isFixedMode ? true : isAssigned(index);
                     return `
-                        <div class="dice-item ${isUsed ? 'assigned' : ''}" data-pool-index="${index}">
+                        <div class="dice-item ${isUsed ? 'assigned' : ''}" data-pool-index="${index}" style="${isFixedMode ? 'cursor: default;' : ''}">
+                            ${isFixedMode ? `<div style="font-size: 0.78em; color: var(--gold); font-weight: 600; margin-bottom: 2px;">🔒 ${assignedAttr}</div>` : ''}
                             <div class="dice-value ${getValueClass(item.value)}">${item.value}</div>
                             <div class="dice-rolls">${renderDiceDetails(item.rolls, item.sortedRolls)}</div>
-                            ${isUsed ? `<div style="font-size: 0.75em; color: var(--accent); margin-top: 4px;">${assignedAttr}</div>` : ''}
+                            ${(!isFixedMode && isUsed) ? `<div style="font-size: 0.75em; color: var(--accent); margin-top: 4px;">${assignedAttr}</div>` : ''}
                         </div>
                     `;
                 }).join('')}
@@ -7726,14 +7887,26 @@ function renderDicePool() {
     dicePoolHTML += `</div>`;
     elements.dicePoolSection.innerHTML = dicePoolHTML;
 
-    // 添加点击事件 - 分配数值到属性
-    document.querySelectorAll('.dice-item').forEach(item => {
-        item.addEventListener('click', (e) => {
-            const poolIndex = parseInt(item.dataset.poolIndex);
-            // 显示属性选择菜单
-            showAttributeSelector(poolIndex, e.target);
+    // 添加点击事件 - 自由模式下分配数值到属性
+    if (!isFixedMode) {
+        document.querySelectorAll('.dice-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                const poolIndex = parseInt(item.dataset.poolIndex);
+                showAttributeSelector(poolIndex, e.target);
+            });
         });
-    });
+    }
+
+    const applyRecBtn = document.getElementById('apply-fixed-rec-class-btn');
+    if (applyRecBtn) {
+        applyRecBtn.addEventListener('click', () => {
+            const targetCls = applyRecBtn.dataset.recClass;
+            if (targetCls && elements.class) {
+                elements.class.value = targetCls;
+                elements.class.dispatchEvent(new Event('change'));
+            }
+        });
+    }
 
     // 选组后同步六项属性，继续使用现有的智能分配逻辑
     document.querySelectorAll('.history-item').forEach(item => {
@@ -7741,8 +7914,17 @@ function renderDicePool() {
             const historyIndex = parseInt(item.dataset.historyIndex);
             const historyEntry = state.rollHistory[historyIndex];
             state.dicePool = historyEntry.pool;
-            state.dicePoolAssigned = {};
-            state.attributes = Object.fromEntries(ATTRIBUTES.map(a => [a, null]));
+            if (state.attributeMode === '4d6fixed') {
+                state.dicePoolAssigned = {};
+                FIXED_ATTR_ORDER.forEach((attr, idx) => {
+                    state.dicePoolAssigned[attr] = idx;
+                    if (historyEntry.pool[idx]) state.attributes[attr] = historyEntry.pool[idx].value;
+                });
+                initializeBgBonuses();
+            } else {
+                state.dicePoolAssigned = {};
+                state.attributes = Object.fromEntries(ATTRIBUTES.map(a => [a, null]));
+            }
             requestRender();
             requestAnimationFrame(() => {
                 elements.dicePoolSection.querySelector(`[data-history-index="${historyIndex}"]`).focus({ preventScroll: true });
@@ -8626,7 +8808,7 @@ function validateSteps() {
                 }
                 return errs;
             })(),
-            complete: attributesFilled && ((state.attributeMode === 'powergame') || (state.attributeMode === '4d6' && diceAssigned) ||
+            complete: attributesFilled && ((state.attributeMode === 'powergame') || (['4d6','4d6fixed'].includes(state.attributeMode) && diceAssigned) ||
                      (state.attributeMode === '27buy' && usedPoints === 27) ||
                      (state.attributeMode === '36buy' && usedPoints === 36))
         },
@@ -9153,10 +9335,580 @@ function renderSummary() {
     `;
 }
 
+
+    // ========== AI 帮忙模式（1级 Build + 个性档案） ==========
+    function resolveGenerateRawFn() {
+        if (typeof generateRaw === 'function') return generateRaw;
+        if (typeof window !== 'undefined') {
+            if (typeof window.generateRaw === 'function') return window.generateRaw;
+            if (typeof window.TavernHelper?.generateRaw === 'function') return window.TavernHelper.generateRaw;
+            try {
+                if (typeof window.parent?.generateRaw === 'function') return window.parent.generateRaw;
+                if (typeof window.parent?.TavernHelper?.generateRaw === 'function') return window.parent.TavernHelper.generateRaw;
+            } catch (_) {}
+        }
+        return null;
+    }
+
+    function extractAiJsonObject(raw) {
+        const text = typeof raw === 'string' ? raw : (raw?.content || raw?.text || String(raw || ''));
+        const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+        const body = fenced ? fenced[1] : text;
+        const firstBrace = body.indexOf('{');
+        const lastBrace = body.lastIndexOf('}');
+        if (firstBrace < 0 || lastBrace <= firstBrace) {
+            throw new Error('AI 未返回有效 JSON 对象');
+        }
+        return JSON.parse(body.slice(firstBrace, lastBrace + 1));
+    }
+
+    function syncAiFieldsToDom() {
+        const setVal = (id, v) => {
+            const el = document.getElementById(id);
+            if (el && v !== undefined && v !== null) el.value = String(v);
+        };
+        setVal('char-name', state.name);
+        setVal('char-gender', state.gender);
+        setVal('char-species', state.species);
+        setVal('char-class', state.class);
+        setVal('char-background', state.background);
+        setVal('bio-alignment', state.biography.alignment);
+        setVal('bio-description', state.biography.description);
+        setVal('bio-biography', state.biography.biography);
+        setVal('bio-playerName', state.biography.playerName);
+        setVal('bio-age', state.biography.age);
+        setVal('bio-height', state.biography.height);
+        setVal('bio-weight', state.biography.weight);
+        setVal('bio-eyes', state.biography.eyes);
+        setVal('bio-skin', state.biography.skin);
+        setVal('bio-hair', state.biography.hair);
+        setVal('bio-ideal', state.biography.ideal);
+        setVal('bio-bond', state.biography.bond);
+        setVal('bio-flaw', state.biography.flaw);
+        setVal('bio-trait', state.biography.trait);
+    }
+
+    function pointBuyCost(val) {
+        const costs = { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 };
+        return costs[val];
+    }
+
+    function applyAttributesByUserMode(aiAttrs, priorityList, className) {
+        const allAttrs = ['力量', '敏捷', '体质', '智力', '感知', '魅力'];
+        const cls = CLASSES[className];
+        const fallbackOrder = [...new Set([...(Array.isArray(priorityList) ? priorityList : []), ...(cls?.primary || []), '体质', '敏捷', '感知', ...allAttrs])].filter(a => allAttrs.includes(a));
+        const mode = state.attributeMode || '27buy';
+
+        if (mode === '4d6fixed') {
+            if (!Array.isArray(state.dicePool) || state.dicePool.length < 6) {
+                roll4d6Attributes();
+            }
+            state.dicePoolAssigned = {};
+            const result = {};
+            allAttrs.forEach((attr, i) => {
+                state.dicePoolAssigned[attr] = i;
+                result[attr] = state.dicePool[i] ? state.dicePool[i].value : 10;
+            });
+            return result;
+        }
+
+        if (mode === '4d6') {
+            if (!Array.isArray(state.dicePool) || state.dicePool.length < 6) {
+                state.dicePool = [];
+                for (let i = 0; i < 6; i++) {
+                    const rolls = Array.from({ length: 4 }, () => Math.floor(Math.random() * 6) + 1);
+                    const sorted = [...rolls].sort((a, b) => a - b);
+                    state.dicePool.push({ value: sorted[1] + sorted[2] + sorted[3], rolls });
+                }
+            }
+            const indexedPool = state.dicePool.map((item, idx) => ({ idx, value: item.value })).sort((a, b) => b.value - a.value);
+            state.dicePoolAssigned = {};
+            const result = {};
+            fallbackOrder.slice(0, 6).forEach((attr, i) => {
+                const entry = indexedPool[i];
+                if (entry) {
+                    state.dicePoolAssigned[attr] = entry.idx;
+                    result[attr] = entry.value;
+                } else {
+                    result[attr] = 10;
+                }
+            });
+            return result;
+        }
+
+        if (mode === 'powergame') {
+            if (aiAttrs && typeof aiAttrs === 'object') {
+                const parsed = {};
+                let ok = true;
+                for (const k of allAttrs) {
+                    const v = Number(aiAttrs[k]);
+                    if (!Number.isInteger(v) || v < 3 || v > 20) { ok = false; break; }
+                    parsed[k] = v;
+                }
+                if (ok) return parsed;
+            }
+            const powerArr = [20, 18, 18, 16, 14, 12];
+            const result = {};
+            fallbackOrder.slice(0, 6).forEach((attr, idx) => { result[attr] = powerArr[idx]; });
+            return result;
+        }
+
+        const targetPoints = mode === '36buy' ? 36 : 27;
+        if (aiAttrs && typeof aiAttrs === 'object') {
+            const parsed = {};
+            let ok = true;
+            let cost = 0;
+            for (const k of allAttrs) {
+                const v = Number(aiAttrs[k]);
+                const c = pointBuyCost(v);
+                if (!Number.isInteger(v) || c === undefined) { ok = false; break; }
+                parsed[k] = v;
+                cost += c;
+            }
+            if (ok && cost === targetPoints) return parsed;
+        }
+        const standard = mode === '36buy' ? [15, 15, 15, 14, 10, 8] : [15, 14, 13, 12, 10, 8];
+        const result = {};
+        fallbackOrder.slice(0, 6).forEach((attr, idx) => { result[attr] = standard[idx]; });
+        return result;
+    }
+
+    function clearAllCreatorFields() {
+        state.name = '';
+        state.gender = '男';
+        state.biography.alignment = '';
+        state.biography.playerName = '';
+        state.biography.age = '';
+        state.biography.height = '';
+        state.biography.weight = '';
+        state.biography.eyes = '';
+        state.biography.skin = '';
+        state.biography.hair = '';
+        state.biography.description = '';
+        state.biography.ideal = '';
+        state.biography.bond = '';
+        state.biography.flaw = '';
+        state.biography.trait = '';
+        state.biography.biography = '';
+        state.lineage = null;
+        state.elfSkillChoice = null;
+        state.humanSkillChoice = null;
+        state.humanFeat = '';
+        state.attributes = { '力量': 8, '敏捷': 8, '体质': 8, '智力': 8, '感知': 8, '魅力': 8 };
+        state.dicePoolAssigned = {};
+        state.bgBonuses = { attr1: null, attr2: null, attr3: null, mode: '2+1' };
+        state.skills = [];
+        state.expertise = [];
+        state.fightingStyle = null;
+        state.weaponMasteries = [];
+        state.divineOrder = null;
+        state.primalOrder = null;
+        state.primalOrderCantrip = null;
+        state.eldritchInvocations = [];
+        state.selectedSpells = { cantrips: [], level1: [] };
+        state.magicInitiate = {
+            background: { hasIt: false, spellClass: '法师', cantrips: [], level1: [], touched: false },
+            humanFeat: { hasIt: false, spellClass: '法师', cantrips: [], level1: [], touched: false }
+        };
+        state.equipmentSelected = [];
+        state.equipmentGold = 0;
+        const conceptEl = document.getElementById('ai-helper-concept');
+        if (conceptEl) conceptEl.value = '';
+        syncAiFieldsToDom();
+        if (typeof updateSpellSelectionDisplay === 'function') updateSpellSelectionDisplay();
+        requestRender();
+    }
+
+    function applyAiPersona(p) {
+        if (!p || typeof p !== 'object') return;
+        const pick = (v, fallback) => (typeof v === 'string' && v.trim()) ? v.trim() : fallback;
+        state.name = pick(p.name, state.name);
+        if (['男', '女', '非二元'].includes(p.gender)) state.gender = p.gender;
+        const validAligns = ['', '守序善良', '中立善良', '混乱善良', '守序中立', '绝对中立', '混乱中立', '守序邪恶', '中立邪恶', '混乱邪恶'];
+        if (validAligns.includes(p.alignment)) state.biography.alignment = p.alignment;
+        state.biography.playerName = pick(p.playerName, state.biography.playerName || '');
+        state.biography.age = pick(p.age, state.biography.age || '');
+        state.biography.height = pick(p.height, state.biography.height || '');
+        state.biography.weight = pick(p.weight, state.biography.weight || '');
+        state.biography.eyes = pick(p.eyes, state.biography.eyes || '');
+        state.biography.skin = pick(p.skin, state.biography.skin || '');
+        state.biography.hair = pick(p.hair, state.biography.hair || '');
+        state.biography.description = pick(p.appearance, state.biography.description || '');
+        state.biography.ideal = pick(p.ideals, state.biography.ideal || '');
+        state.biography.bond = pick(p.bonds, state.biography.bond || '');
+        state.biography.flaw = pick(p.flaws, state.biography.flaw || '');
+        state.biography.trait = pick(p.personalityTraits, state.biography.trait || '');
+        state.biography.biography = pick(p.backstory, state.biography.biography || '');
+        const box = document.getElementById('profile-details-box');
+        if (box) box.open = true;
+    }
+
+    function applyAiBuild(b) {
+        if (!b || typeof b !== 'object') return;
+        const validSpecies = Object.keys(SPECIES).filter(k => k !== '自定义');
+        if (validSpecies.includes(b.species)) {
+            state.species = b.species;
+        }
+        const sp = SPECIES[state.species];
+        if (sp?.hasLineage && sp.lineages) {
+            const lineages = Object.keys(sp.lineages);
+            state.lineage = lineages.includes(b.lineage) ? b.lineage : lineages[0];
+        } else {
+            state.lineage = null;
+        }
+
+        const validClasses = Object.keys(CLASSES);
+        if (validClasses.includes(b.class)) {
+            state.class = b.class;
+        }
+        const cls = CLASSES[state.class];
+
+        const validBgs = Object.keys(BACKGROUNDS).filter(k => k !== '自定义');
+        if (validBgs.includes(b.background)) {
+            state.background = b.background;
+        } else if (CLASS_RECOMMENDED_BACKGROUNDS[state.class]) {
+            state.background = CLASS_RECOMMENDED_BACKGROUNDS[state.class];
+        }
+        const bg = BACKGROUNDS[state.background];
+
+        // 按用户当前选择的属性模式分配属性（保留 4d6 骰池 / 36点 / 数字怪 / 27点）
+        state.attributes = applyAttributesByUserMode(b.attributes, b.abilityPriority, state.class);
+
+        // 背景属性加值
+        const bgAbs = bg?.abilities || ['力量', '敏捷', '体质'];
+        if (b.bgBonusMode === '1+1+1') {
+            state.bgBonuses = { mode: '1+1+1', attr1: bgAbs[0], attr2: bgAbs[1], attr3: bgAbs[2] };
+        } else {
+            const a1 = bgAbs.includes(b.bgBonusAttr1) ? b.bgBonusAttr1 : bgAbs[0];
+            const a2 = (bgAbs.includes(b.bgBonusAttr2) && b.bgBonusAttr2 !== a1) ? b.bgBonusAttr2 : bgAbs.find(x => x !== a1) || bgAbs[1];
+            state.bgBonuses = { mode: '2+1', attr1: a1, attr2: a2, attr3: null };
+        }
+
+        // 种族额外选择
+        if (state.species === '精灵') {
+            state.elfSkillChoice = ['洞悉', '察觉', '求生'].includes(b.elfSkillChoice) ? b.elfSkillChoice : '察觉';
+        } else {
+            state.elfSkillChoice = null;
+        }
+
+        const fixedSkills = new Set([...(bg?.skills || [])]);
+        if (state.elfSkillChoice) fixedSkills.add(state.elfSkillChoice);
+
+        if (state.species === '人类') {
+            const validFeats = Object.keys(ORIGIN_FEATS);
+            state.humanFeat = validFeats.includes(b.humanFeat) ? b.humanFeat : 'Alert';
+            const allSkillNames = Object.keys(SKILL_ATTR_MAP || { '运动':1,'特技':1,'巧手':1,'隐匿':1,'奥秘':1,'历史':1,'调查':1,'自然':1,'宗教':1,'驯兽':1,'洞悉':1,'医药':1,'察觉':1,'求生':1,'欺瞒':1,'威吓':1,'表演':1,'游说':1 });
+            const chosenHumanSkill = allSkillNames.includes(b.humanSkillChoice) && !fixedSkills.has(b.humanSkillChoice)
+                ? b.humanSkillChoice
+                : allSkillNames.find(s => !fixedSkills.has(s)) || '察觉';
+            state.humanSkillChoice = chosenHumanSkill;
+            fixedSkills.add(chosenHumanSkill);
+        } else {
+            state.humanSkillChoice = null;
+        }
+
+        // 职业技能
+        const classSkillPool = (cls?.skills || []).filter(s => !fixedSkills.has(s));
+        const needCount = cls?.skill_count || cls?.skillCount || 2;
+        const picked = [];
+        for (const s of (Array.isArray(b.skills) ? b.skills : [])) {
+            if (classSkillPool.includes(s) && !picked.includes(s) && picked.length < needCount) picked.push(s);
+        }
+        for (const s of classSkillPool) {
+            if (!picked.includes(s) && picked.length < needCount) picked.push(s);
+        }
+        state.skills = picked;
+
+        // 游荡者专精
+        const allProficient = [...fixedSkills, ...picked];
+        if (state.class === '游荡者') {
+            const exp = [];
+            for (const s of (Array.isArray(b.expertise) ? b.expertise : [])) {
+                if (allProficient.includes(s) && !exp.includes(s) && exp.length < 2) exp.push(s);
+            }
+            for (const s of allProficient) {
+                if (!exp.includes(s) && exp.length < 2) exp.push(s);
+            }
+            state.expertise = exp;
+        } else {
+            state.expertise = [];
+        }
+
+        // 职业一级特性：战斗风格 / 武器精通 / 神圣职能 / 原初职能 / 魔能祈唤
+        if (cls?.hasFightingStyle && typeof FIGHTING_STYLES !== 'undefined') {
+            const styles = Object.keys(FIGHTING_STYLES);
+            state.fightingStyle = styles.includes(b.fightingStyle) ? b.fightingStyle : styles[0];
+        } else {
+            state.fightingStyle = null;
+        }
+        const masteryMax = cls?.weapon_mastery_count || 0;
+        if (masteryMax > 0 && typeof WEAPONS_WITH_MASTERY !== 'undefined') {
+            const avail = Object.keys(WEAPONS_WITH_MASTERY);
+            const wm = [];
+            for (const w of (Array.isArray(b.weaponMasteries) ? b.weaponMasteries : [])) {
+                if (avail.includes(w) && !wm.includes(w) && wm.length < masteryMax) wm.push(w);
+            }
+            for (const w of avail) {
+                if (!wm.includes(w) && wm.length < masteryMax) wm.push(w);
+            }
+            state.weaponMasteries = wm;
+        } else {
+            state.weaponMasteries = [];
+        }
+        state.divineOrder = state.class === '牧师'
+            ? (['保护者', '奇术使'].includes(b.divineOrder) ? b.divineOrder : '保护者')
+            : null;
+        state.primalOrder = state.class === '德鲁伊'
+            ? (['术师', '卫士'].includes(b.primalOrder) ? b.primalOrder : '术师')
+            : null;
+        if (state.class === '魔契师' && typeof ELDRITCH_INVOCATIONS_LV1 !== 'undefined') {
+            const invs = Object.keys(ELDRITCH_INVOCATIONS_LV1);
+            const pickInv = Array.isArray(b.eldritchInvocations) && invs.includes(b.eldritchInvocations[0]) ? b.eldritchInvocations[0] : invs[0];
+            state.eldritchInvocations = pickInv ? [pickInv] : [];
+        } else {
+            state.eldritchInvocations = [];
+        }
+
+        // 法术选择
+        if (typeof applyClassDefaults === 'function') {
+            const savedSkills = [...state.skills];
+            const savedExp = [...state.expertise];
+            const savedStyle = state.fightingStyle;
+            const savedWm = [...state.weaponMasteries];
+            const savedDivine = state.divineOrder;
+            const savedPrimal = state.primalOrder;
+            const savedInv = [...state.eldritchInvocations];
+            applyClassDefaults();
+            state.skills = savedSkills;
+            state.expertise = savedExp;
+            state.fightingStyle = savedStyle;
+            state.weaponMasteries = savedWm;
+            state.divineOrder = savedDivine;
+            state.primalOrder = savedPrimal;
+            state.eldritchInvocations = savedInv;
+        }
+
+        if (typeof getSpellLimits === 'function' && typeof getAvailableSpellsForClass === 'function') {
+            const limits = getSpellLimits();
+            const avail = getAvailableSpellsForClass(state.class);
+            if (limits.cantrips > 0 && Array.isArray(avail?.cantrips)) {
+                const c = [];
+                for (const spName of (Array.isArray(b.cantrips) ? b.cantrips : [])) {
+                    if (avail.cantrips.includes(spName) && !c.includes(spName) && c.length < limits.cantrips) c.push(spName);
+                }
+                for (const spName of avail.cantrips) {
+                    if (!c.includes(spName) && c.length < limits.cantrips) c.push(spName);
+                }
+                state.selectedSpells.cantrips = c;
+            }
+            if (limits.level1 > 0 && Array.isArray(avail?.level1)) {
+                const l1 = [];
+                for (const spName of (Array.isArray(b.level1Spells) ? b.level1Spells : [])) {
+                    if (avail.level1.includes(spName) && !l1.includes(spName) && l1.length < limits.level1) l1.push(spName);
+                }
+                for (const spName of avail.level1) {
+                    if (!l1.includes(spName) && l1.length < limits.level1) l1.push(spName);
+                }
+                state.selectedSpells.level1 = l1;
+            }
+        }
+
+        // 魔法学徒（背景 / 人类专长）
+        if (typeof syncMagicInitiateConfig === 'function') {
+            syncMagicInitiateConfig();
+        }
+        state.equipmentMode = b.equipmentMode === 'gold' ? 'gold' : 'class';
+        state.equipmentPresetIndex = 0;
+    }
+
+    function buildAiAssistPrompt(mode) {
+        const concept = (document.getElementById('ai-helper-concept')?.value || '').trim();
+        const speciesList = Object.entries(SPECIES).filter(([k]) => k !== '自定义').map(([k, v]) =>
+            v.hasLineage && v.lineages ? `${k}(血统:${Object.keys(v.lineages).join('/')})` : k
+        ).join('、');
+        const classList = Object.entries(CLASSES).map(([k, v]) =>
+            `${k}(主属性:${(v.primary || []).join('/')}, 技能数:${v.skill_count || 2}, 可选技能:${(v.skills || []).join('/')})`
+        ).join('\n');
+        const bgList = Object.entries(BACKGROUNDS).filter(([k]) => k !== '自定义').map(([k, v]) =>
+            `${k}(属性:${v.abilities.join('/')}, 专长:${v.featDesc}, 技能:${v.skills.join('/')})`
+        ).join('\n');
+        const featList = Object.entries(ORIGIN_FEATS).map(([k, v]) => `${k}(${v.name})`).join('、');
+
+        const sys = `你是精通 D&D 2024 (5e 2024版) 的资深构筑师与角色设定师。请严格只输出一个合法 JSON 对象，不要输出任何额外解释或 markdown 以外的文字。`;
+
+        if (mode === 'persona') {
+            const usr = `请为以下 D&D 2024 角色补全全部外貌档案与个性设定（中文）：
+当前角色信息：
+- 姓名：${state.name || '未定'}
+- 性别：${state.gender || '未定'}
+- 物种：${state.species}${state.lineage ? ' (' + state.lineage + ')' : ''}
+- 职业：${state.class}
+- 背景：${state.background}
+- 玩家概念/偏好：${concept || '自由发挥，贴合上述职业与背景'}
+
+请返回 JSON：
+{
+  "persona": {
+    "name": "角色姓名",
+    "gender": "男|女|非二元",
+    "alignment": "守序善良|中立善良|混乱善良|守序中立|绝对中立|混乱中立|守序邪恶|中立邪恶|混乱邪恶",
+    "playerName": "",
+    "age": "具体年龄",
+    "height": "身高(如176cm)",
+    "weight": "体重(如68kg)",
+    "eyes": "瞳色",
+    "skin": "肤色",
+    "hair": "发色与发型",
+    "appearance": "一段生动的外貌与服饰特征描述",
+    "ideals": "理想(1句)",
+    "bonds": "牵绊(1句)",
+    "flaws": "缺点(1句)",
+    "personalityTraits": "个性特征(2句)",
+    "backstory": "角色传记/身世故事(80-160字)"
+  }
+}`;
+            return [
+                { role: 'system', content: sys },
+                { role: 'user', content: usr }
+            ];
+        }
+
+        const wantPersona = mode === 'all';
+        const attrModeHint = state.attributeMode === '4d6fixed'
+            ? (Array.isArray(state.dicePool) && state.dicePool.length >= 6
+                ? `当前属性模式为【4d6固定顺序】（位置锁定不可调换），固定六维为：${['力量', '敏捷', '体质', '智力', '感知', '魅力'].map((a, i) => `${a}=${state.dicePool[i]?.value ?? 10}`).join('、')}。请务必围绕这组已锁定的六维长短板，挑选最契合的职业、物种与背景加值！`
+                : '当前属性模式为【4d6固定顺序】（位置锁定不可调换），请根据已固定六维推荐最契合的职业与背景。')
+            : state.attributeMode === '4d6'
+            ? (Array.isArray(state.dicePool) && state.dicePool.length >= 6
+                ? `当前属性模式为【4d6 投骰】，骰池结果为：${state.dicePool.map(d => d.value).join(', ')}。请按 abilityPriority 从高到低分配这 6 个数值！`
+                : '当前属性模式为【4d6 投骰】，请给出 abilityPriority 排序。')
+            : state.attributeMode === '36buy'
+                ? '当前属性模式为【36 点购买】（8-15），请按 36 点预算分配 attributes。'
+                : state.attributeMode === 'powergame'
+                    ? '当前属性模式为【数字怪模式】（无限点数，单项上限 20），请放开了把关键属性拉满（例如 20/18/18/16/14/12）！'
+                    : '当前属性模式为【27 点购买】（8-15），请按 27 点预算分配 attributes。';
+        const usr = `请为玩家构筑一个强力且贴合概念的 D&D 2024 1级角色。
+玩家概念/偏好：${concept || '请自由设计一个有魅力、配合默契、1级实战强力的冒险者'}
+${attrModeHint}
+${mode === 'build' ? `当前已定姓名/性别：${state.name} / ${state.gender}` : ''}
+
+可选物种：
+${speciesList}
+
+可选职业：
+${classList}
+
+可选背景：
+${bgList}
+
+可选起源专长（人类额外专长）：${featList}
+
+请严格使用以上中文键名（humanFeat 使用英文键名如 Alert/Tough/Lucky/Skilled/Magic Initiate 等），返回 JSON：
+{
+  "build": {
+    "species": "物种中文名",
+    "lineage": "若有血统填血统中文名，否则null",
+    "class": "职业中文名",
+    "background": "背景中文名",
+    "abilityPriority": ["从高到低排列6个属性：力量/敏捷/体质/智力/感知/魅力"],
+    "attributes": { "力量": 15, "敏捷": 14, "体质": 13, "智力": 12, "感知": 10, "魅力": 8 },
+    "bgBonusMode": "2+1",
+    "bgBonusAttr1": "背景可用属性之一(+2)",
+    "bgBonusAttr2": "背景可用属性另一项(+1)",
+    "elfSkillChoice": "仅精灵填洞悉/察觉/求生，否则null",
+    "humanSkillChoice": "仅人类填任意未重复技能，否则null",
+    "humanFeat": "仅人类填英文专长键名，否则Alert",
+    "skills": ["从职业可选技能中挑选对应数量的技能"],
+    "expertise": ["仅游荡者选2个熟练技能，否则[]"],
+    "fightingStyle": "仅战士填战斗风格或null",
+    "weaponMasteries": ["武器精通列表"],
+    "divineOrder": "仅牧师填保护者或奇术使，否则null",
+    "primalOrder": "仅德鲁伊填术师或卫士，否则null",
+    "eldritchInvocations": ["仅魔契师选1个1级魔能祈唤，否则[]"],
+    "cantrips": ["1级戏法列表"],
+    "level1Spells": ["1级法术列表"],
+    "equipmentMode": "class"
+  }${wantPersona ? `,
+  "persona": {
+    "name": "角色姓名",
+    "gender": "男|女|非二元",
+    "alignment": "九宫格阵营之一",
+    "playerName": "",
+    "age": "具体年龄",
+    "height": "身高",
+    "weight": "体重",
+    "eyes": "瞳色",
+    "skin": "肤色",
+    "hair": "发色与发型",
+    "appearance": "外貌与服饰描述",
+    "ideals": "理想",
+    "bonds": "牵绊",
+    "flaws": "缺点",
+    "personalityTraits": "个性特征",
+    "backstory": "角色传记(80-160字)"
+  }` : ''}
+}`;
+        return [
+            { role: 'system', content: sys },
+            { role: 'user', content: usr }
+        ];
+    }
+
+    async function runAiCreatorAssist(mode) {
+        const statusEl = document.getElementById('ai-helper-status');
+        const btns = document.querySelectorAll('#ai-helper-panel [data-ai-mode]');
+        const setStatus = (msg, cls = '') => {
+            if (!statusEl) return;
+            statusEl.textContent = msg;
+            statusEl.className = 'ai-helper-status' + (cls ? ' ' + cls : '');
+        };
+        if (mode === 'clear') {
+            clearAllCreatorFields();
+            setStatus('🧹 已清空已填的姓名、属性加点、背景加值、技能、专长、法术、装备、档案与个性，已恢复空白状态！', 'ok');
+            return;
+        }
+        const genRaw = resolveGenerateRawFn();
+        if (!genRaw) {
+            setStatus('❌ 未检测到 SillyTavern generateRaw 接口（请在酒馆聊天界面中使用 AI 帮忙模式）。', 'error');
+            return;
+        }
+        btns.forEach(b => { b.disabled = true; });
+        setStatus(mode === 'persona' ? '⏳ 正在让 AI 编写全部外貌档案与个性传记...' : '⏳ 正在让 AI 构筑 1 级 Build 与角色设定...');
+        try {
+            const ordered_prompts = buildAiAssistPrompt(mode);
+            const raw = await genRaw({
+                should_stream: false,
+                should_silence: true,
+                max_chat_history: 0,
+                ordered_prompts
+            });
+            const data = extractAiJsonObject(raw);
+            if ((mode === 'all' || mode === 'build') && data.build) {
+                applyAiBuild(data.build);
+            }
+            if ((mode === 'all' || mode === 'persona') && data.persona) {
+                applyAiPersona(data.persona);
+            }
+            syncAiFieldsToDom();
+            if (typeof updateSpellSelectionDisplay === 'function') updateSpellSelectionDisplay();
+            requestRender();
+            const summary = mode === 'persona'
+                ? `✅ 已补全「${state.name}」的档案、理想/牵绊/缺点、个性特征与传记！`
+                : `✅ 已完成 1 级 Build：${state.species}${state.lineage ? '(' + state.lineage + ')' : ''} · ${state.class} · ${state.background}${mode === 'all' ? ' + 全部个性档案' : ''}！`;
+            setStatus(summary, 'ok');
+        } catch (err) {
+            console.error('[AI Creator Assist]', err);
+            setStatus('❌ AI 生成失败：' + (err?.message || String(err)), 'error');
+        } finally {
+            btns.forEach(b => { b.disabled = false; });
+        }
+    }
+
 // ========== 事件处理 ==========
 function setupEventListeners() {
     elements.name.addEventListener('input', e => { state.name = e.target.value; requestRender(); });
     elements.gender.addEventListener('change', e => { state.gender = e.target.value; requestRender(); });
+    document.querySelectorAll('#ai-helper-panel [data-ai-mode]').forEach(btn => btn.addEventListener('click', () => runAiCreatorAssist(btn.dataset.aiMode)));
     document.getElementById('biography-enabled').addEventListener('change', e => {
         state.biographyEnabled=e.target.checked;
         document.getElementById('biography-fields').hidden=!state.biographyEnabled;
@@ -9248,6 +10000,7 @@ function setupEventListeners() {
     document.querySelectorAll('.mode-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             state.attributeMode = btn.dataset.mode;
+            state.rollsRemaining = 5;
             state.attributes = Object.fromEntries(ATTRIBUTES.map(a => [a, ['27buy','36buy'].includes(state.attributeMode) ? 8 : null]));
             state.dicePool = [];
             state.dicePoolAssigned = {};
@@ -9599,6 +10352,7 @@ function setupEventListeners() {
     });
 
     elements.attrReset.addEventListener('click', () => {
+        if(state.attributeMode==='4d6fixed'){state.rollsRemaining=0;requestRender();return;}
         state.attributes = Object.fromEntries(ATTRIBUTES.map(a => [a, ['27buy','36buy'].includes(state.attributeMode) ? 8 : null]));
         state.dicePoolAssigned = {};
         requestRender();
@@ -9613,8 +10367,727 @@ function setupEventListeners() {
     elements.saveBtn.addEventListener('click', saveCharacter);
 }
 
-// 一次生成五组，每组包含六次4d6取高3；重掷替换本轮候选，不限制次数
-function roll4d6Attributes() {
+
+// ===== DICE_4D6_V2_OLD_DM =====
+const FIXED_ATTR_ORDER = ['力量', '敏捷', '体质', '智力', '感知', '魅力'];
+
+const DICE_4D6_TOTAL_BANDS = [
+  {
+    min: 18, max: 22, label: '18–22', prob: '约 4.35×10⁻¹³%', color: '#ff6b6b',
+    comments: [
+      '……朋友，把鼠标放下，听老DM一句劝：别跑团了，现在出门右转去买彩票，全宇宙的负气运刚才已经被你一口气吸干了。',
+      '我带团这么多年，头一回见到有人能投出比“路边长歪的蘑菇”还低的总和。要不……咱今天改演一株会说话的盆栽？',
+      '等一下，你是怎么做到把 24 颗骰子几乎全投成 1 的？！这概率比你走路被陨石砸中三次还低啊！',
+      '来，深呼吸，喝口热茶。老DM我宣布：哪怕你今天被门夹死，我也直接算你战役荣誉通关，这卡得供起来！',
+      '哥布林劫匪看了一眼你的属性卡，默默收回了短弓，甚至往你破碗里塞了两个铜板：“兄弟，生活不易，你比我还难。”',
+      '这已经不是非酋了，这是深渊恶魔亲手把你的骰子泡进了冥河水里。快截图，这辈子绝不可能再见第二次！',
+      '老实交代，你是不是上辈子拔了幸运女神的网线？六项加起来还没别人一项高！',
+      '如果把这张卡交上去，冒险者公会的接待员大概会立刻叫救护马车，而不是给你发委托。',
+      '行吧，要是你敢不点重骰直接拿这组数开局，我当场把模组最终 Boss 改成一只瘸腿鹅，绝不欺负你！',
+      '全体起立鼓掌！两百三十万亿分之一的反向神迹，能亲眼见证这一幕，老DM我这辈子值了！'
+    ]
+  },
+  {
+    min: 23, max: 27, label: '23–27', prob: '约 8.67×10⁻¹⁰%', color: '#ff6b6b',
+    comments: [
+      '嘶……千亿分之一的惨烈现场。别人建卡是写英雄史诗，你建卡怎么像是在填医疗保险单？',
+      '老DM我翻遍了怪物图鉴，终于找到一个属性跟你差不多的生物——刚孵出来还没睁眼的史莱姆。',
+      '听哥一句劝，这体格咱就别去地下城吹冷风了，在酒馆壁炉旁边包宿嗑瓜子它不香吗？',
+      '你是打算用行动证明“只要跑得比队友慢……不对，你连跑都跑不动”吗？快点重骰吧！',
+      '看到这组数的瞬间，我手里端着的咖啡都抖洒了。这得攒了多少年的黑气才能炸出这一把？',
+      '哪怕去村口帮老奶奶抓鸡，老DM我都得先让你过一个死亡豁免——因为那只公鸡属性比你高。',
+      '别人是天选之子，你是天谴之子啊朋友！留着截图当传家宝，然后赶紧按上面那个 Roll 键！',
+      '我敢打赌，就算死灵法师把你拉成骷髅兵，看一眼这属性都得叹口气再把你埋回去。',
+      '六项总和刚好够别人买属性点的预算，问题是人家 27 点是从 8 开始加，你是连本带利一共 20 多点！',
+      '别愣着了，先截个图发群里让大家乐呵乐呵，今天全桌的快乐源泉都被你承包了。'
+    ]
+  },
+  {
+    min: 28, max: 32, label: '28–32', prob: '0.00000024%', color: '#ff7875',
+    comments: [
+      '四亿分之一的绝世奇观！老DM我怀疑你投的不是六面骰，是六颗四面全是 1 的错版骰子。',
+      '就这身板，风大一点都能把你吹出战术地图。来来来，右上角重骰还有次数，别跟自己过不去。',
+      '你确定要去屠龙？依老DM看，巨龙打个喷嚏产生的气流就够你写三页遗书了。',
+      '哈哈哈哈对不起，作为 DM 我本来受过专业训练绝不笑场，但这组数字实在太有喜剧效果了！',
+      '全队进地牢探险，别人背着剑和火把，你得背着氧气袋和担架。',
+      '这面板唯一的战术价值，就是在敌人使用“支配人类”控制你的时候，让敌人产生强烈的退货冲动。',
+      '老DM给你指条明路：要么立刻重骰，要么建个专门负责在营地熬汤的后勤大叔。',
+      '连地城门口看门的骷髅卫兵看到你，都会怜爱地把生锈的铁剑往后收一收，生怕刮着你。',
+      '四亿次里挑一的“反向天胡”，某种意义上你也是万里挑一的传奇人物了！',
+      '快，趁着骰娘还没反应过来，赶紧点一下重骰把这口黑锅甩掉！'
+    ]
+  },
+  {
+    min: 33, max: 37, label: '33–37', prob: '0.000020%', color: '#ff8585',
+    comments: [
+      '五百万分之一的凄凉手气……来，老DM给你递张纸巾，咱先把眼泪擦干再看要不要重骰。',
+      '这属性要是去酒馆招队友，估计大家会以为你是来发寻人启事的受灾村民。',
+      '讲道理，拿这组数去跑团，每一场战斗都能打出魂系游戏一刀秒的紧张刺激感！',
+      '你的角色还没走出新手村大门，头顶上就已经飘满了红色的减号调整值。',
+      '老DM我带过不少喜欢自虐的硬核玩家，但像你这么狠的面板，还真是五年难得一见。',
+      '你看，连系统都在替你着急——上面那个重骰按钮正闪闪发光呢，不考虑按一下吗？',
+      '如果非要用这组数开局，我建议你写一段“大病初愈、功力尽失”的退婚流剧本，完美贴合面板！',
+      '这手气，去抽卡手游大概是保底都能歪成空气的级别，还好咱这儿还能免费重骰！',
+      '队友负责在前排砍瓜切菜，你负责在三十尺外躺平喊“666”，分工相当明确。',
+      '五百万分之一的稀有非酋奖章已送达！截图留念之后，咱们还是换一组能活过第一幕的吧。'
+    ]
+  },
+  {
+    min: 38, max: 42, label: '38–42', prob: '0.00075%', color: '#ff9c6e',
+    comments: [
+      '哎哟喂，十三万分之一的“苦情剧男主角”面板！每一项属性都在控诉命运的不公。',
+      '老DM实话实说：这面板要是去铁匠铺打工，铁匠大叔可能都怕你被风箱吸进去。',
+      '虽说跑团不唯数值论，但你这数值已经低到连推开酒馆大门都得看骰娘脸色的程度了。',
+      '你看这满屏的个位数，像不像上学时候还没及格的随堂测验？别怕，咱们还有补考（重骰）机会！',
+      '要不咱走感化流吧？敌人看到这么瘦弱的冒险者，说不定良心发现就主动放你过去了。',
+      '十万次投骰才出这么一回，说明你今天跟“极端数字”特别有缘，下一把说不定直接反弹到 90+！',
+      '这面板唯一的优点就是：升级点属性值的时候，随便加哪一项都有脱胎换骨的提升感。',
+      '老DM温馨提示：带着这组属性进阴暗潮湿的地牢，最大的敌人不是地精，是伤风感冒。',
+      '如果你真想挑战极限角色扮演，这组“残缺美”倒是能演出一场让人印象深刻的小人物悲喜剧。',
+      '摸摸头，先把这把黑气散掉，深吸一口气再点一次 Roll，老DM相信你能翻盘！'
+    ]
+  },
+  {
+    min: 43, max: 47, label: '43–47', prob: '0.0145%', color: '#ffa940',
+    comments: [
+      '七千分之一的“杂鱼逆袭”开局！普通农夫看了你的面板，都会欣慰地表示自己还能多挑两担麦子。',
+      '啧啧，这总和刚过 40 出头，属于典型的“一身抱负，奈何体格不允许”。',
+      '老DM看了一眼：要是里面能憋出一个 14 或 15，咱还能靠单核抢救一下；要是全员七八点……赶紧重来吧！',
+      '这手气就像是去酒馆点了一杯麦酒，结果酒保给你倒了八分满的沫子。',
+      '拿这组数去跑团，你就是全队最需要被保护的“团宠”——字面意义上一碰就碎的那种。',
+      '别灰心，老DM见过无数先投出 40 多点、下一把直接飙上 85 的反转剧本！',
+      '这面板写实感拉满：不是每个踏上旅途的人都是天生神力，也有人只是恰好路过顺手拿起剑的普通人。',
+      '豁免检定对你来说可能会像过鬼门关一样刺激，记得时刻站在圣武士队友十尺以内！',
+      '手气稍微有点凉啊朋友，要不要搓搓手哈口气，再给骰子一次重新做人的机会？',
+      '七千分之一的低谷都让你踩中了，按跑团玄学定律，你的好运马上就要到账了！'
+    ]
+  },
+  {
+    min: 48, max: 52, label: '48–52', prob: '0.163%', color: '#ffc069',
+    comments: [
+      '六百分之一的逆风局！老DM摸着下巴看了看：能玩是能玩，但属于“困难难度”起步。',
+      '就像穿着拖鞋去爬雪山——只要主属性那双袜子够厚，咬咬牙也能往上爬，但总归有点冻脚。',
+      '这组数怎么说呢，很有“退休三十年又被村长硬拉出山的老兵”那股沧桑味儿。',
+      '离咱们正常水平还差着二十来点呢，要是重骰次数还富裕，老DM建议你别委屈自己。',
+      '只要你不贪心玩那种既要砍人又要施法还要抗揍的职业，缩在后排打打冷枪还是混得下去的。',
+      '部落里的酋长刚刚发来贺电，问你什么时候回非洲老家继承王位——快重骰打他脸！',
+      '有一说一，这种略带残缺的面板，往往最容易在跑团里滚出让人笑出眼泪的名场面。',
+      '如果里面藏着一颗 15 以上的大数字，那还算“一俊遮百丑”；要是全员平摊，那就真成路人甲了。',
+      '来，听老DM的，咱不急着锁卡，看看上面还剩几次机会，再搏一把大的！',
+      '六百次里才撞见一回的小低谷，权当是给正式跑团里的二十面骰攒人品了！'
+    ]
+  },
+  {
+    min: 53, max: 57, label: '53–57', prob: '1.11%', color: '#ffd666',
+    comments: [
+      '大概百里挑一的偏低手气。不算彻底翻车，但确实像是出门忘带零花钱一样有点紧巴。',
+      '老DM帮你参谋一下：这档总和只适合玩纯粹的“单核偏科生”，千万别搞花里胡哨的兼职。',
+      '比标准 27 点购点稍微亏了几块肉，但如果你喜欢演那种“虽然底子薄但鬼点子多”的角色，倒也挺有味道。',
+      '属于经典的“鸡肋区”——弃之可惜，用着又总觉得少点底气。还有次数的话不妨再摇一把？',
+      '你看，主属性勉强能拎出来见人，至于剩下那几个负调整值……就当是角色性格有棱有角吧！',
+      '跑团嘛，有时候属性低一点反而能让队友更有成就感——比如每次你掉进坑里都得靠野蛮人捞上来。',
+      '手气还在热身阶段呢，这把就像是清晨第一炉还没烤透的面包，差了点意思。',
+      '要是实在没重骰次数了也别慌，加上背景的 +2/+1，主属性照样能撑起场子！',
+      '老DM偷偷告诉你：带着 50 多点进团的玩家，往往到了正戏投 d20 的时候个个都是神抽狗。',
+      '稍微有点逆风，不过问题不大，咱看看具体数字分布再决定去留！'
+    ]
+  },
+  {
+    min: 58, max: 62, label: '58–62', prob: '4.83%', color: '#e6c88a',
+    comments: [
+      '二十分之一的小逆风。比标准购点略微清瘦了一圈，不过骨架已经立住了，能跑！',
+      '老DM端详了一下：这组数挺接地气的，就像刚从卫兵营或者魔法学徒班毕业的新人，青涩但有盼头。',
+      '属于最让人纠结的一档——说它烂吧主属性也能看，说它好吧又总觉得下一把能出 75。',
+      '差不多每二十个建卡的冒险者里就有一个拿到这档，有短板才有人味儿嘛！',
+      '如果核心属性已经到了 15 或 16，那其实完全不虚，副属性低一点正好拿来演角色的小毛病。',
+      '手气中规中矩偏凉一点点，像是秋天的第一杯冰麦酒，稍微有点拔牙。',
+      '老DM建议：如果你选的是法师、游荡者或者弓箭手这种吃单属性的职业，这组其实已经够交差了。',
+      '差一点就摸到及格线啦，要不要再信骰娘最后一次？',
+      '这种面板我带团的时候见得多了，最后活到战役结局的反而是这群稳扎稳打的“普通人”。',
+      '虽说比平均值 73.5 少了一截，但只要分点分得巧，实战里照样生龙活虎！'
+    ]
+  },
+  {
+    min: 63, max: 67, label: '63–67', prob: '13.48%', color: '#dfd3b8',
+    comments: [
+      '挺实在的一组数！虽然比平均值稍微内敛了那么一丢丢，但放在桌子上已经是根正苗红的冒险者了。',
+      '老DM点头表示认可：没有白给的超模属性，也没有要命的硬伤，跑起团来最讲究战术和配合。',
+      '大约七八次投骰就会有一次落在这儿，相当于比标准 27 点购点略微紧凑一点的实用面板。',
+      '这种成色的卡，老DM最放心——既不用担心你被小怪一刀秒，也不用担心你一拳把 Boss 秒了。',
+      '很稳当！把高点往主属性和体质上一放，剩下的交给你聪明的大脑和队友就行。',
+      '有高有低、错落有致，这才叫投骰建卡嘛，要是六项全一样那多没意思。',
+      '如果你手里的重骰次数不多了，这组完全可以体体面面地锁下来开局！',
+      '像一把用顺手了的铁剑，虽然没镶宝石，但砍起哥布林来绝对不含糊。',
+      '主次分明的好底子，稍微搭一下背景加值，1 级该有的战力一分都不会少。',
+      '来，喝口水润润嗓子，这组属性已经稳过及格线了，想求稳还是想冲高全看你心情！'
+    ]
+  },
+  {
+    min: 68, max: 72, label: '68–72', prob: '24.17%', color: '#ede5d0',
+    comments: [
+      '哎，这把相当舒服！严丝合缝地卡在标准 27 点购点附近，属于教科书级别的标准冒险者身材。',
+      '四分之一的概率，不偏不倚！老DM我看到这种面板最舒心，平衡性拿捏得死死的。',
+      '主属性撑得起来，体质不亏，连次要属性都挺体面，挑不出毛病的一组好骰！',
+      '很地道、很正统的一把！就像酒馆里招牌的烤肉配黑麦面包，扎实、管饱、绝不翻车。',
+      '不管你想玩前排肉搏还是后排搓火球，这组底子都能稳稳托住你的构筑。',
+      '老DM笑眯眯地看着你：这手气很健康嘛，既没透支运气，又拿到了实打实的战斗力。',
+      '如果你是个喜欢原汁原味跑团体验的玩家，锁这组就对了，增一分太腻，减一分太瘦。',
+      '看着就很顺眼的一排数字，分点的时候完全不用抓耳挠腮地做痛苦取舍。',
+      '稳！太稳了！哪怕现在直接进本开打，你也是队伍里让人放心的中坚力量。',
+      '命运给你发了一张端端正正的入场券，来吧，选个喜欢的职业准备出发！'
+    ]
+  },
+  {
+    min: 73, max: 77, label: '73–77', prob: '27.47%', color: '#9be7a8',
+    comments: [
+      '正中红心！73.5 就是 4d6kh3 的理论黄金均值，而你稳稳落在了最甜的这个区间里！',
+      '比标准购点还要宽裕一截，老DM我都替你高兴——这组数分起来可太从容了！',
+      '看到没，这就是为什么大家都爱投骰子！比死板的购点多出来的这几分，全都是自由度。',
+      '主属性拉满之余，还能匀出不少点数给感知或者魅力，文武双全的苗子已经出来了！',
+      '超过四分之一的最高频甜点区，既有小欧一把的愉悦感，又完全在模组正常难度曲线内，完美！',
+      '手感相当温润啊朋友！哪怕玩圣武士或者游侠这种吃好几项属性的职业，这把也能喂得饱饱的。',
+      '老DM敲了敲黑板：听句劝，73 往上其实就已经赚了，要是只剩一两次重骰，见好就收绝对不亏！',
+      '漂亮！没有短板拖后腿，核心项又够硬朗，队友看到你的卡肯定要竖大拇指。',
+      '今天骰娘对你不薄啊，端上来一盘色香味俱全的黄金标准餐，趁热享用吧！',
+      '舒服！不管怎么排布这六个数字，最后出来的都是一张能打能抗的俊俏人物卡。'
+    ]
+  },
+  {
+    min: 78, max: 82, label: '78–82', prob: '19.17%', color: '#69db7c',
+    comments: [
+      '哟！手气热起来了啊！接近 80 点的总和，放在哪桌跑团都是妥妥的主力大腿苗子！',
+      '老DM推了推眼镜：可以啊，这组数比标准购点足足富裕了一整个大专长的属性量！',
+      '五分之一概率的优质高 roll！平时嫌圣武士、武僧太吃属性不敢玩？这把直接放心大胆地选！',
+      '我已经能想象到你在酒馆里一拍桌子、全队纷纷投来崇拜眼神的画面了。',
+      '这底子厚实得让人羡慕，不仅主属性硬邦邦，连平时拿来凑数的副属性都跟着沾了光。',
+      '老DM友善提醒：这已经稳居前 30% 的优等生席位了，千万别一时手痒点重骰给摇回 60 去！',
+      '好骰！既有撑门面的大数字，下限又兜得极稳，跑起模组来绝对如鱼得水。',
+      '你看这排数字，珠圆玉润的，老DM我看了都想自己建个卡上去爽两把了。',
+      '趁着这股红温劲儿，赶紧把心仪的职业和背景挑好，今天剑湾的地面都得让你踩出两个坑来！',
+      '相当体面的一把好手气！不用纠结了，锁下它，咱们准备去酒馆接大活儿！'
+    ]
+  },
+  {
+    min: 83, max: 87, label: '83–87', prob: '7.76%', color: '#40c057',
+    comments: [
+      '嚯！83 往上？！这可是前 10% 的准欧皇席位啊，老DM我得悄悄把后面的遭遇表翻出来加两只怪了！',
+      '好家伙，这手气烫得都能煎鸡蛋了！这总和已经顶得上别人 36 点豪华购点的配置了！',
+      '老DM看着你的骰池直嘬牙花子：你这是来跑 1 级模组的，还是满级大佬转生来炸鱼的？',
+      '十次投骰难遇一回的大丰收！三四个高属性随便挑，连弱项都快比普通村民强了！',
+      '快锁下快锁下！谁要是敢在 85 点左右还按重骰，老DM我都要替骰娘心疼！',
+      '这面板端上桌，队友直接安全感拉满——文能嘴炮说服城主，武能前排硬刚巨魔！',
+      '4 级升级的时候别人都在苦哈哈地补属性，你估计已经可以随便挑各种花活专长玩了！',
+      '今天出门是不是踩着祥云来的？这把骰子投得真是既响亮又漂亮！',
+      '刚好卡在“强得离谱”和“合理合法”的交界线上，爽度拉满，恭喜恭喜！',
+      '老DM宣布：从现在起你就是全村的希望，待会儿进本记得走第一个探路啊！'
+    ]
+  },
+  {
+    min: 88, max: 92, label: '88–92', prob: '1.66%', color: '#56b6c2',
+    comments: [
+      '等会儿？！88 到 92？！老DM我刚喝进嘴里的茶差点喷屏幕上——你这手是什么开过光的欧皇手？！',
+      '不到百分之二的概率被你随手一按就抽出来了？来人啊，快查查这位玩家是不是幸运女神的私生子！',
+      '不是，朋友，你这六边形已经圆满到快溢出来了，连一块短板都不给老DM留是吧？！',
+      '我翻了翻手里的模组剧本，突然开始替第一幕的哥布林小头目感到深深的绝望……',
+      '这面板要是放在修仙小说里，那就是天生至尊骨、满级混沌灵根开局啊！',
+      '全桌注意！真正的主角面板诞生了！以后遇到撬锁、说服、搬石头、认草药，全喊他一个人上就行！',
+      '老DM严肃警告：把你的手从重骰按钮上挪开！这组数要是洗掉了，我怕你今晚拍断大腿！',
+      '六十次投骰才难得一见的顶级神抽，每一个数字都在闪着金光，太顶了！',
+      '行了行了，别装低调了，赶紧给这位天选之子起个霸气点的名字吧！',
+      '有这身板打底，你想怎么兼职、怎么整活都行——因为光靠裸属性你就已经赢麻了！'
+    ]
+  },
+  {
+    min: 93, max: 97, label: '93–97', prob: '0.161%', color: '#f0b90b',
+    comments: [
+      '卧槽？！九十多点？！老DM我直接从椅子上弹起来了——你确定没偷偷按到旁边的“数值怪模式”？！',
+      '六百分之一的惊天大欧皇！我带团这么些年，亲眼见证 93+ 的次数一只手都数得过来！',
+      '平均每项属性都快 16 了？！别人建的是 1 级冒险者，你直接建了个少年半神出来是吧！',
+      '停停停！先别动鼠标，快按截图键！这种面板发到跑团群里，够大家伙酸上整整三个月！',
+      '老DM擦了擦额头上的冷汗：我现在给最终 Boss 临时报个健身班还来得及吗？',
+      '太离谱了，真的太离谱了！二十四颗骰子像是商量好了一样全往五和六上翻，骰娘今天怕不是暗恋你！',
+      '拿这组属性进新手村，村口恶霸看到你脑门上的金光都得当场跪下管你叫义父！',
+      '不用看推荐分配了，你这六个数字闭着眼睛乱塞，出来的都是怪物级猛人！',
+      '我宣布，今晚的幸运王座归你所有！赶紧锁死这张卡，开启你的无双传奇吧！',
+      '老DM服了，彻彻底底地服了——这运气，诸神在星界打牌都得请你去洗牌！'
+    ]
+  },
+  {
+    min: 98, max: 102, label: '98–102', prob: '0.00525%', color: '#ffd43b',
+    comments: [
+      '……多少？！破百了（98–102）？！老DM我揉了三遍眼睛，把眼镜摘下来擦了又戴上——这真是人类能投出来的数字？！',
+      '两万分之一的真·神明降世！！朋友，你老实告诉老DM，你是不是刚跟幸运女神泰摩拉拜过把子？！',
+      '六项属性几乎全在 16、17、18 扎堆？！这已经不是冒险者了，这是太阳神派来凡间微服私访的化身吧！',
+      '快截屏！立刻！马上！别碰任何重骰键！老DM我带团一辈子可能也就见证这一回了！',
+      '怪物图鉴里的成年红龙刚刚连夜打来电话，问能不能把它的出场费退了，它不想跟你打！',
+      '两万次投骰才出一回的旷世奇观，今天就在我眼皮子底下炸出来了……我得先缓口气！',
+      '什么叫天胡？这就叫教科书式的宇宙级天胡！连“数值怪模式”看到你这亲手投出来的面板都得自惭形秽！',
+      '这面板根本不需要什么战术配合了，你站在那儿本身就是一座移动的神殿！',
+      '老DM我已经放弃思考平衡性了——来吧，尽情享受这万中无一的神赐开局，你想怎么爽就怎么爽！',
+      '传奇还没有开始书写，但光看这排属性，吟游诗人的史诗就已经写好大结局了！'
+    ]
+  },
+  {
+    min: 103, max: 108, label: '103–108', prob: '0.000030%', color: '#ffe066',
+    comments: [
+      '【全体起立】103 以上？！三百万分之一到五百亿分之一的创世级神迹！！老DM我直接给你跪下了，这怎么可能投得出来啊？！',
+      '我手都在抖……你知道这什么概念吗？这相当于连续六次、二十四颗骰子几乎全出 6！你刚才那一下直接击穿了概率学天花板！',
+      '别建什么 1 级角色了，老DM我现在就把 DM 帷幕让给你，今天你来当主神，我来给你递茶！',
+      '三百万分之一的宇宙奇点！如果投到 108 更是 552 亿分之一！请立刻截图裱起来，这是能写进跑团都市传说的神迹！',
+      '诸神黄昏都没你这一把骰子动静大！整个费伦大陆的魔法女神刚才都低头看了一眼你的屏幕！',
+      '老DM我郑重宣布：这张卡拥有免死金牌级纪念价值，谁要是手滑点了重骰，全世界的跑团人都不会原谅你的！',
+      '全员 17、18 的纯天然真神面板……我怀疑你刚才那一下把未来十年的抽卡欧气全聚在这一锤子上了！',
+      '什么叫“天命所归”？以前我以为那是个成语，今天我终于亲眼见着活的了！',
+      '哪怕把深渊魔王直接拉到新手村门口，看到你这排金光闪闪的数字也得客客气气地先问声好！',
+      '无需任何修饰，老DM向你致以最崇高的敬意——去吧，传奇本人，整个世界都在等你落笔！'
+    ]
+  }
+];
+
+
+// 自由分配模式（4d6）：10类极值与分布形态锐评（老DM语气）
+const DICE_4D6_FREE_SHAPES = [
+  {
+    id: 'double18',
+    name: '🌟 双18神仙开局',
+    prob: '0.38%',
+    color: '#ffe066',
+    match: (s) => s[0] === 18 && s[1] === 18,
+    comments: [
+      '老DM眼珠子都快掉出来了：两颗满值 18？！不管剩下四项是多少，你这双核发动机已经直接焊死在天花板上了！',
+      '双 18 啊朋友！千分之三点八的含金量！平时那些嫌属性不够用的圣武士、武僧、刀锋咏叹调，今天随便挑！',
+      '哪怕后面几项全是白板，光靠这两个顶天立地的 18，你加上背景加值就能在 1 级拥有令怪物绝望的统治力！',
+      '好家伙，一手一个 18，你这是左右手各拎着一把神器出门啊！老DM强烈建议直接锁卡！',
+      '我带团最怕见到这种“双满开局”的狠人——主属性和副属性同时毕业，4 级就能放飞自我随便点专长了！',
+      '两颗 18 镇场子，这牌面比总和 85 但没高点的水桶卡还要暴躁十倍！'
+    ]
+  },
+  {
+    id: 'iceFire',
+    name: '⚡ 冰火两重天',
+    prob: '4.62%',
+    color: '#ff922b',
+    match: (s) => (s[0] >= 17 && s[5] <= 6) || (s[0] >= 16 && s[5] <= 4),
+    comments: [
+      '哈哈哈哈老DM最爱看这种卡了！一边是天神下凡的顶级长板，一边是惨不忍睹的深渊天坑，戏剧张力直接拉满！',
+      '神明给你开了一扇金碧辉煌的大门，然后顺手把你的窗户连同窗框一起炸了——绝佳的怪才角色模板！',
+      '别看总和好像挺正常，你这可是高风险高回报的“过山车身材”！主属性砍瓜切菜，弱项豁免一碰就碎！',
+      '听老DM一句劝：把那个最低分大大方方塞进智力或者魅力，演一个战力逆天但生活不能自理的偏科狂人，跑团节目效果绝对炸裂！',
+      '既有让人流口水的大数字，又有让人笑出声的大窟窿，这种有血有肉的极端卡往往最容易成为全团印象最深的角色！',
+      '一半是火焰，一半是海水！打架的时候你是战神，踩到自己短板检定的时候你就是全队的开心果！'
+    ]
+  },
+  {
+    id: 'dual17',
+    name: '🔥 双核高光 (双17+)',
+    prob: '3.92%',
+    color: '#69db7c',
+    match: (s) => s[0] >= 17 && s[1] >= 17 && !(s[0] === 18 && s[1] === 18),
+    comments: [
+      '两项 17 以上！老DM竖起大拇指：这可是不到 4% 概率的顶级双核底子，加上背景 +2/+1 立刻就能凑出双 18！',
+      '双主属性职业狂喜乱舞！不管你是想玩力魅双修的圣武士，还是敏感双修的武僧游侠，这把都给你安排得明明白白。',
+      '有这两根顶梁柱立在这儿，你这张卡的上限已经完全打开了，分点的时候嘴角都压不住了吧？',
+      '很多时候总和虚高不如双高点实在——而你这两颗 17+ 就是实打实的硬通货！',
+      '老DM看着眼热：主属性和体质（或副属性）一步到位，整个第一幕你都能横着走！',
+      '相当漂亮的“双子星”结构，攻守兼备，含金量极高的一把！'
+    ]
+  },
+  {
+    id: 'single18',
+    name: '👑 单核18擎天',
+    prob: '7.22%',
+    color: '#ffd43b',
+    match: (s) => s[0] === 18 && s[1] <= 16,
+    comments: [
+      '出 18 了！老DM敲桌庆贺：不管总和多少，只要有一颗原生 18，加上背景 +2 开局直接满 20，这就是一锤定音的王牌！',
+      '1 级就能拥有 20 点主属性（+5 调整值），你知道这意味着什么吗？意味着同级怪物的护甲在你面前跟纸糊的一样！',
+      '俗话说“千金难买一十八”，购点模式就算给你 36 点也买不出原生 18，冲着这颗独苗也值得认真考虑锁卡！',
+      '一柱擎天！只要选个吃单属性的职业（比如纯职法师、游荡者、弓箭战士），这颗 18 就能带你一路飞升！',
+      '老DM笑呵呵地说：看到那个 18 没有？那就是骰娘今天专门塞给你的红包！',
+      '有这一颗 18 坐镇中央，哪怕其他属性稍微朴素一点，实战火力也绝对是全队顶尖！'
+    ]
+  },
+  {
+    id: 'loneCarry',
+    name: '🗡️ 孤胆偏科王',
+    prob: '2.76%',
+    color: '#74c0fc',
+    match: (s) => s[0] >= 16 && s[1] <= 12,
+    comments: [
+      '全村凑钱供出一个大学生！唯一一个 16+ 独自扛起全队输出大旗，剩下五项全在旁边喊加油。',
+      '老DM乐了：这叫“极致的专项特化”！千万别选多属性职业，老老实实抱紧你的唯一强项，照样能当专精大师！',
+      '把所有天赋点全砸在一个技能树上了是吧？只要不让你干主业以外的杂活，你看起来完全像个高手！',
+      '典型的“一招鲜，吃遍天”面板。主属性负责帅，其他五项负责在安全的地方瑟瑟发抖。',
+      '虽然副属性稍微寒酸了点，但好钢全用在刀刃上了，选个纯单核职业完全不慌！',
+      '一人带飞全场的既视感——我是说你那项最高属性一个带飞另外五个兄弟！'
+    ]
+  },
+  {
+    id: 'epicDump',
+    name: '🎭 灵魂单废 (含3–4)',
+    prob: '1.73%',
+    color: '#ffa8a8',
+    match: (s) => s[5] <= 4 && s[4] >= 8,
+    comments: [
+      '噗——前面五项看着都像正常人，怎么混进来一个 3 或 4 的绝世大坑？！这可是不到 2% 概率的喜剧之王面板！',
+      '老DM眼睛一亮：别急着嫌弃那个超低分！五项健全带一个极端短板，正是跑团里最出彩、最好玩的“灵魂缺陷”！',
+      '想想看：要是把这 3 或 4 放在魅力，你就是开口冻死全场的冷面杀手；放在智力，你就是只会用拳头讲道理的快乐莽夫！',
+      '单次投出 3 的概率只有 1/1296！能精准只坑一项而不连累其他五个兄弟，某种意义上也是神准！',
+      '千万别放体质！老DM苦口婆心劝你：只要不把这个 3/4 塞给体质，这张卡跑起团来绝对欢乐无穷！',
+      '这一点点致命又迷人的小残缺，往往比全员平平无奇的卡更容易写出神级角色背景！'
+    ]
+  },
+  {
+    id: 'doubleDump',
+    name: '🕳️ 双天坑预警 (两项≤6)',
+    prob: '1.07%',
+    color: '#ff8787',
+    match: (s) => s[4] <= 6,
+    comments: [
+      '嘶……两项 6 以下的深坑！老DM温馨提示：这角色出门得随身贴两张“小心轻放”的标签。',
+      '百分之一的“双重软肋”身材。分点的时候可得动动脑筋了，千万别把敏捷和体质同时扔进坑里！',
+      '两门功课严重不及格，意味着你在某两个领域的检定基本等于放弃治疗——记得紧紧抱住队友的大腿！',
+      '老DM拍拍你的肩：虽然有两个大坑，但如果前面有高点撑着，演一个身残志坚的怪人倒也别有一番风味。',
+      '一旦遇上针对你弱项的豁免，画面可能会相当酸爽……还有重骰次数的话不妨三思！',
+      '这叫“战略性放弃两个方向”，只要你不去主动触发那两项检定，四舍五入就是没短板！'
+    ]
+  },
+  {
+    id: 'minorDump',
+    name: '🎲 经典小短板 (单项5–6)',
+    prob: '8.25%',
+    color: '#ffd8a8',
+    match: (s) => s[5] >= 5 && s[5] <= 6 && s[4] >= 9,
+    comments: [
+      '带一个小巧可爱的 5 或 6（-2 调整值），其余全员体面！老DM觉得这种卡最适合拿来给角色加点小癖好。',
+      '人无完人嘛！正好有一个无伤大雅的小短板，放在不常用的属性上既不影响打架，又能提供满满的吐槽素材。',
+      '八成以上的老玩家看到这种“五保一短板”都会会心一笑——这才是投骰建卡该有的胡椒面儿！',
+      '只要把这颗 5/6 藏在职业用不上的角落里，实战里你几乎感觉不到它的副作用。',
+      '给你的角色设计一个小弱点吧：比如路痴（低感知）、社恐（低魅力）或者手无缚鸡之力的书生（低力量）！',
+      '恰到好处的一点小瑕疵，让这张人物卡一下子活了起来！'
+    ]
+  },
+  {
+    id: 'ironBucket',
+    name: '🛡️ 无短板铁桶阵 (全员12+)',
+    prob: '3.04%',
+    color: '#63e6be',
+    match: (s) => s[5] >= 12 && s[0] <= 16,
+    comments: [
+      '哟，稀客啊！居然连一个低于 12 的数字都没有！老DM宣布：你就是全队豁免检定最稳的“铁桶六边形”！',
+      '仅 3% 概率的“全员正加值”体质！不管 DM 冷不丁让你投什么冷门属性检定，你都能淡定地掏出至少 +1！',
+      '虽然没有 18 那种抓人眼球的噱头，但这种浑身上下找不到一块软肋的底子，实战里扎实得可怕！',
+      '强迫症患者看到这排整整齐齐的 12+ 简直要舒适得叹气了——毫无死角的全能优等生！',
+      '拿去玩吟游诗人、游侠或者多面手人类，你会发现这世上就没有你不擅长干的活儿！',
+      '老DM称赞道：滴水不漏！敌人想找你的弱点下黑手都找不到地方下嘴！'
+    ]
+  },
+  {
+    id: 'flatMediocre',
+    name: '🥣 温吞水桶 (最高≤13且极差≤3)',
+    prob: '1.47%',
+    color: '#ced4da',
+    match: (s) => s[0] <= 13 && (s[0] - s[5]) <= 3,
+    comments: [
+      '噗，老DM看乐了：六个数字整整齐齐抱团取暖，最高不过 13，最低也不拉胯——你这是建了个村卫兵队长吧！',
+      '传说中的“平平无奇水桶腰”！虽然总和看着不低，但愣是揪不出一个能当大哥的主属性，太搞笑了！',
+      '不到 1.5% 的概率才能投出这么波澜不惊的一条直线，骰娘今天心情是有多平静？',
+      '这种卡俗称“干啥啥还行，主攻第一名（倒数）”——强烈建议重骰，或者玩个靠变身打架的月亮德鲁伊！',
+      '别人投骰子是坐过山车，你投骰子是在小河沟里划平底船，连个浪花都不带翻的！',
+      '老DM支招：要是真拿这组开局，记得选个人类或者吟游诗人，把“全能打杂”贯彻到底！'
+    ]
+  }
+];
+
+// 固定顺序模式（4d6fixed）：第二层 六维单项极值吐槽（6属性 × 极高/极低）
+const DICE_4D6_FIXED_STAT_EXTREMES = {
+  '力量': {
+    high: [
+      '【力量天胡】这膀子力气，去酒馆跟兽人掰手腕都能把桌子直接按穿！',
+      '【天生神力】固定顺序第一发就炸出巨力！你不拎把双手大剑或战斧都对不起这身腱子肉！',
+      '【人形攻城锤】门锁了？开什么锁，老DM准你直接连门带框一起端走！',
+      '【肌肉霸权】第一项力量就给你拉满，骰娘这是按着你的头让你去前排当猛男啊！'
+    ],
+    low: [
+      '【手无缚鸡之力】这力量……老DM怀疑你穿件重甲都会直接被自己的铠甲压趴在地上！',
+      '【拧不开瓶盖】千万别选近战硬砍了朋友，你的背包负重估计放两根麻绳加一袋干粮就得喘气！',
+      '【豆芽菜体格】风吹过来都得扶着墙走，好在法师和敏捷系职业完全不看你能不能搬砖！',
+      '【举不动铁剑】连哥布林的短木棒拿在你手里都嫌沉，乖乖走灵巧或施法路线吧！'
+    ]
+  },
+  '敏捷': {
+    high: [
+      '【鬼魅身法】敏捷直接飙顶！箭矢擦着鼻尖飞过去你都能顺手接住当牙签使！',
+      '【快如闪电】先攻条永远的榜一大哥，护甲等级、反射豁免、灵巧武器全线起飞！',
+      '【神行太保】这敏捷落位太香了，不管你是穿轻甲当游荡者，还是后排拉长弓，手感和闪避都拉满了！',
+      '【踏雪无痕】走路连猫都听不见动静，天生就是吃潜行、射击和杂技这碗饭的料！'
+    ],
+    low: [
+      '【平地摔十级】这敏捷……老DM已经预见到你在潜行检定时一脚踩碎八个枯树枝的画面了！',
+      '【慢动作回放】先攻永远在队尾殿后，穿轻甲基本等于裸奔——快找件重甲把自己严严实实焊死在铁罐头里！',
+      '【手脚不协调】躲火球术的时候别人是翻滚，你大概率是原地用脸接球！',
+      '【铁板关节】千万别去拆陷阱或者走独木桥，老DM怕你还没见着怪就先掉进沟里了！'
+    ]
+  },
+  '体质': {
+    high: [
+      '【铁打的血牛】体质飙到顶！老DM最佩服这种固定投出高体质的狠人，血条厚得像城墙，施法专注打都打不断！',
+      '【百毒不侵】别人喝假酒掉半管血，你喝毒药都像是在品气泡水！生存能力直接拉满！',
+      '【人形不倒翁】不管最后选什么职业，有这副钢筋铁骨托底，老DM想把你放倒都得费老大劲了！',
+      '【生命力泛滥】1 级血量就顶别人两级，站在前排光是喘气都能给队友带来满满的安全感！'
+    ],
+    low: [
+      '【脆皮玻璃人】警报！体质跌入谷底！老DM含泪劝你：千万、绝对不要站前排，哥布林打个喷嚏你都能进死亡豁免！',
+      '【林黛玉倒拔垂杨柳（失败版）】走两步路都要咳三声的病弱美人体格，升级加血的时候每次都像是在渡劫！',
+      '【一碰就碎】这体质要是去当近战，牧师队友的治疗法术位全给你一个人刷都不够用，老老实实躲在三十尺外吧！',
+      '【风吹就感冒】生命值上限极其感人，建议随身常备治疗药水，看见敌人举弓先找掩体趴下！'
+    ]
+  },
+  '智力': {
+    high: [
+      '【最强大脑】智力一骑绝尘！奥术学院的导师见了你都得倒履相迎，不玩法师或奇械师简直暴殄天物！',
+      '【活体百科全书】地城里的古代符文、历史谜题、奥术机关在你眼里跟小儿科一样透明！',
+      '【算无遗策】固定位置精准把高点喂给了智力，老DM准备的烧脑谜题看来是要被你一秒拆穿了！',
+      '【天生大法师】这脑容量，1 级法术豁免难度直接拉满，怪物想躲开你的法术可太难了！'
+    ],
+    low: [
+      '【清澈的愚蠢】这智力……看到超过十个字的任务卷轴估计就开始犯困，但是演一个纯天然直球莽夫简直绝配！',
+      '【九年义务教育漏网之鱼】算账的时候经常把五个铜板算成八个，不过只要拳头够硬，数学好不好完全不重要！',
+      '【大脑光滑如镜】夺心魔路过你身边都得摇摇头走开——因为实在吸不出什么脑浆子！',
+      '【文盲战神预备役】奥术？历史？宗教？统统听不懂！你只知道手里的家伙往哪儿砸最响！'
+    ]
+  },
+  '感知': {
+    high: [
+      '【鹰眼先知】感知拉满！草丛里藏着几只地精、NPC 说话有没有眨眼心虚，全逃不过你的法眼！',
+      '【神明与自然的宠儿】牧师、德鲁伊、游侠、武僧随便挑！你的直觉准得像开了全图雷达！',
+      '【人间清醒】想偷袭你或者给你下精神控制法术？门儿都没有，你的洞察和察觉稳如泰山！',
+      '【万物通灵】连风吹草动都在向你汇报敌情，老DM想藏个暗门或者伏兵都得头疼半天了！'
+    ],
+    low: [
+      '【眼神不太好】这感知……刺客就算站在你面前擦匕首，你都可能热情地问人家是不是来削苹果的！',
+      '【天然呆路痴】在森林里迷路、在酒馆里被忽悠、踩中地上明晃晃的捕兽夹——你的跑团日常注定充满惊喜！',
+      '【心大如斗】察觉和洞察基本靠缘分，敌人放个魅惑或者幻术你第一个举手信以为真！',
+      '【毫无危机感】天塌下来都以为是树叶掉下来的乐天派，记得让高感知的队友牵着你走！'
+    ]
+  },
+  '魅力': {
+    high: [
+      '【魅魔本魔】魅力炸裂！你往酒馆柜台前一靠，老板娘连夜给你免单，巨龙听了你的情话都得脸红！',
+      '【天选交际花】术士、魔契师、吟游诗人、圣武士四大魅力职业任君采撷，嘴炮就是你最强的AOE！',
+      '【天生领袖】这气场、这颜值、这口才，全队出去谈判只要你一开口，难度直接降两档！',
+      '【万物皆可忽悠】能动嘴解决的战斗绝不动手——因为你这张嘴比刀子还管用！'
+    ],
+    low: [
+      '【社交核武器】这魅力……你去跟守卫打招呼，守卫原本不想拔剑的，听完你说话直接吹响了敌袭号角！',
+      '【开口即冷场】不管是游说、欺瞒还是表演，你一开口空气瞬间凝固，非常适合扮演阴郁孤僻的独行侠！',
+      '【气场负分】酒馆里的狗路过你脚边都得夹着尾巴绕道走，社交场合请务必让队友替你发言！',
+      '【钢铁直球】不会说漂亮话，更不会看人脸色，但这种臭脾气老兵或怪咖人设演起来反而带感极了！'
+    ]
+  }
+};
+
+// 固定顺序模式（4d6fixed）：第三层 经典人物原型与职业契合推演
+const DICE_4D6_FIXED_ARCHETYPES = [
+  {
+    id: 'muscleBrute',
+    title: '🪓 经典肌肉莽夫（高力/体 · 低智/魅）',
+    match: (m) => (m['力量'] >= 15) && (m['智力'] <= 8 || m['魅力'] <= 8) && m['体质'] >= 11,
+    comments: [
+      '老DM一拍大腿：太对味了！四肢极其发达、脑回路干脆利落，这不妥妥的纯血野蛮人或重装战士吗？能动手解决的事，咱绝不废话半句！',
+      '智慧和社交全拿去换肌肉了是吧？进地城遇到谜题门直接一斧头劈开，这才叫男人的浪漫！',
+      '骰娘亲手给你捏了个“没有感情的推土机”——只要不让你去跟贵族谈判，战场上你就是移动天灾！'
+    ]
+  },
+  {
+    id: 'glassCannonCaster',
+    title: '🔮 病弱天才玻璃炮（高施法 · 低体质≤8）',
+    match: (m) => (m['智力'] >= 15 || m['魅力'] >= 15 || m['感知'] >= 15) && m['体质'] <= 8,
+    comments: [
+      '咳咳……满脑子毁天灭地的奥术真理，奈何身体虚得连法袍都嫌沉！老DM强烈建议你躲在队友身后三十尺施法，千万别让近战怪摸到衣角！',
+      '极具传奇色彩的“短命大贤者”面板！输出有多炸裂，血条就有多刺激，记得1级法术一定把护盾术和法师护甲焊在身上！',
+      '手握顶级施法天赋却配了一副玻璃身板，每次投专注豁免和生命骰都会让你心跳加速，太有戏了！'
+    ]
+  },
+  {
+    id: 'silverTongueScoundrel',
+    title: '🎭 嘴强王者（高魅力 · 低力/敏）',
+    match: (m) => m['魅力'] >= 15 && m['力量'] <= 9 && m['敏捷'] <= 10,
+    comments: [
+      '打架是不可能亲自动手打架的，这辈子全靠一张巧嘴和契约大佬（或队友）混饭吃！天生的吟游诗人、魔契师、术士苗子！',
+      '手不能提、肩不能扛，偏偏长了一张能把死人忽悠活的嘴——老DM宣布你就是全队的谈判专家兼后排法炮！',
+      '典型的“贵族少爷/江湖大忽悠”模板，遇到危险先摇人或者放魔能爆，体面人从不近身肉搏！'
+    ]
+  },
+  {
+    id: 'blindAssassin',
+    title: '🗡️ 零常识鬼影刺客（高敏捷 · 低感知/智力）',
+    match: (m) => m['敏捷'] >= 15 && (m['感知'] <= 8 || m['智力'] <= 8),
+    comments: [
+      '身法快得像一道闪电，可惜脑子或眼神有点跟不上脚后跟！属于“潜行满分潜进敌营，结果忘了自己去干嘛”的搞笑刺客模板！',
+      '拔刀和射箭的速度天下第一，但极其容易被路边的假宝箱骗过去——玩个游荡者或敏捷战士绝对笑料百出！',
+      '老DM乐坏了：反应神经拉满、常识储备清零，这种呆萌高敏杀手跑起团来太讨喜了！'
+    ]
+  },
+  {
+    id: 'pureMeatshield',
+    title: '🛡️ 纯肉沙包 / 荒野变形救星（高体质 · 其余全≤11）',
+    match: (m) => m['体质'] >= 15 && m['力量'] <= 11 && m['敏捷'] <= 11 && m['智力'] <= 11 && m['感知'] <= 12 && m['魅力'] <= 11,
+    comments: [
+      '全身上下只有“抗揍”这一项技能点满了！老DM给你指条明路：要么靠背景加值硬拉一项主属性，要么选月亮德鲁伊变身成棕熊打架！',
+      '打人虽然不疼，但敌人砍你一晚上也砍不动！纯天然的活体盾牌，站桩挨打第一名！',
+      '别人是六边形战士，你是“血条精”转世——只要活着就能把对手活活耗死！'
+    ]
+  },
+  {
+    id: 'paladinMonkChosen',
+    title: '✨ 多核天选之子（圣武士/武僧神仙落位）',
+    match: (m) => ((m['力量'] >= 15 && m['魅力'] >= 14) || (m['敏捷'] >= 15 && m['感知'] >= 14)) && m['体质'] >= 12,
+    comments: [
+      '老DM惊呆了：固定顺序居然能精准把点数砸进圣武士/武僧的核心三围里？！这就是百年难遇的“天选本命卡”啊！',
+      '别人固定投骰是凑合着选职业，你这是骰娘按着头让你去当圣武士/武僧/游侠宗师！主副属性加体质全齐活了！',
+      '严丝合缝！就像这六个数字认识字一样自己跑进了最完美的格子，直接锁下开爽吧！'
+    ]
+  },
+  {
+    id: 'physicalBeast',
+    title: '⚔️ 纯血武夫（上三维远高于下三维）',
+    match: (m) => (m['力量'] + m['敏捷'] + m['体质']) - (m['智力'] + m['感知'] + m['魅力']) >= 12,
+    comments: [
+      '力、敏、体上三路全线飘红，智、感、魅下三路集体躺平！老DM一看就知道，这是天生的前排战神、物理绞肉机！',
+      '什么魔法、神学、社交礼仪统统靠边站，你浑身上下每一块肌肉都是为了物理超度敌人而生的！',
+      '极其纯粹的武人坯子！战士、野蛮人闭着眼睛选，砍就完事了！'
+    ]
+  },
+  {
+    id: 'mentalSage',
+    title: '📜 轮椅上的大贤者（下三维远高于上三维）',
+    match: (m) => (m['智力'] + m['感知'] + m['魅力']) - (m['力量'] + m['敏捷'] + m['体质']) >= 12,
+    comments: [
+      '脑子、直觉和口才全部顶尖，唯独肉体凡胎弱不禁风！妥妥的“坐轮椅指点江山”的幕后军师兼大施法者模板！',
+      '精神三维拉满，物理三维全靠队友推车——法师、牧师、吟游诗人、术士随便挑，千万别去前排凑热闹！',
+      '老DM感叹：这就是传说中的“肉体苦弱，奥术飞升”吧！站桩施法和社交推理全包圆了！'
+    ]
+  },
+  {
+    id: 'jackOfAllTrades',
+    title: '⚖️ 稳健万金油（全员均衡）',
+    match: (m, vals) => (Math.max(...vals) - Math.min(...vals)) <= 4 && Math.min(...vals) >= 10,
+    comments: [
+      '固定顺序能投出这么匀称的六边形，手气相当稳健！哪儿都不缺斤少两，选什么职业都不会出现致命短板！',
+      '老DM点头赞许：不偏科的好苗子，配合背景的 +2/+1 把主属性往上推一推，就是一张非常舒服的全能人物卡。',
+      '既能上前排搭把手，又能在社交和探索里帮上忙，队伍里最受欢迎的万金油队友！'
+    ]
+  }
+];
+
+function computeBestClassesForFixedStats(attrMap) {
+  const specs = [
+    { name: '战士', score: Math.max(attrMap['力量'], attrMap['敏捷']) * 2.2 + attrMap['体质'] * 1.4 },
+    { name: '野蛮人', score: attrMap['力量'] * 2.3 + attrMap['体质'] * 1.6 + attrMap['敏捷'] * 0.6 },
+    { name: '游荡者', score: attrMap['敏捷'] * 2.5 + Math.max(attrMap['智力'], attrMap['魅力'], attrMap['感知']) * 0.9 + attrMap['体质'] * 0.8 },
+    { name: '法师', score: attrMap['智力'] * 2.6 + attrMap['体质'] * 1.1 + attrMap['敏捷'] * 0.9 },
+    { name: '牧师', score: attrMap['感知'] * 2.4 + attrMap['体质'] * 1.3 + Math.max(attrMap['力量'], attrMap['敏捷']) * 0.8 },
+    { name: '德鲁伊', score: attrMap['感知'] * 2.4 + attrMap['体质'] * 1.3 + attrMap['敏捷'] * 0.8 },
+    { name: '术士', score: attrMap['魅力'] * 2.5 + attrMap['体质'] * 1.3 + attrMap['敏捷'] * 0.8 },
+    { name: '魔契师', score: attrMap['魅力'] * 2.5 + attrMap['体质'] * 1.2 + attrMap['敏捷'] * 0.9 },
+    { name: '吟游诗人', score: attrMap['魅力'] * 2.4 + attrMap['敏捷'] * 1.2 + attrMap['体质'] * 1.0 },
+    { name: '圣武士', score: attrMap['力量'] * 1.8 + attrMap['魅力'] * 1.6 + attrMap['体质'] * 1.2 },
+    { name: '游侠', score: attrMap['敏捷'] * 1.9 + attrMap['感知'] * 1.5 + attrMap['体质'] * 1.1 },
+    { name: '武僧', score: attrMap['敏捷'] * 1.9 + attrMap['感知'] * 1.6 + attrMap['体质'] * 1.1 },
+    { name: '奇械师', score: attrMap['智力'] * 2.4 + attrMap['体质'] * 1.3 + attrMap['敏捷'] * 0.9 }
+  ];
+  specs.sort((a, b) => b.score - a.score);
+  const maxVal = Math.max(...Object.values(attrMap));
+  if (maxVal <= 12 && attrMap['感知'] >= 10) {
+    // 全员偏低时月亮德鲁伊变身救场提示
+    return { top: specs.slice(0, 3).map(s => s.name), best: specs[0].name, note: '（若全属性偏低，选【德鲁伊】走月亮结社变身野兽可无视自身物理面板！）' };
+  }
+  return { top: specs.slice(0, 3).map(s => s.name), best: specs[0].name, note: '' };
+}
+
+const last4d6CommentByBand = {};
+const last4d6ShapeByKey = {};
+
+function pickFromListNoRepeat(list, cacheObj, key) {
+  if (!Array.isArray(list) || list.length === 0) return '';
+  if (list.length === 1) return list[0];
+  let idx = Math.floor(Math.random() * list.length);
+  if (cacheObj[key] === idx) {
+    idx = (idx + 1 + Math.floor(Math.random() * (list.length - 1))) % list.length;
+  }
+  cacheObj[key] = idx;
+  return list[idx];
+}
+
+function get4d6TotalBand(total) {
+  for (let i = 0; i < DICE_4D6_TOTAL_BANDS.length; i++) {
+    const b = DICE_4D6_TOTAL_BANDS[i];
+    if (total >= b.min && total <= b.max) return b;
+  }
+  return total < 18 ? DICE_4D6_TOTAL_BANDS[0] : DICE_4D6_TOTAL_BANDS[DICE_4D6_TOTAL_BANDS.length - 1];
+}
+
+function pick4d6TotalComment(total, pool, isFixedMode) {
+  const band = get4d6TotalBand(total);
+  const comment = pickFromListNoRepeat(band.comments, last4d6CommentByBand, band.label);
+  const values = Array.isArray(pool) && pool.length === 6 ? pool.map(p => p.value) : [];
+  let shapeMeta = null;
+  let fixedMeta = null;
+
+  if (values.length === 6) {
+    const sorted = [...values].sort((a, b) => b - a);
+    if (!isFixedMode) {
+      for (const sh of DICE_4D6_FREE_SHAPES) {
+        if (sh.match(sorted)) {
+          shapeMeta = {
+            name: sh.name,
+            prob: sh.prob,
+            color: sh.color,
+            comment: pickFromListNoRepeat(sh.comments, last4d6ShapeByKey, 'free_' + sh.id)
+          };
+          break;
+        }
+      }
+    } else {
+      const attrMap = {};
+      FIXED_ATTR_ORDER.forEach((a, i) => { attrMap[a] = values[i]; });
+      const statNotes = [];
+      for (const a of FIXED_ATTR_ORDER) {
+        const v = attrMap[a];
+        if (v >= 17 && DICE_4D6_FIXED_STAT_EXTREMES[a]?.high) {
+          statNotes.push(a + ' ' + v + '：' + pickFromListNoRepeat(DICE_4D6_FIXED_STAT_EXTREMES[a].high, last4d6ShapeByKey, 'fx_hi_' + a));
+        } else if (v <= 6 && DICE_4D6_FIXED_STAT_EXTREMES[a]?.low) {
+          statNotes.push(a + ' ' + v + '：' + pickFromListNoRepeat(DICE_4D6_FIXED_STAT_EXTREMES[a].low, last4d6ShapeByKey, 'fx_lo_' + a));
+        }
+      }
+      let archTitle = '🎲 宿命天成（固定顺序落位）';
+      let archComment = '六个数字各归其位！顺着骰娘给你安排的长短板去选职业，往往能碰撞出最意想不到的角色灵魂。';
+      for (const arch of DICE_4D6_FIXED_ARCHETYPES) {
+        if (arch.match(attrMap, values)) {
+          archTitle = arch.title;
+          archComment = pickFromListNoRepeat(arch.comments, last4d6ShapeByKey, 'arch_' + arch.id);
+          break;
+        }
+      }
+      const rec = computeBestClassesForFixedStats(attrMap);
+      fixedMeta = {
+        archTitle,
+        archComment,
+        statNotes: statNotes.slice(0, 2),
+        topClasses: rec.top,
+        bestClass: rec.best,
+        note: rec.note
+      };
+    }
+  }
+
+  return { band, comment, shapeMeta, fixedMeta };
+}
+
+
+// 4d6取高3投骰函数 - 支持自由分配(4d6)与固定顺序(4d6fixed)
+function rollFree4d6Attributes() {
     state.rollHistory = [];
     for (let group = 0; group < 5; group++) {
         const pool = [];
@@ -9656,25 +11129,77 @@ function roll4d6Attributes() {
     checkRollEasterEgg(state.rollHistory[0].total);
 }
 
-// 彩蛋检查函数
-function checkRollEasterEgg(total) {
-    let message = '';
-    let color = '';
 
-    if (total >= 95) {
-        message = '孩子，这运气有点太逆天了！';
-        color = 'var(--gold)';
-    } else if (total >= 90) {
-        message = '哇塞，难道你是天命之子？';
-        color = 'var(--accent)';
-    } else if (total <= 60) {
-        message = '酋长，我们回去吧...';
-        color = 'var(--red)';
+function roll4d6Attributes() {
+    if (state.attributeMode !== '4d6fixed') return rollFree4d6Attributes();
+    if (state.rollsRemaining <= 0) return;
+    state.rollsRemaining--;
+    const isFixedMode = state.attributeMode === '4d6fixed';
+    const pool = [];
+
+    // Roll 6次4d6取高3，生成投骰池
+    for (let i = 0; i < 6; i++) {
+        const rolls = [];
+        for (let j = 0; j < 4; j++) {
+            rolls.push(Math.floor(Math.random() * 6) + 1);
+        }
+        const sortedRolls = [...rolls].sort((a, b) => b - a);
+        const value = sortedRolls[0] + sortedRolls[1] + sortedRolls[2];
+        pool.push({
+            value: value,
+            rolls: rolls,
+            sortedRolls: sortedRolls,
+            fixedAttr: isFixedMode ? FIXED_ATTR_ORDER[i] : null
+        });
     }
 
-    if (message) {
-        // 显示彩蛋消息（使用临时通知）
-        showEasterEggMessage(message, color);
+    // 自由分配模式按从大到小排序；固定顺序模式保持 力→敏→体→智→感→魅 原始顺序
+    if (!isFixedMode) {
+        pool.sort((a, b) => b.value - a.value);
+    }
+
+    // 计算总和与老DM多维评语
+    const total = pool.reduce((sum, item) => sum + item.value, 0);
+    const commentMeta = pick4d6TotalComment(total, pool, isFixedMode);
+
+    // 保存到历史记录（最多保存5条）
+    const historyEntry = {
+        pool: pool,
+        total: total,
+        isFixed: isFixedMode,
+        commentMeta: commentMeta,
+        timestamp: Date.now()
+    };
+    state.rollHistory.unshift(historyEntry);
+    if (state.rollHistory.length > 5) {
+        state.rollHistory.pop();
+    }
+
+    // 更新当前投骰池
+    state.dicePool = pool;
+
+    if (isFixedMode) {
+        state.dicePoolAssigned = {};
+        FIXED_ATTR_ORDER.forEach((attr, idx) => {
+            state.dicePoolAssigned[attr] = idx;
+            state.attributes[attr] = pool[idx].value;
+        });
+        if (typeof initializeBgBonuses === 'function') initializeBgBonuses();
+    } else {
+        state.dicePoolAssigned = {};
+    }
+
+    // 检查彩蛋
+    checkRollEasterEgg(total, commentMeta);
+    requestRender();
+}
+
+// 彩蛋检查函数
+function checkRollEasterEgg(total, rolledMeta) {
+    const meta = rolledMeta || pick4d6TotalComment(total, state.dicePool, state.attributeMode === '4d6fixed');
+    if (total >= 88 || total <= 62 || (meta.shapeMeta && (meta.shapeMeta.name.includes('18') || meta.shapeMeta.name.includes('冰火')))) {
+        const extra = meta.shapeMeta ? ` · ${meta.shapeMeta.name}` : (meta.fixedMeta ? ` · ${meta.fixedMeta.archTitle}` : '');
+        showEasterEggMessage(`[${meta.band.label}${extra}] ${meta.comment}`, meta.band.color);
     }
 }
 
@@ -9770,6 +11295,14 @@ function handleRecommendAttributes() {
         state.attributes[recommended[0]] = 18;
         state.attributes[recommended[1]] = 18;
         state.attributes[recommended[2]] = 18;
+    } else if (mode === '4d6fixed') {
+        if (state.dicePool.length === 6) {
+            state.dicePoolAssigned = {};
+            FIXED_ATTR_ORDER.forEach((attr, idx) => {
+                state.dicePoolAssigned[attr] = idx;
+                state.attributes[attr] = state.dicePool[idx].value;
+            });
+        }
     } else if (mode === '4d6') {
         // 4d6模式：智能分配投骰池数值
         if (state.dicePool.length === 0) return; // 没有投骰池则不处理
@@ -10641,7 +12174,7 @@ async function writeVariables(payload) {
         }
       delete next.mvu_lite_backup;
       delete next.spell_metadata_backup;
-      next.mvu_lite_ui=Object.fromEntries(Object.entries(next.mvu_lite_ui || {}).map(([name,prefs])=>[name,Object.fromEntries(Object.entries(prefs || {}).filter(([key,value])=>['头像','玩家名'].includes(key) && typeof value==='string' && value.trim() && value!=='systems/dnd5e/icons/svg/actors/character.svg'))]).filter(([,prefs])=>Object.keys(prefs).length));
+      next.mvu_lite_ui=Object.fromEntries(Object.entries(next.mvu_lite_ui || {}).map(([name,prefs])=>[name,Object.fromEntries(Object.entries(prefs || {}).filter(([key,value])=>['玩家名'].includes(key) && typeof value==='string' && value.trim()))]).filter(([,prefs])=>Object.keys(prefs).length));
       if (!Object.keys(next.mvu_lite_ui).length) delete next.mvu_lite_ui;
         await window.replaceVariables(next,scope);
         const actual = unwrap((await window.getVariables(scope))?.stat_data);

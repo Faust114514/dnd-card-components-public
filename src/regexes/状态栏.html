@@ -93,7 +93,7 @@ function validateDndEffects(root, issue) {
         if (!object(change)) { fail(cp,'变化项必须是对象'); return; }
         for (const key of ['path','key','amount','operator']) if (Object.hasOwn(change,key)) fail([...cp,key],'不支持字段别名；请使用 target/mode/value');
         const target = change.target;
-        if (!targets.has(target) && !/^save\.(str|dex|con|int|wis|cha)$/.test(target || '') && !(typeof target === 'string' && target.startsWith('skill.') && skills.has(target.slice(6)))) fail([...cp,'target'],`不支持的效果目标：${target}`);
+        if (!targets.has(target) && !/^(?:save|stat)\.(str|dex|con|int|wis|cha)$/.test(target || '') && !(typeof target === 'string' && target.startsWith('skill.') && skills.has(target.slice(6)))) fail([...cp,'target'],`不支持的效果目标：${target}`);
         const mode = change.mode ?? 'add';
         if (!['add','multiply','override','upgrade','downgrade'].includes(mode)) fail([...cp,'mode'],`不支持的运算方式：${mode}`);
         for (const key of ['enabled']) if (change[key] !== undefined && typeof change[key] !== 'boolean') fail([...cp,key],`${key} 必须是真/假`);
@@ -231,7 +231,7 @@ function convertWeaponFromSchema(name, raw = {}) {
         weight: normalizeNumber(raw.重量, 0),
         value: normalizeString(raw.价值, ''),
         isEquipped: !!raw.已装备,
-        requiresAttunement: !!raw.需要同调,
+        requiresAttunement: !!raw.需要同调 || (raw.规则标签 || []).includes('需同调'),
         isAttuned: !!raw.已同调,
         effects: normalizeEffects(raw.effects)
     };
@@ -254,7 +254,7 @@ function convertEquipmentFromSchema(name, raw = {}, category = 'misc') {
         weight: normalizeNumber(raw.重量, 0),
         value: normalizeString(raw.价值, ''),
         isEquipped: !!raw.已装备,
-        requiresAttunement: !!raw.需要同调,
+        requiresAttunement: !!raw.需要同调 || (raw.规则标签 || []).includes('需同调'),
         isAttuned: !!raw.已同调,
         details: normalizeString(raw.描述, ''),
         tags: normalizeString(raw.属性特征 ?? raw.标签 ?? '', ''),
@@ -457,9 +457,9 @@ function calculateACDetails(mode = (characterData.acMode || 'auto')) {
     if (!characterData || !characterData.stats) return { value: 10, description: '—', usingArmor: false };
     mode = normalizeAcMode(mode, 'auto');
     
-    const dexMod = getModifier(characterData.stats.dex);
-    const conMod = getModifier(characterData.stats.con);
-    const wisMod = getModifier(characterData.stats.wis);
+    const dexMod = getModifier(applyNumericEffects(characterData.stats.dex, ['stat.dex']));
+    const conMod = getModifier(applyNumericEffects(characterData.stats.con, ['stat.con']));
+    const wisMod = getModifier(applyNumericEffects(characterData.stats.wis, ['stat.wis']));
     const useClassUnarmoredDefense = characterData.useUnarmoredDefense !== false;
     const isArmorLike = (item) => {
         if (!item || typeof item !== 'object') return false;
@@ -876,7 +876,7 @@ function applyNumericEffects(baseValue, targetKeys, context = {}, trace = null) 
 // Inserted inside the existing shared derived-stat evaluator, beside its effect helpers.
 function calculateInitiativeDetails() {
   const signed=n=>n>=0?`+${n}`:String(n);
-  const dex=getModifier(characterData.stats.dex);
+  const dex=getModifier(applyNumericEffects(characterData.stats.dex, ['stat.dex']));
   const prof=normalizeNumber(characterData.proficiencyBonus,2);
   const extra=normalizeNumber(characterData.initiativeBonus,0);
   let base=dex+extra;
@@ -904,10 +904,10 @@ function calculateInitiativeDetails() {
       key=legacy?'alert2014':'proficiency';bonus=legacy?5:prof;
       if(!legacy&&!/交换/.test(text))notes.push(`${name}：先攻交换需双方自愿且未失能`);
     }else if(feature&&hare.test(name)){key='proficiency';bonus=prof;
-    }else if(feature&&/恐惧伏击|恐怖伏击|Dread Ambusher/i.test(name)){key='dread-ambusher';bonus=getModifier(characterData.stats.wis);
-    }else if(feature&&/战术之智|Tactical Wit/i.test(name)){key='tactical-wit';bonus=getModifier(characterData.stats.int);
-    }else if(feature&&/时序感知|Temporal Awar(?:e)?ness/i.test(name)){key='temporal-awareness';bonus=getModifier(characterData.stats.int);
-    }else if(feature&&/潇洒无畏|Rakish Audacity/i.test(name)){key='rakish-audacity';bonus=getModifier(characterData.stats.cha);
+    }else if(feature&&/恐惧伏击|恐怖伏击|Dread Ambusher/i.test(name)){key='dread-ambusher';bonus=getModifier(applyNumericEffects(characterData.stats.wis, ['stat.wis']));
+    }else if(feature&&/战术之智|Tactical Wit/i.test(name)){key='tactical-wit';bonus=getModifier(applyNumericEffects(characterData.stats.int, ['stat.int']));
+    }else if(feature&&/时序感知|Temporal Awar(?:e)?ness/i.test(name)){key='temporal-awareness';bonus=getModifier(applyNumericEffects(characterData.stats.int, ['stat.int']));
+    }else if(feature&&/潇洒无畏|Rakish Audacity/i.test(name)){key='rakish-audacity';bonus=getModifier(applyNumericEffects(characterData.stats.cha, ['stat.cha']));
     }else if(feature&&/万事通|Jack of All Trades/i.test(name)){
       if(legacy&&!profSources.length){key='legacy-jack';bonus=Math.floor(prof/2);}
       else if(!legacy)notes.push('万事通（2024）：不适用于先攻');
@@ -1683,7 +1683,7 @@ function enrichSpellVariables(variables) {
       for (const name of deletedNames) delete next.mvu_lite_ui[name];
       delete next.mvu_lite_backup;
       delete next.spell_metadata_backup;
-      next.mvu_lite_ui=Object.fromEntries(Object.entries(next.mvu_lite_ui || {}).map(([name,prefs])=>[name,Object.fromEntries(Object.entries(prefs || {}).filter(([key,value])=>['头像','玩家名'].includes(key) && typeof value==='string' && value.trim() && value!=='systems/dnd5e/icons/svg/actors/character.svg'))]).filter(([,prefs])=>Object.keys(prefs).length));
+      next.mvu_lite_ui=Object.fromEntries(Object.entries(next.mvu_lite_ui || {}).map(([name,prefs])=>[name,Object.fromEntries(Object.entries(prefs || {}).filter(([key,value])=>['头像','玩家名'].includes(key) && typeof value==='string' && value.trim()))]).filter(([,prefs])=>Object.keys(prefs).length));
       if (!Object.keys(next.mvu_lite_ui).length) delete next.mvu_lite_ui;
       await window.replaceVariables(next,scope);
     }
@@ -2195,6 +2195,42 @@ html[data-status-theme="night"] :is(#add-item-modal,#details-modal,#short-rest-m
 html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
 @media (max-width: 720px) { #main-header-actions { flex-wrap:wrap; } }
 
+
+        .roll-adv-group { display: inline-flex; align-items: center; gap: 3px; padding: 2px; border-radius: 7px; border: 1px solid rgba(151, 116, 76, 0.45); background: rgba(184, 142, 84, 0.14); }
+        .roll-adv-btn { border: 1px solid transparent; background: transparent; color: var(--ink-main, #3b2a1a); font-size: 12px; font-weight: 600; line-height: 1; padding: 6px 8px; border-radius: 5px; cursor: pointer; transition: all 0.16s ease; white-space: nowrap; }
+        .roll-adv-btn:hover { background: rgba(184, 142, 84, 0.22); }
+        .roll-adv-btn.is-adv-active { background: #1e6b43; color: #f4fbf6; border-color: #34a867; box-shadow: 0 0 8px rgba(52, 168, 103, 0.35); }
+        .roll-adv-btn.is-dis-active { background: #7c2d36; color: #fdf2f2; border-color: #d9534f; box-shadow: 0 0 8px rgba(217, 83, 79, 0.35); }
+        html[data-status-theme="night"] .roll-adv-group { background: rgba(34, 30, 24, 0.75); border-color: #67543c; }
+        html[data-status-theme="night"] .roll-adv-btn { color: #eedabc; }
+
+
+        .roll-adv-bar { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin: -14px 0 14px 0; }
+        .roll-adv-label { font-size: 11.5px; font-weight: 600; color: var(--ink-muted, #6f583f); letter-spacing: 0.03em; }
+        html[data-status-theme="night"] .roll-adv-label { color: #b7a182; }
+        #main-grid-container.is-collapsed ~ #roll-log { display: none !important; }
+
+
+        .rule-tag-strip { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+        .rule-tag-pill {
+            display: inline-flex; align-items: center; gap: 3px;
+            padding: 1px 6px; border-radius: 999px; font-size: 11px; line-height: 1.4;
+            border: 1px solid rgba(110, 231, 183, 0.35);
+            background: rgba(16, 185, 129, 0.14); color: #a7f3d0;
+        }
+        .rule-tag-pill.inactive {
+            border-color: rgba(156, 163, 175, 0.35);
+            background: rgba(75, 85, 99, 0.22); color: #9ca3af; text-decoration: line-through;
+        }
+        .rule-tag-pill.warn {
+            border-color: rgba(248, 113, 113, 0.45);
+            background: rgba(220, 38, 38, 0.16); color: #fca5a5;
+        }
+        .rule-tag-pill.info {
+            border-color: rgba(251, 191, 36, 0.45);
+            background: rgba(217, 119, 6, 0.16); color: #fde68a;
+        }
+
 </style>
 <script>
 (() => {
@@ -2243,6 +2279,24 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     <button id="edit-toggle-button" title="编辑模式"><i class="fa-solid fa-wrench"></i></button>
                 </div>
                 <p id="char-class-level" class="text-md text-gray-400"></p>
+                <div id="status-ai-assist-panel" style="display:none; margin-top:10px; padding:10px 12px; border-radius:8px; background:rgba(212,175,55,0.10); border:1px solid rgba(212,175,55,0.45); text-align:left;">
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+                        <span style="font-weight:700; font-size:13px; color:#eab963;">✨ 编辑模式 · AI 帮填助手</span>
+                        <span style="font-size:11.5px; color:#b8ad98;">可按想法自动补全属性/特性/法术/物品/背景/传记（退出编辑自动隐藏）</span>
+                    </div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                        <input id="status-ai-concept" type="text" placeholder="输入想法或方向（可选），例如：补全3级圣武士法术与特性、加一把焰舌长剑、写一段退役老兵传记..." style="flex:1 1 240px; min-width:200px; padding:6px 10px; border-radius:6px; border:1px solid rgba(212,175,55,0.35); background:rgba(15,13,11,0.75); color:#f0e6d2; font-size:12.5px;">
+                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                            <button type="button" data-status-ai="all" style="padding:5px 10px; border-radius:6px; border:1px solid #e6c667; background:linear-gradient(135deg,#b8892a,#d4af37); color:#1a140b; font-weight:700; font-size:12px; cursor:pointer;">🎲 全部补全</button>
+                            <button type="button" data-status-ai="features" style="padding:5px 9px; border-radius:6px; border:1px solid rgba(212,175,55,0.5); background:rgba(212,175,55,0.18); color:#f6e7be; font-size:12px; cursor:pointer;">⚡ 特性/专长</button>
+                            <button type="button" data-status-ai="spells" style="padding:5px 9px; border-radius:6px; border:1px solid rgba(212,175,55,0.5); background:rgba(212,175,55,0.18); color:#f6e7be; font-size:12px; cursor:pointer;">🔮 法术</button>
+                            <button type="button" data-status-ai="items" style="padding:5px 9px; border-radius:6px; border:1px solid rgba(212,175,55,0.5); background:rgba(212,175,55,0.18); color:#f6e7be; font-size:12px; cursor:pointer;">🎒 武器/物品</button>
+                            <button type="button" data-status-ai="bio" style="padding:5px 9px; border-radius:6px; border:1px solid rgba(212,175,55,0.5); background:rgba(212,175,55,0.18); color:#f6e7be; font-size:12px; cursor:pointer;">🖋️ 背景/传记/个性</button>
+                            <button type="button" data-status-ai="clear" style="padding:5px 9px; border-radius:6px; border:1px solid rgba(255,120,120,0.45); background:rgba(160,40,40,0.22); color:#ffd2d2; font-size:12px; cursor:pointer;">🧹 一键清除</button>
+                        </div>
+                    </div>
+                    <div id="status-ai-status" style="margin-top:6px; font-size:11.5px; color:#c9beab; min-height:15px;"></div>
+                </div>
             </header>
             <div id="main-content-collapsible">
                 <aside class="left-sidebar">
@@ -2288,6 +2342,13 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                         <button class="tab-button" data-tab="bio" title="传记"><i class="fa-solid fa-masks-theater"></i></button>
                     </nav>
                     <div id="tabs-content" class="tab-content-wrapper">
+                        <div class="roll-adv-bar">
+                            <span class="roll-adv-label">检定模式</span>
+                            <div id="roll-adv-group" class="roll-adv-group" role="group" aria-label="检定优势劣势切换">
+                                <button id="roll-adv-btn" type="button" class="roll-adv-btn" title="切换优势检定（取两次d20较高值）" aria-pressed="false">优势</button>
+                                <button id="roll-dis-btn" type="button" class="roll-adv-btn" title="切换劣势检定（取两次d20较低值）" aria-pressed="false">劣势</button>
+                            </div>
+                        </div>
                         <div id="attributes" class="tab-content"></div>
                         <div id="inventory" class="tab-content hidden"></div>
                         <div id="features" class="tab-content hidden"></div>
@@ -2411,9 +2472,16 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                         <div class="text-xs text-gray-400">风味标签用于记录与检索，不直接改数值。</div>
                     </div>
                     <div class="space-y-2">
-                        <label class="detail-label">快捷添加效果</label>
+                        <div class="flex items-center justify-between gap-2">
+                            <label class="detail-label mb-0">规则标签（预设 + 参数化自填）</label>
+                            <button type="button" id="tag-effect-ai-btn" class="add-item-btn !mt-0 !py-0.5 !px-2 !text-[11px]">✨ AI解析描述打标</button>
+                        </div>
                         <div id="tag-effect-rule-tags" class="tag-effect-rule-grid"></div>
-                        <div class="text-xs text-gray-400">点击后在下方添加效果，可修改数值。保存后生效；物品仍需装备及所需同调。</div>
+                        <div class="flex gap-1.5 mt-1">
+                            <input type="text" id="tag-effect-custom-input" class="detail-input" placeholder="输入规则标签回车添加，如：AC +2、潜行 +2、火焰抗性、力量 = 19、需装备">
+                            <button type="button" id="tag-effect-custom-add-btn" class="add-item-btn !mt-0 !py-1 !px-3 whitespace-nowrap">+ 添加</button>
+                        </div>
+                        <div class="text-xs text-gray-400">支持 AC +N、全豁免 +N、技能名 +N、力量 = 19、火焰抗性、潜行优势/劣势、需装备、需同调。</div>
                     </div>
                 </div>
                 <div class="space-y-2">
@@ -2966,10 +3034,197 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
             }
 
 
+            function parseDynamicRuleTag(rawToken) {
+                const text = String(rawToken || '').trim().replace(/潜行/g,'隐匿').replace(/最大\s+HP/gi,'最大HP').replace(/法术\s+DC/gi,'法术DC');
+                if (!text) return null;
+                const preset=DND_EFFECT_PRESETS.find(p=>[p.key,p.label].some(v=>v.toLowerCase()===text.toLowerCase()));
+                if(preset) return {key:preset.label,effects:[{name:preset.name,changes:[{target:preset.target,mode:'add',value:preset.value}]}],kind:'buff'};
+                if (/^(需装备|装备生效|requiresEquipped)$/i.test(text)) {
+                    return { key: '需装备', meta: 'requiresEquipped', effects: [], kind: 'cond' };
+                }
+                if (/^(需同调|同调|requiresAttuned)$/i.test(text)) {
+                    return { key: '需同调', meta: 'requiresAttuned', effects: [], kind: 'cond' };
+                }
+                let m;
+                if ((m = text.match(/^(?:AC|护甲)\s*([+-]\d+)$/i))) {
+                    const v = parseInt(m[1], 10);
+                    return { key: `AC ${v >= 0 ? '+' + v : v}`, effects: [{ name: text, changes: [{ target: 'ac.bonus', mode: 'add', value: v }] }], kind: v >= 0 ? 'buff' : 'warn' };
+                }
+                if ((m = text.match(/^(?:最大HP|最大生命|HP)\s*([+-]\d+)$/i))) {
+                    const v = parseInt(m[1], 10);
+                    return { key: `最大HP ${v >= 0 ? '+' + v : v}`, effects: [{ name: text, changes: [{ target: 'hp.max', mode: 'add', value: v }] }], kind: v >= 0 ? 'buff' : 'warn' };
+                }
+                if ((m = text.match(/^先攻\s*([+-]\d+)$/i))) {
+                    const v = parseInt(m[1], 10);
+                    return { key: `先攻 ${v >= 0 ? '+' + v : v}`, effects: [{ name: text, changes: [{ target: 'initiative.bonus', mode: 'add', value: v }] }], kind: v >= 0 ? 'buff' : 'warn' };
+                }
+                if ((m = text.match(/^(?:步行)?速度\s*([+-]\d+)$/i))) {
+                    const v = parseInt(m[1], 10);
+                    return { key: `速度 ${v >= 0 ? '+' + v : v}`, effects: [{ name: text, changes: [{ target: 'speed.bonus', mode: 'add', value: v }] }], kind: v >= 0 ? 'buff' : 'warn' };
+                }
+                if ((m = text.match(/^法术DC\s*([+-]\d+)$/i))) {
+                    const v = parseInt(m[1], 10);
+                    return { key: `法术DC ${v >= 0 ? '+' + v : v}`, effects: [{ name: text, changes: [{ target: 'spell.dc', mode: 'add', value: v }] }], kind: 'buff' };
+                }
+                if ((m = text.match(/^法术攻击\s*([+-]\d+)$/i))) {
+                    const v = parseInt(m[1], 10);
+                    return { key: `法术攻击 ${v >= 0 ? '+' + v : v}`, effects: [{ name: text, changes: [{ target: 'spell.attack', mode: 'add', value: v }] }], kind: 'buff' };
+                }
+                if ((m = text.match(/^武器命中\s*([+-]\d+)$/i))) {
+                    const v = parseInt(m[1], 10);
+                    return { key: `武器命中 ${v >= 0 ? '+' + v : v}`, effects: [{ name: text, changes: [{ target: 'weapon.attack', mode: 'add', value: v }] }], kind: 'buff' };
+                }
+                if ((m = text.match(/^武器伤害\s*([+-]\d+)$/i))) {
+                    const v = parseInt(m[1], 10);
+                    return { key: `武器伤害 ${v >= 0 ? '+' + v : v}`, effects: [{ name: text, changes: [{ target: 'weapon.damage', mode: 'add', value: v }] }], kind: 'buff' };
+                }
+                if ((m = text.match(/^(?:额外伤害|武器额外)\s*(\d+d\d+)(?:\s*(.*))?$/i))) {
+                    const dice = m[1];
+                    return { key: text, effects: [{ name: text, changes: [{ target: 'weapon.damage.dice', mode: 'add', value: dice }] }], kind: 'buff' };
+                }
+                if ((m = text.match(/^(?:全)?豁免\s*([+-]\d+)$/i))) {
+                    const v = parseInt(m[1], 10);
+                    return { key: `全豁免 ${v >= 0 ? '+' + v : v}`, effects: [{ name: text, changes: [{ target: 'save.all', mode: 'add', value: v }] }], kind: v >= 0 ? 'buff' : 'warn' };
+                }
+                const statCodeMap = { '力量': 'str', '敏捷': 'dex', '体质': 'con', '智力': 'int', '感知': 'wis', '魅力': 'cha' };
+                if ((m = text.match(/^(力量|敏捷|体质|智力|感知|魅力)豁免\s*([+-]\d+)$/))) {
+                    const v = parseInt(m[2], 10);
+                    return { key: `${m[1]}豁免 ${v >= 0 ? '+' + v : v}`, effects: [{ name: text, changes: [{ target: `save.${statCodeMap[m[1]]}`, mode: 'add', value: v }] }], kind: v >= 0 ? 'buff' : 'warn' };
+                }
+                if ((m = text.match(/^(力量|敏捷|体质|智力|感知|魅力)\s*=\s*(\d+)$/))) {
+                    const v = parseInt(m[2], 10);
+                    return { key: `${m[1]} = ${v}`, effects: [{ name: text, changes: [{ target: `stat.${statCodeMap[m[1]]}`, mode: 'upgrade', value: v }] }], kind: 'buff' };
+                }
+                if ((m = text.match(/^(力量|敏捷|体质|智力|感知|魅力)\s*([+-]\d+)$/))) {
+                    const v = parseInt(m[2], 10);
+                    return { key: `${m[1]} ${v >= 0 ? '+' + v : v}`, effects: [{ name: text, changes: [{ target: `stat.${statCodeMap[m[1]]}`, mode: 'add', value: v }] }], kind: v >= 0 ? 'buff' : 'warn' };
+                }
+                if ((m = text.match(/^(?:全)?技能\s*([+-]\d+)$/i))) {
+                    const v = parseInt(m[1], 10);
+                    return { key: `全技能 ${v >= 0 ? '+' + v : v}`, effects: [{ name: text, changes: [{ target: 'skill.all', mode: 'add', value: v }] }], kind: v >= 0 ? 'buff' : 'warn' };
+                }
+                if ((m = text.match(/^([一-龥]{2,4})\s*([+-]\d+)$/))) {
+                    const v = parseInt(m[2], 10);
+                    return { key: `${m[1]} ${v >= 0 ? '+' + v : v}`, effects: [{ name: text, changes: [{ target: `skill.${m[1]}`, mode: 'add', value: v }] }], kind: v >= 0 ? 'buff' : 'warn' };
+                }
+                if (/抗性$|免疫$|易伤$|优势$|劣势$|黑暗视觉/i.test(text)) {
+                    const kind = /劣势$|易伤$/i.test(text) ? 'warn' : 'info';
+                    return { key: text, effects: [{ name: text, changes: [] }], kind };
+                }
+                return null;
+            }
 
+            function normalizeRuleTagToken(rawToken) {
+                const parsed = parseDynamicRuleTag(rawToken);
+                return parsed ? parsed.key : '';
+            }
+
+            function isSourceEffectActive(sourceObj) {
+                if (!sourceObj || typeof sourceObj !== 'object') return true;
+                const tags = normalizeEffectTagList(sourceObj.effectTags, sourceObj.tags);
+                const needsEquip = tags.includes('需装备') || ('isEquipped' in sourceObj);
+                if (needsEquip && sourceObj.isEquipped === false) return false;
+                if (tags.includes('需同调') && sourceObj.isAttuned !== true) return false;
+                return true;
+            }
+
+            function renderRuleTagPillsHtml(sourceObj) {
+                const tags = normalizeEffectTagList(sourceObj?.effectTags, sourceObj?.tags);
+                if (!tags.length) return '';
+                const active = isSourceEffectActive(sourceObj);
+                return '<div class="rule-tag-strip">' + tags.map(t => {
+                    const parsed = parseDynamicRuleTag(t);
+                    const cls = !active ? 'inactive' : (parsed?.kind || 'buff');
+                    return `<span class="rule-tag-pill ${cls}">${escapeAttr(t)}</span>`;
+                }).join('') + (!active ? '<span class="rule-tag-pill inactive">未装备/未同调</span>' : '') + '</div>';
+            }
+
+            async function aiGenerateRuleTagsForModal() {
+                const btn = document.getElementById('tag-effect-ai-btn');
+                const resolved = resolveEffectOwner(tagEffectEditorState.owner, tagEffectEditorState.index);
+                if (!resolved?.target) return;
+                const genRaw = typeof resolveStatusGenerateRawFn === 'function' ? resolveStatusGenerateRawFn() : null;
+                if (!genRaw) {
+                    alert('未检测到 SillyTavern generateRaw 接口。');
+                    return;
+                }
+                const oldText = btn?.textContent || '';
+                if (btn) { btn.disabled = true; btn.textContent = '⏳ 解析中...'; }
+                try {
+                    const item = resolved.target;
+                    const raw = await genRaw({
+                        should_stream: false,
+                        should_silence: true,
+                        max_chat_history: 0,
+                        ordered_prompts: [
+                            { role: 'system', content: '你是 D&D 2024 装备规则标签提取器。请根据物品名称与描述提取规则标签 JSON 数组，例如 ["AC +1","全豁免 +1","火焰抗性","潜行劣势","需装备","需同调"]。只输出 JSON 数组，不要多余文字。' },
+                            { role: 'user', content: `物品名称：${item.name || ''}\n描述：${item.details || ''}` }
+                        ]
+                    });
+                    const txt = typeof raw === 'string' ? raw : (raw?.content || '');
+                    const arrMatch = txt.match(/\[[\s\S]*\]/);
+                    if (!arrMatch) throw new Error('未返回标签数组');
+                    const tags = JSON.parse(arrMatch[0]);
+                    const valid = normalizeEffectTagList(tags, '');
+                    resolved.target.effectTags = valid;
+                    renderTagEffectRuleTagOptions(valid);
+                } catch (err) {
+                    alert('AI 提取规则标签失败：' + (err?.message || String(err)));
+                } finally {
+                    if (btn) { btn.disabled = false; btn.textContent = oldText; }
+                }
+            }
+
+            function normalizeEffectTagList(rawEffectTags, fallbackTagsText = '') {
+                const fromRaw = Array.isArray(rawEffectTags)
+                    ? rawEffectTags
+                    : (typeof rawEffectTags === 'string' ? rawEffectTags.split(/[,\n，、]/g) : []);
+                const merged = [...fromRaw, ...parseTagTextList(fallbackTagsText)];
+                const mapped = merged
+                    .map(entry => normalizeRuleTagToken(entry))
+                    .filter(Boolean);
+                return Array.from(new Set(mapped));
+            }
+
+            function splitFlavorAndRuleTags(rawTagsText = '', rawEffectTags = []) {
+                const tagTokens = parseTagTextList(rawTagsText);
+                const ruleFromText = [];
+                const flavorTags = [];
+                tagTokens.forEach(token => {
+                    const norm = normalizeRuleTagToken(token);
+                    if (norm) ruleFromText.push(norm);
+                    else flavorTags.push(token);
+                });
+                const ruleTags = Array.from(new Set([
+                    ...normalizeEffectTagList(rawEffectTags),
+                    ...ruleFromText
+                ]));
+                return { flavorTags, ruleTags };
+            }
+
+            function getEffectsFromEffectTags(effectTags) {
+                const keys = normalizeEffectTagList(effectTags);
+                const effects = [];
+                keys.forEach(key => {
+                    const parsed = parseDynamicRuleTag(key);
+                    if (!parsed || !Array.isArray(parsed.effects) || !parsed.effects.some(e=>e.changes?.length)) return;
+                    const presetEffects = normalizeEffects(parsed.effects).map(effect => ({
+                        ...effect,
+                        id: `${effect.id || 'fx'}__tag__${key}`,
+                        stackKey: effect.stackKey || `tag:${key}`
+                    }));
+                    effects.push(...presetEffects);
+                });
+                return effects;
+            }
 
             function getCombinedSourceEffects(sourceObj) {
-                return normalizeEffects(sourceObj?.effects);
+                if (!isSourceEffectActive(sourceObj)) return [];
+                const manualEffects = normalizeEffects(sourceObj?.effects).filter(e => !String(e.id).includes('__tag__'));
+                const tagEffects = getEffectsFromEffectTags(
+                    normalizeEffectTagList(sourceObj?.effectTags, sourceObj?.tags)
+                );
+                return [...manualEffects, ...tagEffects];
             }
 
 
@@ -3022,9 +3277,10 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     weight: normalizeNumber(raw.重量, 0),
                     value: normalizeString(raw.价值, ''),
                     isEquipped: !!raw.已装备,
-                    requiresAttunement: !!raw.需要同调,
+                    requiresAttunement: !!raw.需要同调 || (raw.规则标签 || []).includes('需同调'),
                     isAttuned: !!raw.已同调,
-                    effects: normalizeEffects(raw.effects)
+                    effectTags: normalizeEffectTagList(raw.规则标签 ?? raw.effectTags ?? raw.效果标签, raw.属性特征 ?? raw.标签 ?? ''),
+                    effects: [...normalizeEffects(raw.effects ?? raw.效果).filter(e=>!String(e.id).includes('__tag__')), ...getEffectsFromEffectTags(raw.规则标签 || [])]
                 };
             }
 
@@ -3045,12 +3301,13 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     weight: normalizeNumber(raw.重量, 0),
                     value: normalizeString(raw.价值, ''),
                     isEquipped: !!raw.已装备,
-                    requiresAttunement: !!raw.需要同调,
+                    requiresAttunement: !!raw.需要同调 || (raw.规则标签 || []).includes('需同调'),
                     isAttuned: !!raw.已同调,
                     details: normalizeString(raw.描述, ''),
                     tags: normalizeString(raw.属性特征 ?? raw.标签 ?? '', ''),
                     customData: normalizeString(raw.自定义数据 || '', ''),
-                    effects: normalizeEffects(raw.effects)
+                    effectTags: normalizeEffectTagList(raw.规则标签 ?? raw.effectTags ?? raw.效果标签, raw.属性特征 ?? raw.标签 ?? ''),
+                    effects: [...normalizeEffects(raw.effects ?? raw.效果).filter(e=>!String(e.id).includes('__tag__')), ...getEffectsFromEffectTags(raw.规则标签 || [])]
                 };
 
                 if (category === 'armor') {
@@ -3092,6 +3349,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     熟练: !!item.proficient,
                     专精特质: normalizeString(item.mastery, ''),
                     已掌握: !!item.isMastered,
+                    规则标签: normalizeEffectTagList(item.effectTags),
                     属性特征: normalizeString(item.tags, '')
                 };
                 const attackOverride = normalizeNullableNumber(item.attackBonusOverride);
@@ -3113,6 +3371,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     已装备: !!item.isEquipped,
                     需要同调: !!item.requiresAttunement,
                     已同调: !!item.isAttuned,
+                    规则标签: normalizeEffectTagList(item.effectTags),
                     属性特征: normalizeString(item.tags, ''),
                     自定义数据: normalizeString(item.customData, '')
                 };
@@ -3210,6 +3469,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                 base.currentHp = normalizeNumber(hp.当前, base.currentHp);
                 base.maxHp = normalizeNumber(hp.最大, base.maxHp);
                 base.tempHp = normalizeNumber(hp.临时, base.tempHp);
+                base.tempMaxHp = normalizeNumber(hp.临时最大, base.tempMaxHp ?? 0);
                 const hitDice = hp.生命骰 || {};
                 base.currentHitDice = normalizeNumber(hitDice.当前, base.currentHitDice);
                 base.maxHitDice = normalizeNumber(hitDice.总数, base.maxHitDice);
@@ -3380,21 +3640,24 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     details: normalizeString(info.描述, ''),
                     source: normalizeString(info.来源, ''),
                     tags: normalizeString(info?.标签, ''),
-                    effects: normalizeEffects(info?.effects)
+                    effectTags: normalizeEffectTagList(info?.规则标签 ?? info?.effectTags ?? info?.效果标签, info?.标签 ?? ''),
+                    effects: [...normalizeEffects(info?.effects ?? info?.效果).filter(e=>!String(e.id).includes('__tag__')), ...getEffectsFromEffectTags(info?.规则标签 || [])]
                 }));
                 base.features.race = Object.entries(featData.种族 || {}).map(([name, info]) => ({
                     name,
                     details: normalizeString(info.描述, ''),
                     source: normalizeString(info.来源, ''),
                     tags: normalizeString(info?.标签, ''),
-                    effects: normalizeEffects(info?.effects)
+                    effectTags: normalizeEffectTagList(info?.规则标签 ?? info?.effectTags ?? info?.效果标签, info?.标签 ?? ''),
+                    effects: [...normalizeEffects(info?.effects ?? info?.效果).filter(e=>!String(e.id).includes('__tag__')), ...getEffectsFromEffectTags(info?.规则标签 || [])]
                 }));
                 base.features.feats = Object.entries(featData.专长 || {}).map(([name, info]) => ({
                     name,
                     details: normalizeString(info.描述, ''),
                     source: normalizeString(info.来源, ''),
                     tags: normalizeString(info?.标签, ''),
-                    effects: normalizeEffects(info?.effects)
+                    effectTags: normalizeEffectTagList(info?.规则标签 ?? info?.effectTags ?? info?.效果标签, info?.标签 ?? ''),
+                    effects: [...normalizeEffects(info?.effects ?? info?.效果).filter(e=>!String(e.id).includes('__tag__')), ...getEffectsFromEffectTags(info?.规则标签 || [])]
                 }));
                 base.temporaryEffects = normalizeEffects(schemaChar.临时效果 ?? schemaChar.temporaryEffects);
 
@@ -3464,7 +3727,6 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     种族: normalizeString(char.race, ''),
                     背景: normalizeString(char.background, ''),
                     阵营: normalizeString(char.alignment, ''),
-                    头像: normalizeString(char.portrait, ''),
                     英雄激励: !!char.inspiration,
                     外貌: {
                         性别: normalizeString(char.appearance?.gender, ''),
@@ -3513,6 +3775,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                         当前: normalizeNumber(char.currentHp, 0),
                         最大: normalizeNumber(char.maxHp, 1),
                         临时: normalizeNumber(char.tempHp, 0),
+                        临时最大: normalizeNumber(char.tempMaxHp, 0),
                         生命骰: {
                             当前: normalizeNumber(char.currentHitDice, 0),
                             总数: normalizeNumber(char.maxHitDice, 0),
@@ -3659,6 +3922,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                         描述: normalizeString(feature.details, ''),
                         来源: normalizeString(feature.source, ''),
                         标签: normalizeString(feature.tags, ''),
+                        规则标签: normalizeEffectTagList(feature.effectTags),
                         effects: serializeEffects(feature.effects)
                     });
                 });
@@ -3668,6 +3932,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                         描述: normalizeString(feature.details, ''),
                         来源: normalizeString(feature.source, ''),
                         标签: normalizeString(feature.tags, ''),
+                        规则标签: normalizeEffectTagList(feature.effectTags),
                         effects: serializeEffects(feature.effects)
                     });
                 });
@@ -3677,6 +3942,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                         描述: normalizeString(feature.details, ''),
                         来源: normalizeString(feature.source, ''),
                         标签: normalizeString(feature.tags, ''),
+                        规则标签: normalizeEffectTagList(feature.effectTags),
                         effects: serializeEffects(feature.effects)
                     });
                 });
@@ -3941,6 +4207,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                         details: normalizeString(raw.details, ''),
                         source: normalizeString(raw.source, ''),
                         tags: normalizeString(raw.tags ?? raw.标签, ''),
+                        effectTags: normalizeEffectTagList(raw.规则标签 ?? raw.effectTags ?? raw.效果标签, raw.tags ?? raw.标签 ?? ''),
                         effects: normalizeEffects(raw.effects)
                     };
                 });
@@ -3953,6 +4220,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                         details: normalizeString(raw.details, ''),
                         source: normalizeString(raw.source, ''),
                         tags: normalizeString(raw.tags ?? raw.标签, ''),
+                        effectTags: normalizeEffectTagList(raw.规则标签 ?? raw.effectTags ?? raw.效果标签, raw.tags ?? raw.标签 ?? ''),
                         effects: normalizeEffects(raw.effects)
                     };
                 });
@@ -3965,6 +4233,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                         details: normalizeString(raw.details, ''),
                         source: normalizeString(raw.source, ''),
                         tags: normalizeString(raw.tags ?? raw.标签, ''),
+                        effectTags: normalizeEffectTagList(raw.规则标签 ?? raw.effectTags ?? raw.效果标签, raw.tags ?? raw.标签 ?? ''),
                         effects: normalizeEffects(raw.effects)
                     };
                 });
@@ -4143,6 +4412,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                 return Math.floor(Math.random() * sides) + 1;
             }
 
+            function getEffectiveStat(key) { return applyNumericEffects(characterData.stats[key] ?? 10, ['stat.'+key]); }
             function getStatLabel(statKey) {
                 return STAT_LABELS[statKey] || statKey.toUpperCase();
             }
@@ -4217,17 +4487,43 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                 document.getElementById('roll-log')?.classList.add('hidden');
             }
 
+            let rollAdvantageMode = 'normal';
+
+            function syncRollAdvButtons() {
+                const advBtn = document.getElementById('roll-adv-btn');
+                const disBtn = document.getElementById('roll-dis-btn');
+                if (advBtn) {
+                    advBtn.classList.toggle('is-adv-active', rollAdvantageMode === 'adv');
+                    advBtn.setAttribute('aria-pressed', String(rollAdvantageMode === 'adv'));
+                }
+                if (disBtn) {
+                    disBtn.classList.toggle('is-dis-active', rollAdvantageMode === 'dis');
+                    disBtn.setAttribute('aria-pressed', String(rollAdvantageMode === 'dis'));
+                }
+            }
+
+            function toggleRollAdvantageMode(mode) {
+                rollAdvantageMode = rollAdvantageMode === mode ? 'normal' : mode;
+                syncRollAdvButtons();
+            }
+
             function rollD20(bonus, label, applyDisadvantage) {
+                const hasAdv = rollAdvantageMode === 'adv';
+                const hasDis = rollAdvantageMode === 'dis' || !!applyDisadvantage;
+                const effectiveMode = (hasAdv && hasDis) ? 'normal' : hasAdv ? 'adv' : hasDis ? 'dis' : 'normal';
                 const d20a = rollDie(20);
-                const d20b = applyDisadvantage ? rollDie(20) : null;
-                const d20 = applyDisadvantage ? Math.min(d20a, d20b) : d20a;
+                const d20b = effectiveMode === 'normal' ? null : rollDie(20);
+                const d20 = effectiveMode === 'adv' ? Math.max(d20a, d20b) : effectiveMode === 'dis' ? Math.min(d20a, d20b) : d20a;
                 const total = d20 + bonus;
-                const detail = applyDisadvantage
-                    ? `d20(${d20a}, ${d20b}) + ${bonus >= 0 ? `+${bonus}` : bonus}`
-                    : `d20(${d20}) + ${bonus >= 0 ? `+${bonus}` : bonus}`;
+                const bonusText = bonus >= 0 ? `+ ${bonus}` : `- ${Math.abs(bonus)}`;
+                const detail = effectiveMode !== 'normal'
+                    ? `d20(${d20a}, ${d20b}) ${bonusText}`
+                    : `d20(${d20}) ${bonusText}`;
                 const notes = [];
                 let className = '';
-                if (applyDisadvantage) notes.push('劣势');
+                if (hasAdv && hasDis) notes.push('优劣抵消');
+                else if (effectiveMode === 'adv') notes.push('优势');
+                else if (effectiveMode === 'dis') notes.push('劣势');
                 if (d20 === 20) { notes.push('自然20'); className = 'crit-success'; }
                 if (d20 === 1) { notes.push('自然1'); className = 'crit-fail'; }
                 appendRollLog({ title: label, total, detail, note: notes.join(' · '), className });
@@ -4646,14 +4942,14 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
             }
 
             function getSavingThrowBonus(stat) {
-                const score = characterData.stats[stat];
+                const score = isEditing ? characterData.stats[stat] : getEffectiveStat(stat);
                 const isProficient = (characterData.proficiencies?.savingThrows || []).includes(stat);
                 const base = getModifier(score) + (isProficient ? getEffectiveProficiencyBonus() : 0);
                 return applyNumericEffects(base, ['save.all', `save.${stat}`], { saveStat: stat });
             }
 
             function getEffectiveMaxHp() {
-                const base = normalizeNumber(characterData?.maxHp, 1);
+                const base = normalizeNumber(characterData?.maxHp, 1) + normalizeNumber(characterData?.tempMaxHp, 0);
                 const value = applyNumericEffects(base, ['hp.max']);
                 return Math.max(1, Math.floor(value));
             }
@@ -4669,12 +4965,12 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
             }
 
             function getWeaponBaseAttackMod(weapon) {
-                const abilityMod = getModifier(characterData.stats[weapon.attackStat] ?? 10);
+                const abilityMod = getModifier(getEffectiveStat(weapon.attackStat));
                 return abilityMod + getEffectiveProficiencyBonus() + (weapon.magicBonus || 0);
             }
 
             function getWeaponBaseDamageMod(weapon) {
-                const abilityMod = getModifier(characterData.stats[weapon.attackStat] ?? 10);
+                const abilityMod = getModifier(getEffectiveStat(weapon.attackStat));
                 return abilityMod + (weapon.magicBonus || 0);
             }
 
@@ -4794,7 +5090,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
 
                 document.querySelectorAll('[data-stat-mod]').forEach(el => {
                     const stat = el.dataset.statMod;
-                    const score = characterData.stats[stat];
+                    const score = isEditing ? characterData.stats[stat] : getEffectiveStat(stat);
                     el.textContent = getModifierString(score);
                 });
 
@@ -4843,6 +5139,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     version: 'dnd-sheet-export-3',
                     dnd_portrait_order: getOrderedCharacterIds(),
                     mvu_lite_ui: Object.fromEntries(Object.entries(allCharacters).map(([id,char]) => [id,{头像:char.portrait,玩家名:char.playerName}])),
+                    portrait_vault: getPortraitVault()?.exportAll?.() || {},
                     exportedAt: new Date().toISOString(),
                     stat_data: {
                         当前角色ID: activeCharacterName,
@@ -4874,15 +5171,16 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                             return;
                         }
                         allCharacters = {};
-                        Object.entries(loadedCharacters).forEach(([id, rawChar]) => {
+                        for (const [id, rawChar] of Object.entries(loadedCharacters)) {
                             const archiveUI = parsed.mvu_lite_ui?.[id] || {};
                             allCharacters[id] = schemaToInternalCharacter(id, {...rawChar,...archiveUI});
-                            if (Object.hasOwn(archiveUI,'头像')) allCharacters[id].portrait = archiveUI.头像;
+                            if (parsed.portrait_vault && typeof parsed.portrait_vault === 'object') { await getPortraitVault()?.importAll?.(parsed.portrait_vault); }
+                            if (typeof archiveUI.头像 === 'string' && archiveUI.头像.startsWith('data:image/')) { await getPortraitVault()?.set?.(id, allCharacters[id].name, archiveUI.头像); }
                             if (Object.hasOwn(archiveUI,'玩家名')) allCharacters[id].playerName = archiveUI.玩家名;
                             if (archiveUI.护甲模式) allCharacters[id].acMode = normalizeAcMode(archiveUI.护甲模式,'auto');
                             if (typeof archiveUI.无甲防御 === 'boolean') allCharacters[id].useUnarmoredDefense = archiveUI.无甲防御;
                             if (archiveUI.数值覆盖 && Object.hasOwn(archiveUI.数值覆盖,'护甲')) allCharacters[id].overrides.ac = normalizeNullableNumber(archiveUI.数值覆盖.护甲);
-                        });
+                        }
                         if (loadedActiveName && allCharacters[loadedActiveName]) {
                             activeCharacterName = loadedActiveName;
                         } else {
@@ -4919,6 +5217,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                 if (Object.keys(allCharacters).length <= 1) { alert("不能删除最后一个角色！"); return; }
                 if (confirm(`你确定要永久删除角色 "${name}" 吗？`)) {
                     delete allCharacters[name];
+                    getPortraitVault()?.remove?.(name, name);
                     if (activeCharacterName === name) { 
                         const newActiveName = Object.keys(allCharacters)[0]; 
                         switchCharacter(newActiveName);
@@ -5207,18 +5506,276 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                 renderHeader(); renderSidebar(); renderAttributesTab(); renderInventoryTab();
                 renderFeaturesTab(); renderSpellsTab(); renderNotesTab(); renderBioTab(); updateEditModeUI();
             }
-            function getPortraitSrc(portraitRef) {
-                const src = String(portraitRef || '').trim();
-                if (!src) return 'https://placehold.co/200x267/495057/adb5bd?text=No+Portrait';
-                if (src.startsWith('data:') || src.startsWith('blob:')) return src;
-                if (src.startsWith('http://') || src.startsWith('https://')) return src;
-                if (src.startsWith('/')) return src;
+            (function initDndPortraitVaultPlugin() {
+  const DB_NAME = 'dnd2024_portrait_vault_db';
+  const DB_VERSION = 1;
+  const STORE_NAME = 'portraits';
+  const LS_CACHE_KEY = 'dnd2024_portrait_vault_cache_v1';
 
-                // Support legacy absolute paths: keep only file name and map to /p/{name}
-                const normalized = src.replace(/\\/g, '/');
-                const fileName = normalized.split('/').pop() || '';
-                if (!fileName) return 'https://placehold.co/200x267/495057/adb5bd?text=No+Portrait';
-                return `/p/${fileName}`;
+  function getRootWindow() {
+    try {
+      if (window.top && window.top.document) return window.top;
+    } catch (_) {}
+    try {
+      if (window.parent && window.parent.document) return window.parent;
+    } catch (_) {}
+    return window;
+  }
+
+  const rootWin = getRootWindow();
+  if (rootWin.__dndPortraitVault && rootWin.__dndPortraitVault.__version === 1) {
+    window.__dndPortraitVault = rootWin.__dndPortraitVault;
+    return rootWin.__dndPortraitVault;
+  }
+
+  const memoryMap = new Map();
+  let dbInstance = null;
+  let dbInitPromise = null;
+
+  function normalizeKey(raw) {
+    return String(raw ?? '').trim();
+  }
+
+  function loadLocalStorageMirror() {
+    try {
+      const raw = rootWin.localStorage?.getItem(LS_CACHE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        for (const [k, v] of Object.entries(parsed)) {
+          const nk = normalizeKey(k);
+          if (nk && typeof v === 'string' && v.startsWith('data:image/')) {
+            memoryMap.set(nk, v);
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  function saveLocalStorageMirror() {
+    try {
+      const obj = {};
+      for (const [k, v] of memoryMap.entries()) {
+        if (k && typeof v === 'string' && v.startsWith('data:image/')) {
+          obj[k] = v;
+        }
+      }
+      rootWin.localStorage?.setItem(LS_CACHE_KEY, JSON.stringify(obj));
+    } catch (_) {
+      // Ignore quota errors; IndexedDB is the primary persistent store
+    }
+  }
+
+  function broadcastPortraitEvent(eventName, detail) {
+    try {
+      rootWin.dispatchEvent(new CustomEvent(eventName, { detail }));
+    } catch (_) {}
+    try {
+      if (window !== rootWin) {
+        window.dispatchEvent(new CustomEvent(eventName, { detail }));
+      }
+    } catch (_) {}
+    try {
+      const frames = rootWin.document?.querySelectorAll?.('iframe') || [];
+      for (const frame of frames) {
+        try {
+          frame.contentWindow?.dispatchEvent(new CustomEvent(eventName, { detail }));
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
+  function openDatabase() {
+    if (dbInitPromise) return dbInitPromise;
+    dbInitPromise = new Promise((resolve) => {
+      try {
+        const idb = rootWin.indexedDB || window.indexedDB;
+        if (!idb) {
+          resolve(null);
+          return;
+        }
+        const req = idb.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(STORE_NAME)) {
+            db.createObjectStore(STORE_NAME, { keyPath: 'key' });
+          }
+        };
+        req.onsuccess = (e) => {
+          dbInstance = e.target.result;
+          try {
+            const tx = dbInstance.transaction(STORE_NAME, 'readonly');
+            const store = tx.objectStore(STORE_NAME);
+            const getAllReq = store.getAll();
+            getAllReq.onsuccess = () => {
+              const rows = Array.isArray(getAllReq.result) ? getAllReq.result : [];
+              let hydrated = false;
+              for (const row of rows) {
+                const k = normalizeKey(row?.key);
+                const url = row?.dataUrl;
+                if (k && typeof url === 'string' && url.startsWith('data:image/')) {
+                  if (memoryMap.get(k) !== url) {
+                    memoryMap.set(k, url);
+                    hydrated = true;
+                  }
+                }
+              }
+              if (hydrated) {
+                saveLocalStorageMirror();
+                broadcastPortraitEvent('dnd-portrait-vault-ready', { count: memoryMap.size });
+              }
+              resolve(dbInstance);
+            };
+            getAllReq.onerror = () => resolve(dbInstance);
+          } catch (_) {
+            resolve(dbInstance);
+          }
+        };
+        req.onerror = () => resolve(null);
+      } catch (_) {
+        resolve(null);
+      }
+    });
+    return dbInitPromise;
+  }
+
+  async function idbPut(key, dataUrl) {
+    const db = dbInstance || (await openDatabase());
+    if (!db) return false;
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        tx.objectStore(STORE_NAME).put({ key, dataUrl, updatedAt: Date.now() });
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+      } catch (_) {
+        resolve(false);
+      }
+    });
+  }
+
+  async function idbDelete(key) {
+    const db = dbInstance || (await openDatabase());
+    if (!db) return false;
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        tx.objectStore(STORE_NAME).delete(key);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+      } catch (_) {
+        resolve(false);
+      }
+    });
+  }
+
+  loadLocalStorageMirror();
+  openDatabase();
+
+  const vault = {
+    __version: 1,
+
+    get(charId, charName) {
+      const k1 = normalizeKey(charId);
+      const k2 = normalizeKey(charName);
+      if (k1 && memoryMap.has(k1)) return memoryMap.get(k1) || '';
+      if (k2 && memoryMap.has(k2)) return memoryMap.get(k2) || '';
+      return '';
+    },
+
+    has(charId, charName) {
+      return Boolean(this.get(charId, charName));
+    },
+
+    async set(charId, charName, dataUrl) {
+      const url = String(dataUrl || '').trim();
+      if (!url.startsWith('data:image/')) return false;
+      const keys = [...new Set([normalizeKey(charId), normalizeKey(charName)].filter(Boolean))];
+      if (!keys.length) keys.push('default');
+      for (const k of keys) {
+        memoryMap.set(k, url);
+      }
+      saveLocalStorageMirror();
+      await Promise.all(keys.map((k) => idbPut(k, url)));
+      broadcastPortraitEvent('dnd-portrait-updated', {
+        charId: normalizeKey(charId),
+        charName: normalizeKey(charName),
+        dataUrl: url,
+      });
+      return true;
+    },
+
+    async remove(charId, charName) {
+      const keys = [...new Set([normalizeKey(charId), normalizeKey(charName)].filter(Boolean))];
+      for (const k of keys) {
+        memoryMap.delete(k);
+      }
+      saveLocalStorageMirror();
+      await Promise.all(keys.map((k) => idbDelete(k)));
+      broadcastPortraitEvent('dnd-portrait-updated', {
+        charId: normalizeKey(charId),
+        charName: normalizeKey(charName),
+        dataUrl: '',
+      });
+      return true;
+    },
+
+    exportAll() {
+      const out = {};
+      for (const [k, v] of memoryMap.entries()) {
+        if (k && typeof v === 'string' && v.startsWith('data:image/')) {
+          out[k] = v;
+        }
+      }
+      return out;
+    },
+
+    async importAll(records) {
+      if (!records || typeof records !== 'object') return 0;
+      let count = 0;
+      const writes = [];
+      for (const [rawKey, rawVal] of Object.entries(records)) {
+        const k = normalizeKey(rawKey);
+        const url = String(rawVal || '').trim();
+        if (k && url.startsWith('data:image/')) {
+          memoryMap.set(k, url);
+          writes.push(idbPut(k, url));
+          count++;
+        }
+      }
+      if (count > 0) {
+        saveLocalStorageMirror();
+        await Promise.all(writes);
+        broadcastPortraitEvent('dnd-portrait-vault-ready', { count: memoryMap.size });
+      }
+      return count;
+    },
+  };
+
+  rootWin.__dndPortraitVault = vault;
+  window.__dndPortraitVault = vault;
+  return vault;
+})();
+
+            function getPortraitVault() {
+                try {
+                    if (window.top && window.top.__dndPortraitVault) return window.top.__dndPortraitVault;
+                } catch (_) {}
+                return window.__dndPortraitVault || null;
+            }
+            const DEFAULT_PORTRAIT_SVG = "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 267"><defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#3a2b1e"/><stop offset="100%" stop-color="#221811"/></linearGradient></defs><rect width="200" height="267" fill="url(#bg)"/><rect x="8" y="8" width="184" height="251" rx="6" fill="none" stroke="#8a6540" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.7"/><circle cx="100" cy="96" r="34" fill="#6e543b" opacity="0.65"/><path d="M44 212 C44 156 156 156 156 212 Z" fill="#6e543b" opacity="0.65"/><text x="100" y="240" font-family="serif" font-size="13" fill="#c7a97b" text-anchor="middle" letter-spacing="2">暂无肖像</text></svg>');
+
+            function getPortraitSrc(portraitRef, charId = activeCharacterName, charName = characterData?.name) {
+                const vault = getPortraitVault();
+                const vaultImg = vault ? vault.get(charId, charName) : '';
+                const src = String(portraitRef || '').trim();
+                if (src && src !== 'systems/dnd5e/icons/svg/actors/character.svg') {
+                    if (src.startsWith('data:image/') && vault && !vaultImg) void vault.set(charId, charName, src);
+                } else if (vaultImg) return vaultImg;
+                if (src.startsWith('data:image/') || src.startsWith('blob:')) return src;
+                if (/^https?:\/\//i.test(src) || src.startsWith('/')) return src;
+                if (src && src !== 'systems/dnd5e/icons/svg/actors/character.svg') return '/p/' + src.replace(/\\/g, '/').split('/').pop();
+                return DEFAULT_PORTRAIT_SVG;
             }
 
             function getOrderedCharacterIds() {
@@ -5294,7 +5851,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     const btn = document.createElement('div');
                     btn.className = 'char-portrait-btn'; btn.title = `${char.name}：点击切换，拖动排序`; btn.dataset.id = id;
                     if (id === activeCharacterName) btn.classList.add('active');
-                    btn.innerHTML = `<img src="${getPortraitSrc(char.portrait)}" alt="${char.name}"><div class="delete-char-btn" title="删除角色"><i class="fa-solid fa-times"></i></div>`;
+                    btn.innerHTML = `<img src="${getPortraitSrc(char.portrait, id, char.name)}" alt="${char.name}"><div class="delete-char-btn" title="删除角色"><i class="fa-solid fa-times"></i></div>`;
                     btn.querySelector('img').draggable = false;
                     btn.addEventListener('click', () => switchCharacter(id));
                     btn.querySelector('.delete-char-btn').addEventListener('click', (e) => deleteCharacter(id, e));
@@ -5342,10 +5899,10 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                         </div>
                     </div>
                     ${!isEditing && validExperience && (hasTarget || maxLevel) ? `<div id="experience-progress" class="w-full bg-gray-800 rounded-full h-3" role="progressbar" aria-label="经验值升级进度" aria-valuemin="0" aria-valuemax="${xpMax}" aria-valuenow="${xpValue}" aria-valuetext="${maxLevel ? '已达到20级' : experienceText + ' / ' + nextLevelXp.toLocaleString('zh-CN')}"><div class="bg-yellow-600 h-3 rounded-full transition-all duration-300" style="width:${xpPercent}%"></div></div>` : ''}`;
-                document.getElementById('character-portrait-img').src = getPortraitSrc(characterData.portrait);
+                document.getElementById('character-portrait-img').src = getPortraitSrc(characterData.portrait, activeCharacterName, characterData.name);
                 const portraitContainer = document.getElementById('portrait-container');
                 if (portraitContainer) {
-                    portraitContainer.title = isEditing ? '点击更换头像' : '点击查看大图';
+                    portraitContainer.title = '点击选择图片并裁剪头像';
                 }
                 const statusSummary = document.getElementById('status-summary');
                 if (statusSummary) {
@@ -5440,7 +5997,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
 
                 if (isEditing) {
                      hpContainer.innerHTML = `<div class="flex items-center gap-2"><input type="number" id="edit-current-hp" class="edit-input text-center" value="${characterData.currentHp}"><span>/</span><input type="number" id="edit-max-hp" class="edit-input text-center" value="${characterData.maxHp}"></div>`;
-                     tempHpContainer.innerHTML = `<div class="flex items-center gap-2"><span>临时HP</span><input type="number" id="edit-temp-hp" class="edit-input text-center" value="${characterData.tempHp}"></div>`;
+                     tempHpContainer.innerHTML = `<div class="flex items-center gap-2 mb-1"><span>临时HP</span><input type="number" id="edit-temp-hp" class="edit-input text-center" value="${characterData.tempHp}"></div><div class="flex items-center gap-2"><span>临时最大</span><input type="number" id="edit-temp-max-hp" class="edit-input text-center" value="${normalizeNumber(characterData.tempMaxHp, 0)}"></div>`;
                      hitDiceContainer.innerHTML = `<div class="flex items-center gap-2"><input type="number" id="edit-current-hd" class="edit-input text-center" value="${characterData.currentHitDice}"><span>/</span><input type="number" id="edit-max-hd" class="edit-input text-center" value="${characterData.maxHitDice}"></div>`;
                 } else {
                     const effectiveMaxHp = getEffectiveMaxHp();
@@ -5448,7 +6005,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     const displayedCurrentHp = Math.min(characterData.currentHp, effectiveMaxHp);
                     const hpPercent = (displayedCurrentHp / (effectiveMaxHp || 1)) * 100;
                     hpContainer.innerHTML = `<div class="flex justify-between items-center text-sm mb-1 px-1"><span>生命值</span><div class="flex items-center gap-1.5"><button class="quick-adjust-btn" data-action="adjust-hp" data-amount="-1" title="生命值 -1">-</button><span class="font-bold min-w-[54px] text-center">${displayedCurrentHp} / ${effectiveMaxHp}</span><button class="quick-adjust-btn" data-action="adjust-hp" data-amount="1" title="生命值 +1">+</button></div></div><div class="w-full bg-gray-800 rounded-full h-3 mb-1.5"><div class="bg-red-600 h-3 rounded-full transition-all duration-300" style="width: ${hpPercent}%"></div></div><div class="flex items-center justify-end gap-1 px-1 text-xs"><input id="quick-hp-delta" type="number" min="1" class="hp-quick-input" placeholder="数值"><button class="quick-adjust-btn !px-1.5 !py-0.5 text-xs" data-action="apply-hp-damage" title="受到伤害（优先抵扣临时生命值）">受伤</button><button class="quick-adjust-btn !px-1.5 !py-0.5 text-xs" data-action="apply-hp-heal" title="恢复生命值">治疗</button></div>`;
-                    tempHpContainer.innerHTML = `<div class="flex justify-between items-center text-sm px-1"><span>临时生命值</span><div class="flex items-center gap-2"><button class="quick-adjust-btn" data-action="adjust-temphp" data-amount="-1">-</button><span class="font-bold w-8 text-center">${effectiveTempHp}</span><button class="quick-adjust-btn" data-action="adjust-temphp" data-amount="1">+</button></div></div>`;
+                    const tempMaxVal = normalizeNumber(characterData.tempMaxHp, 0); const tempMaxDisplay = tempMaxVal > 0 ? `+${tempMaxVal}` : `${tempMaxVal}`; const tempMaxColor = tempMaxVal > 0 ? "text-emerald-700" : tempMaxVal < 0 ? "text-red-700" : ""; tempHpContainer.innerHTML = `<div class="flex justify-between items-center text-sm px-1 mb-1"><span>临时生命值</span><div class="flex items-center gap-2"><button class="quick-adjust-btn" data-action="adjust-temphp" data-amount="-1">-</button><span class="font-bold w-8 text-center">${effectiveTempHp}</span><button class="quick-adjust-btn" data-action="adjust-temphp" data-amount="1">+</button></div></div><div class="flex justify-between items-center text-sm px-1"><span>临时最大生命</span><div class="flex items-center gap-2"><button class="quick-adjust-btn" data-action="adjust-tempmaxhp" data-amount="-1" title="临时最大生命值 -1">-</button><span class="font-bold w-8 text-center ${tempMaxColor}">${tempMaxDisplay}</span><button class="quick-adjust-btn" data-action="adjust-tempmaxhp" data-amount="1" title="临时最大生命值 +1">+</button></div></div>`;
                     const hitDicePercent = (characterData.currentHitDice / (characterData.maxHitDice || 1)) * 100;
                     hitDiceContainer.innerHTML = `<div class="flex justify-between items-center text-sm mb-1 px-1"><span>生命骰</span><span class="font-bold">${characterData.currentHitDice} / ${characterData.maxHitDice} ${characterData.hitDiceType}</span></div><div class="w-full bg-gray-800 rounded-full h-3"><div class="bg-yellow-600 h-3 rounded-full" style="width: ${hitDicePercent}%"></div></div>`;
                 }
@@ -5681,7 +6238,8 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     const armorTypeSelectHtml = ['light', 'medium', 'heavy']
                         .map(type => `<option value="${type}" ${e.armorType === type ? 'selected' : ''}>${ARMOR_TYPE_FROM_KEY[type] || type}</option>`)
                         .join('');
-                    const headRight = e.type === 'armor'
+                    const hasRuleEquip = e.type === 'armor' || (Array.isArray(e.effectTags) && e.effectTags.length > 0) || (Array.isArray(e.effects) && e.effects.length > 0);
+                    const headRight = hasRuleEquip
                         ? `<button class="equip-toggle ${e.isEquipped ? 'equipped' : ''}" data-equip-index="${i}">${e.isEquipped ? '已装备' : '装备'}</button>`
                         : `<span class="text-right font-semibold">x${e.quantity || 1}</span>`;
                     const headLeft = editing
@@ -5710,7 +6268,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                             <div><label class="detail-label">数量</label><div class="detail-value">${e.quantity ?? 1}</div></div>
                             <div><label class="detail-label">价格</label><div class="detail-value">${escapeAttr(e.value || '—')}</div></div>
                             ${showArmorFields ? `<div><label class="detail-label">${baseLabel}</label><div class="detail-value">${Number.isFinite(baseValue) ? baseValue : '—'}</div></div><div><label class="detail-label">护甲类型</label><div class="detail-value">${escapeAttr(armorTypeLabel)}</div></div>` : ''}
-                            <div><label class="detail-label">标签</label><div class="detail-value">${escapeAttr(e.tags || '—')}</div></div>
+                            <div style="grid-column: span 2;"><label class="detail-label">规则标签与风味</label><div class="detail-value">${escapeAttr(e.tags || '')}${renderRuleTagPillsHtml(e) || (e.tags ? '' : '—')}</div></div>
                             <div style="grid-column: span 2;"><label class="detail-label">描述</label><div class="detail-value">${escapeAttr(e.details || '无描述')}</div></div>
                         </div>`;
                     return `<div class="item-row-wrapper ${expandedClass}" data-panel-group="${equipmentGroup}" data-panel-index="${i}">
@@ -5969,7 +6527,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                 if (!info || ![...info.cantrips,...info.spells].includes(name)) return '';
                 if (!info.ability) return '种族施法属性待补选：请打开升级页的“种族施法／配置”。';
                 const key = ({智力:'int',感知:'wis',魅力:'cha'})[info.ability];
-                const base = getModifier(characterData.stats[key]) + getEffectiveProficiencyBonus();
+                const base = getModifier(getEffectiveStat(key)) + getEffectiveProficiencyBonus();
                 const attack = applyNumericEffects(base, ['spell.attack']);
                 const dc = applyNumericEffects(8 + base, ['spell.dc']);
                 return `种族施法：${info.ability} · 法术攻击 ${attack >= 0 ? '+' : ''}${attack} · 豁免 DC ${dc}`;
@@ -5978,7 +6536,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
             function spellPreparationState() {
                 const spells = characterData.spells;
                 const preparedLimit = normalizeNullableNumber(spells.maxPrepared);
-                const abilityMod = spells.ability && spells.ability !== 'none' ? getModifier(characterData.stats[spells.ability]) : 0;
+                const abilityMod = spells.ability && spells.ability !== 'none' ? getModifier(getEffectiveStat(spells.ability)) : 0;
                 const autoMaxPrepared = MvuLite.wizardPreparedLimit(characterData.__mvuSource || {}) ?? abilityMod + Math.ceil(characterData.level / 2);
                 const maxPrepared = Math.max(0, Math.floor(preparedLimit ?? autoMaxPrepared));
                 const currentPrepared = Object.entries(spells.known || {}).filter(([level]) => level !== '0')
@@ -5989,7 +6547,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
             function renderSpellsTabModern(container) {
                 if (!container) return false;
                 const { spells } = characterData;
-                const spellAbilityMod = (spells.ability && spells.ability !== 'none') ? getModifier(characterData.stats[spells.ability]) : 0;
+                const spellAbilityMod = (spells.ability && spells.ability !== 'none') ? getModifier(getEffectiveStat(spells.ability)) : 0;
                 const autoSpellAttack = spellAbilityMod + getEffectiveProficiencyBonus();
                 const autoSpellDC = 8 + spellAbilityMod + getEffectiveProficiencyBonus();
                 const spellAttackBase = Number.isFinite(spells.attackBonus) ? spells.attackBonus : autoSpellAttack;
@@ -6108,7 +6666,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                 const container = document.getElementById('spells');
                 if (renderSpellsTabModern(container)) return;
                 const { spells } = characterData;
-                const spellAbilityMod = (spells.ability && spells.ability !== 'none') ? getModifier(characterData.stats[spells.ability]) : 0;
+                const spellAbilityMod = (spells.ability && spells.ability !== 'none') ? getModifier(getEffectiveStat(spells.ability)) : 0;
                 const autoSpellAttack = spellAbilityMod + getEffectiveProficiencyBonus();
                 const autoSpellDC = 8 + spellAbilityMod + getEffectiveProficiencyBonus();
                 const spellAttackBase = Number.isFinite(spells.attackBonus) ? spells.attackBonus : autoSpellAttack;
@@ -6341,6 +6899,8 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                 btn.innerHTML = isEditing ? '<i class="fa-solid fa-save"></i>' : '<i class="fa-solid fa-wrench"></i>';
                 btn.title = isEditing ? '保存' : '编辑模式';
                 document.getElementById('char-name').setAttribute('contenteditable', isEditing);
+                const aiPanel = document.getElementById('status-ai-assist-panel');
+                if (aiPanel) aiPanel.style.display = isEditing ? 'block' : 'none';
             }
             
             function saveEdits() {
@@ -6400,6 +6960,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                 characterData.currentHp = getNumber('edit-current-hp', characterData.currentHp || 0);
                 characterData.maxHp = getNumber('edit-max-hp', characterData.maxHp || 1);
                 characterData.tempHp = getNumber('edit-temp-hp', characterData.tempHp || 0);
+                characterData.tempMaxHp = getNumber('edit-temp-max-hp', characterData.tempMaxHp || 0);
                 characterData.currentHitDice = getNumber('edit-current-hd', characterData.currentHitDice || 0);
                 characterData.maxHitDice = getNumber('edit-max-hd', characterData.maxHitDice || 1);
                 characterData.acDescription = getValue('edit-ac-desc', characterData.acDescription || '');
@@ -6668,6 +7229,8 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                 button.textContent = '保存中…';
                 try {
                     target.portrait = portraitCropCanvas.toDataURL('image/jpeg', 0.85);
+                    const vault = getPortraitVault();
+                    if (vault) await vault.set(activeCharacterName, target.name, target.portrait);
                     if (await saveData()) {
                         renderSidebar();
                         renderCharacterSwitcher();
@@ -6683,7 +7246,6 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     button.textContent = '保存立绘';
                 }
             }
-            document.getElementById('portrait-mode-close-btn').addEventListener('click', closePortraitModeModal);
             document.getElementById('portrait-preview-close-btn')?.addEventListener('click', closePortraitPreviewModal);
             portraitModeModal.addEventListener('click', (e) => {
                 if (e.target === portraitModeModal) closePortraitModeModal();
@@ -6770,6 +7332,18 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
             document.getElementById('tag-effect-close-btn')?.addEventListener('click', closeTagEffectEditor);
             document.getElementById('tag-effect-cancel-btn')?.addEventListener('click', closeTagEffectEditor);
             document.getElementById('tag-effect-save-btn')?.addEventListener('click', saveTagEffectEditor);
+                document.getElementById('tag-effect-ai-btn')?.addEventListener('click', aiGenerateRuleTagsForModal);
+                const addCustomTag = () => {
+                    const inp = document.getElementById('tag-effect-custom-input');
+                    const raw = inp?.value?.trim();
+                    if (!raw) return;
+                    const norm = normalizeRuleTagToken(raw) || raw;
+                    const checked = Array.from(tagEffectRuleTags?.querySelectorAll('[data-rule-tag]:checked') || []).map(el => el.value);
+                    renderTagEffectRuleTagOptions([...checked, norm]);
+                    if (inp) inp.value = '';
+                };
+                document.getElementById('tag-effect-custom-add-btn')?.addEventListener('click', addCustomTag);
+                document.getElementById('tag-effect-custom-input')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomTag(); } });
             document.getElementById('tag-effect-add-row-btn')?.addEventListener('click', () => {
                 createTagEffectRow({ target: '', mode: 'add', value: '', priority: 0, enabled: true });
             });
@@ -6856,10 +7430,17 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
 
 
 
-            function renderTagEffectRuleTagOptions() {
+            function renderTagEffectRuleTagOptions(selectedTags = []) {
                 if (!tagEffectRuleTags) return;
-                tagEffectRuleTags.innerHTML = DND_EFFECT_PRESETS.map(preset => (
-                    `<button type="button" class="tag-effect-rule-chip" data-effect-preset="${preset.key}"><span>＋ ${preset.label}</span></button>`
+                const selectedList = normalizeEffectTagList(selectedTags);
+                const selected = new Set(selectedList);
+                const quickChoices = ['AC +1', 'AC +2', '全豁免 +1', '全技能 +1', '最大HP +5', '法术DC +1', '法术攻击 +1', '武器命中 +1', '武器伤害 +1', '武器额外 1d4', '火焰抗性', '潜行优势', '潜行劣势', '需装备', '需同调'];
+                const allChoices = Array.from(new Set([...quickChoices, ...selectedList]));
+                tagEffectRuleTags.innerHTML = allChoices.map(tag => (
+                    `<label class="tag-effect-rule-chip">
+                        <input type="checkbox" data-rule-tag value="${escapeAttr(tag)}" ${selected.has(tag) ? 'checked' : ''}>
+                        <span>${escapeAttr(tag)}</span>
+                    </label>`
                 )).join('');
             }
             tagEffectRuleTags?.addEventListener('click', event => {
@@ -6965,7 +7546,10 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                 try { effects=normalizeEffects(collectTagEffectEditorRows()); }
                 catch(error) { alert('效果未保存：'+error.message); return; }
                 resolved.target.tags=parseTagTextList(tagEffectFlavorInput?.value || '').join(', ');
-                resolved.target.effects=effects;
+                const tags=Array.from(tagEffectRuleTags.querySelectorAll('[data-rule-tag]:checked')).map(el=>el.value);
+                resolved.target.effectTags=normalizeEffectTagList(tags);
+                if (tags.includes('需同调')) resolved.target.requiresAttunement=true;
+                resolved.target.effects=[...effects.filter(e=>!String(e.id).includes('__tag__')), ...getEffectsFromEffectTags(tags).map(e=>({...e,requiresEquipped:tags.includes('需装备')}))];
                 closeTagEffectEditor();
                 updateCharacterAC(false);
                 saveData();
@@ -6980,9 +7564,9 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                 tagEffectEditorState.index=parseInt(indexRaw,10);
                 tagEffectTitle.textContent=`标签与效果：${resolved.label}`;
                 tagEffectFlavorInput.value=parseTagTextList(resolved.target.tags || '').join(', ');
-                renderTagEffectRuleTagOptions();
+                renderTagEffectRuleTagOptions(resolved.target.effectTags);
                 tagEffectRows.innerHTML='';
-                normalizeEffects(resolved.target.effects).forEach(effect=>{
+                normalizeEffects(resolved.target.effects).filter(e=>!String(e.id).includes('__tag__')).forEach(effect=>{
                     const group=createTagEffectGroup(effect);
                     effect.changes.forEach(change=>createTagEffectRow({...change,change,group}));
                 });
@@ -7092,6 +7676,14 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     event.target.value = ''; // Allow selecting the same file again.
                 }
             });
+
+            const refreshPortraitsFromVault = () => {
+                if (!characterData) return;
+                renderSidebar();
+                renderCharacterSwitcher();
+            };
+            window.addEventListener('dnd-portrait-vault-ready', refreshPortraitsFromVault);
+            window.addEventListener('dnd-portrait-updated', refreshPortraitsFromVault);
             
             document.addEventListener('click', (e) => {
                 const collapseTarget = e.target.closest('[data-action="toggle-collapse"]');
@@ -7284,6 +7876,12 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     characterData.tempHp = Math.max(0, characterData.tempHp + parseInt(amount));
                     saveData(); renderSidebar();
                 }
+                if (action === 'adjust-tempmaxhp') {
+                    characterData.tempMaxHp = normalizeNumber(characterData.tempMaxHp, 0) + (parseInt(amount, 10) || 0);
+                    const effMax = getEffectiveMaxHp();
+                    if (characterData.currentHp > effMax) characterData.currentHp = effMax;
+                    saveData(); renderSidebar();
+                }
             });
 
             document.getElementById('tabs-content').addEventListener('click', (e) => {
@@ -7342,7 +7940,10 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                         }
                         updateCharacterAC();
                         renderSidebar();
+                        renderAttributesTab();
+                        renderSpellsTab();
                         renderInventoryTab();
+                        saveData();
                     }
                 }
                 if (spellLevel !== undefined && slotIndex !== undefined) {
@@ -7417,7 +8018,242 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
             tabButtons.forEach(button => button.addEventListener('click', () => { const tabId = button.dataset.tab; tabButtons.forEach(btn => btn.classList.remove('active')); button.classList.add('active'); tabContents.forEach(content => content.classList.toggle('hidden', content.id !== tabId)); }));
             
             document.getElementById('char-name').addEventListener('blur', (e) => { if(!isEditing) return; characterData.name = e.target.textContent; saveData(); renderCharacterSwitcher(); });
+
+            function resolveStatusGenerateRawFn() {
+                if (typeof generateRaw === 'function') return generateRaw;
+                if (typeof window !== 'undefined') {
+                    if (typeof window.generateRaw === 'function') return window.generateRaw;
+                    if (typeof window.TavernHelper?.generateRaw === 'function') return window.TavernHelper.generateRaw;
+                    try {
+                        if (typeof window.parent?.generateRaw === 'function') return window.parent.generateRaw;
+                        if (typeof window.parent?.TavernHelper?.generateRaw === 'function') return window.parent.TavernHelper.generateRaw;
+                    } catch (_) {}
+                }
+                return null;
+            }
+
+            function extractStatusAiJson(raw) {
+                const text = typeof raw === 'string' ? raw : (raw?.content || raw?.text || String(raw || ''));
+                const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+                const body = fenced ? fenced[1] : text;
+                const first = body.indexOf('{');
+                const last = body.lastIndexOf('}');
+                if (first < 0 || last <= first) throw new Error('AI 未返回合法 JSON');
+                return JSON.parse(body.slice(first, last + 1));
+            }
+
+            function clearCharacterForAiRebuild() {
+                characterData.background = '';
+                characterData.alignment = '';
+                characterData.languages = '';
+                characterData.stats = { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
+                characterData.proficiencies = {
+                    savingThrows: [],
+                    skills: [],
+                    expertises: [],
+                    halfSkills: [],
+                    weaponAndArmor: [],
+                    tools: []
+                };
+                characterData.features = { class: [], race: [], feats: [] };
+                characterData.inventory = characterData.inventory || {};
+                characterData.inventory.weapons = [];
+                characterData.inventory.equipment = [];
+                characterData.spells = characterData.spells || {};
+                characterData.spells.known = { '0':[],'1':[],'2':[],'3':[],'4':[],'5':[],'6':[],'7':[],'8':[],'9':[] };
+                characterData.appearance = { gender: characterData.appearance?.gender || '', age: '', height: '', weight: '', eyes: '', skin: '', hair: '', description: '' };
+                characterData.personality = { ideal: '', bond: '', flaw: '', trait: '', biography: '' };
+                characterData.resources = [];
+                updateCharacterAC(false);
+                saveData();
+                renderCharacterSwitcher();
+                renderAll();
+            }
+
+            function applyStatusAiData(mode, data) {
+                if (!data || typeof data !== 'object') return;
+                const sStr = (v, fb) => (typeof v === 'string' && v.trim()) ? v.trim() : fb;
+                if (mode === 'all') {
+                    if (sStr(data.name)) characterData.name = data.name.trim();
+                    if (sStr(data.class)) characterData.class = data.class.trim();
+                    if (Number.isInteger(Number(data.level)) && Number(data.level) >= 1 && Number(data.level) <= 20) characterData.level = Number(data.level);
+                    if (sStr(data.race)) characterData.race = data.race.trim();
+                    if (sStr(data.background)) characterData.background = data.background.trim();
+                    if (sStr(data.alignment)) characterData.alignment = data.alignment.trim();
+                    if (sStr(data.languages)) characterData.languages = data.languages.trim();
+                    if (data.stats && typeof data.stats === 'object') {
+                        for (const k of ['str', 'dex', 'con', 'int', 'wis', 'cha']) {
+                            const n = Number(data.stats[k]);
+                            if (Number.isInteger(n) && n >= 1 && n <= 30) characterData.stats[k] = n;
+                        }
+                    }
+                    if (Number.isInteger(Number(data.maxHp)) && Number(data.maxHp) > 0) {
+                        characterData.maxHp = Number(data.maxHp);
+                        characterData.currentHp = Number(data.maxHp);
+                    }
+                    if (data.proficiencies && typeof data.proficiencies === 'object') {
+                        characterData.proficiencies = characterData.proficiencies || {};
+                        for (const k of ['savingThrows', 'skills', 'expertises', 'weaponAndArmor', 'tools']) {
+                            if (Array.isArray(data.proficiencies[k])) characterData.proficiencies[k] = data.proficiencies[k].map(String);
+                        }
+                    }
+                }
+                if ((mode === 'all' || mode === 'features') && data.features && typeof data.features === 'object') {
+                    characterData.features = characterData.features || { class: [], race: [], feats: [] };
+                    for (const k of ['class', 'race', 'feats']) {
+                        if (Array.isArray(data.features[k])) {
+                            characterData.features[k] = data.features[k].map(f => ({
+                                name: String(f?.name || '特性'),
+                                source: String(f?.source || ''),
+                                details: String(f?.details || '')
+                            }));
+                        }
+                    }
+                }
+                if ((mode === 'all' || mode === 'spells') && data.spells && typeof data.spells === 'object') {
+                    characterData.spells = characterData.spells || {};
+                    if (['cha', 'wis', 'int', 'none'].includes(data.spells.ability)) characterData.spells.ability = data.spells.ability;
+                    if (data.spells.slots && typeof data.spells.slots === 'object') {
+                        for (const lvl of Object.keys(data.spells.slots)) {
+                            if (characterData.spells.slots?.[lvl]) {
+                                const t = Number(data.spells.slots[lvl]?.total ?? data.spells.slots[lvl]);
+                                if (Number.isInteger(t) && t >= 0) characterData.spells.slots[lvl].total = t;
+                            }
+                        }
+                    }
+                    if (data.spells.known && typeof data.spells.known === 'object') {
+                        characterData.spells.known = characterData.spells.known || {};
+                        for (const lvl of Object.keys(data.spells.known)) {
+                            if (Array.isArray(data.spells.known[lvl])) {
+                                characterData.spells.known[lvl] = data.spells.known[lvl].map(sp => ({
+                                    name: String(sp?.name || '法术'),
+                                    castingTime: String(sp?.castingTime || '1动作'),
+                                    range: String(sp?.range || '60尺'),
+                                    duration: String(sp?.duration || '立即'),
+                                    isPrepared: sp?.isPrepared !== false,
+                                    details: String(sp?.details || '')
+                                }));
+                            }
+                        }
+                    }
+                }
+                if ((mode === 'all' || mode === 'items') && data.inventory && typeof data.inventory === 'object') {
+                    characterData.inventory = characterData.inventory || { currency: { cp:0,sp:0,ep:0,gp:0,pp:0 }, weapons: [], equipment: [] };
+                    if (Array.isArray(data.inventory.weapons)) {
+                        characterData.inventory.weapons = data.inventory.weapons.map(w => ({
+                            name: String(w?.name || '武器'),
+                            attackStat: ['str', 'dex', 'int', 'wis', 'cha'].includes(w?.attackStat) ? w.attackStat : 'str',
+                            damage: String(w?.damage || '1d8'),
+                            type: String(w?.damageType || '挥砍'),
+                            proficient: w?.isProficient !== false,
+                            magicBonus: Number(w?.magicBonus) || 0,
+                            tags: String(w?.properties || ''),
+                            isEquipped: !!w?.isEquipped,
+                            details: String(w?.details || ''),
+                            effectTags: [],
+                            effects: []
+                        }));
+                    }
+                    if (Array.isArray(data.inventory.equipment)) {
+                        characterData.inventory.equipment = data.inventory.equipment.map(eq => normalizeEquipmentItem({
+                            ...Object.values(PRESET_DATA.armors).find(p => p.name === eq?.name),
+                            name: String(eq?.name || '物品'),
+                            type: eq?.type === 'shield' ? 'armor' : String(eq?.type || 'item'),
+                            ...(eq?.type === 'shield' ? {armorType:'shield',baseAc:2} : {}),
+                            ...(['light','medium','heavy','shield'].includes(eq?.armorType) ? {armorType:eq.armorType} : {}),
+                            ...(Number.isFinite(eq?.baseAc) ? {baseAc:eq.baseAc} : {}),
+                            isEquipped: !!eq?.isEquipped,
+                            quantity: Number(eq?.quantity) || 1,
+                            details: String(eq?.details || ''),
+                            effectTags: [],
+                            effects: []
+                        }));
+                    }
+                }
+                if (mode === 'all' || mode === 'bio') {
+                    if (sStr(data.background)) characterData.background = data.background.trim();
+                    if (sStr(data.alignment)) characterData.alignment = data.alignment.trim();
+                    if (sStr(data.playerName)) characterData.playerName = data.playerName.trim();
+                    if (data.appearance && typeof data.appearance === 'object') {
+                        characterData.appearance = characterData.appearance || {};
+                        for (const k of ['gender', 'age', 'height', 'weight', 'eyes', 'skin', 'hair', 'description']) {
+                            if (typeof data.appearance[k] === 'string' && data.appearance[k].trim()) {
+                                characterData.appearance[k] = data.appearance[k].trim();
+                            }
+                        }
+                    }
+                    if (data.personality && typeof data.personality === 'object') {
+                        characterData.personality = characterData.personality || {};
+                        for (const k of ['ideal', 'bond', 'flaw', 'trait', 'biography']) {
+                            if (typeof data.personality[k] === 'string' && data.personality[k].trim()) {
+                                characterData.personality[k] = data.personality[k].trim();
+                            }
+                        }
+                    }
+                }
+                updateCharacterAC(false);
+                saveData();
+                renderCharacterSwitcher();
+                renderAll();
+            }
+
+            async function runStatusAiAssist(mode) {
+                const statusEl = document.getElementById('status-ai-status');
+                const btns = document.querySelectorAll('#status-ai-assist-panel [data-status-ai]');
+                const setMsg = (txt, color = '#c9beab') => {
+                    if (!statusEl) return;
+                    statusEl.textContent = txt;
+                    statusEl.style.color = color;
+                };
+                if (mode === 'clear') {
+                    clearCharacterForAiRebuild();
+                    setMsg('🧹 已清空当前角色的特性、法术、物品、背景与个性档案！', '#8fe3a1');
+                    return;
+                }
+                const genRaw = resolveStatusGenerateRawFn();
+                if (!genRaw) {
+                    setMsg('❌ 未检测到 SillyTavern generateRaw 接口。', '#ff8c8c');
+                    return;
+                }
+                const concept = (document.getElementById('status-ai-concept')?.value || '').trim();
+                const summary = `姓名:${characterData.name}, 种族:${characterData.race}, 职业:${characterData.class}, 等级:${characterData.level}, 背景:${characterData.background}, 阵营:${characterData.alignment}`;
+                const schemaHint = mode === 'features'
+                    ? '{"features":{"class":[{"name":"","source":"","details":""}],"race":[{"name":"","source":"","details":""}],"feats":[{"name":"","source":"","details":""}]}}'
+                    : mode === 'spells'
+                        ? '{"spells":{"ability":"int|wis|cha|none","slots":{"1":2},"known":{"0":[{"name":"","castingTime":"1动作","range":"60尺","duration":"立即","isPrepared":true,"details":""}],"1":[...]}}}'
+                        : mode === 'items'
+                            ? '{"inventory":{"weapons":[{"name":"","attackStat":"str|dex","damage":"1d8","damageType":"挥砍","isProficient":true,"magicBonus":0,"properties":"","details":""}],"equipment":[{"name":"","type":"armor|shield|potion|item","isEquipped":true,"quantity":1,"details":""}]}}'
+                            : mode === 'bio'
+                                ? '{"background":"","alignment":"","appearance":{"gender":"","age":"","height":"","weight":"","eyes":"","skin":"","hair":"","description":""},"personality":{"ideal":"","bond":"","flaw":"","trait":"","biography":""}}'
+                                : '{"name":"","class":"","level":1,"race":"","background":"","alignment":"","languages":"","maxHp":12,"stats":{"str":16,"dex":14,"con":14,"int":10,"wis":12,"cha":8},"proficiencies":{"savingThrows":[],"skills":[],"expertises":[],"weaponAndArmor":[],"tools":[]},"features":{"class":[],"race":[],"feats":[]},"spells":{"ability":"none","slots":{"1":0},"known":{}},"inventory":{"weapons":[],"equipment":[]},"appearance":{"gender":"","age":"","height":"","weight":"","eyes":"","skin":"","hair":"","description":""},"personality":{"ideal":"","bond":"","flaw":"","trait":"","biography":""}}';
+
+                btns.forEach(b => { b.disabled = true; });
+                setMsg('⏳ 正在调用 AI 生成并写入当前角色卡...');
+                try {
+                    const raw = await genRaw({
+                        should_stream: false,
+                        should_silence: true,
+                        max_chat_history: 0,
+                        ordered_prompts: [
+                            { role: 'system', content: '你是精通 D&D 2024 的角色卡助手。请严格只输出一个合法 JSON 对象，中文填写。' },
+                            { role: 'user', content: `当前角色：${summary}\n玩家方向/想法：${concept || '贴合当前职业与背景自动补全'}\n请严格按以下 JSON 结构输出（只填需要更新的内容）：\n${schemaHint}` }
+                        ]
+                    });
+                    const parsed = extractStatusAiJson(raw);
+                    applyStatusAiData(mode, parsed);
+                    setMsg('✅ AI 帮填完成并已保存到当前角色卡！', '#8fe3a1');
+                } catch (err) {
+                    console.error('[StatusBar AI Assist]', err);
+                    setMsg('❌ AI 帮填失败：' + (err?.message || String(err)), '#ff8c8c');
+                } finally {
+                    btns.forEach(b => { b.disabled = false; });
+                }
+            }
+
             document.getElementById('edit-toggle-button').addEventListener('click', toggleEditMode);
+            document.querySelectorAll('#status-ai-assist-panel [data-status-ai]').forEach(btn => {
+                btn.addEventListener('click', () => runStatusAiAssist(btn.dataset.statusAi));
+            });
             document.getElementById('long-rest-btn').addEventListener('click', longRest);
             document.getElementById('short-rest-btn').addEventListener('click', openShortRestModal);
             document.getElementById('mobile-toggle-btn').addEventListener('click', toggleMobileMode);
@@ -7437,6 +8273,8 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
             document.getElementById('short-rest-cancel-btn').addEventListener('click', closeShortRestModal);
             document.getElementById('short-rest-apply-btn').addEventListener('click', applyShortRest);
             document.getElementById('roll-log-clear').addEventListener('click', clearRollLog);
+            document.getElementById('roll-adv-btn')?.addEventListener('click', () => toggleRollAdvantageMode('adv'));
+            document.getElementById('roll-dis-btn')?.addEventListener('click', () => toggleRollAdvantageMode('dis'));
 
             document.getElementById('attributes').addEventListener('input', (e) => {
                 if (!isEditing) return;

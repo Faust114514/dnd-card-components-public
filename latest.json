@@ -1,12 +1,12 @@
 {
   "format": 1,
-  "version": "vf.0.5.0",
+  "version": "vf.0.6.0",
   "minimum_card_version": "vf.0.3.0",
   "notes": [
-    "统一特性名称，清理明确的重复精通、职业来源前缀、子职占位和种族选择摘要；保留手改说明与附加效果。",
-    "升级和换选保留具体特性正文，祈唤及奥术射击换出后不再回填；补齐已确认缺失的职业规则。",
-    "种族技能与职业技能、专精和熟习选择联动；保存牧师圣职与德鲁伊原初职能，旧人物可从配置补选，20级可用。",
-    "跨到0.5前须先停用旧更新器、手动导入新版私有组件更新一次，再从泡泡在线安装刷新。整卡自带新版更新器。35条世界书和预设v1.3保持，旧聊天不换整卡、整书或存档。"
+    "合入原作者新版战术地图、墙体与视线、棋子、头像库、AI建人和档案补全、参数化标签、固定顺序掷点与DM存在感。",
+    "保留0.5全部人物修复、二改规则、五组选一无限重掷、传记开关和旧地图；旧聊天默认旧战场，打完后在地图中切换新版。",
+    "修复数值标签、地图材料漏传、旧战斗误恢复、地形被当单位、头像迁移和泉此方后端缺项；不循环复用已耗骰子。",
+    "跨0.6先停用旧更新器，手动导入本版更新器一次，再在线安装刷新；配套预设v1.4单独导入。旧聊天不换整卡或整书。"
   ],
   "components": [
     {
@@ -80,6 +80,12 @@
       "id": "d5e20240-6d61-4700-9a11-7e5e20240001",
       "name": "模组地图",
       "path": "src/scripts/模组地图.js"
+    },
+    {
+      "kind": "script",
+      "id": "a1b2c3d4-7072-4772-8001-202400000001",
+      "name": "角色头像库",
+      "path": "src/scripts/角色头像库.js"
     },
     {
       "kind": "regex",
@@ -205,7 +211,7 @@
     {
       "id": "dnd-clean-old-battle-map",
       "scriptName": "[不发送]旧战斗面板清理",
-      "findRegex": "/<battle>(?:(?!<battle>)[\\s\\S])*?<\\/battle>/g",
+      "findRegex": "/<(battle-delta|battle)\\b[^>]*>(?:(?!<(?:battle-delta|battle)\\b)[\\s\\S])*?<\\/\\1>/gi",
       "trimStrings": [],
       "placement": [
         1,
@@ -224,7 +230,6 @@
       "id": "dnd-clean-old-map-marker",
       "scriptName": "[不发送]旧模组地图标记清理",
       "findRegex": "/<!--\\s*dnd-map\\s*:[\\s\\S]*?-->|<dnd-map>[\\s\\S]*?<\\/dnd-map>/gi",
-      "replaceString": "",
       "trimStrings": [],
       "placement": [
         1,
@@ -236,7 +241,8 @@
       "runOnEdit": true,
       "substituteRegex": 0,
       "minDepth": 1,
-      "maxDepth": null
+      "maxDepth": null,
+      "replaceString": ""
     }
   ],
   "worldbook_path": "src/worldbook/updates.json",

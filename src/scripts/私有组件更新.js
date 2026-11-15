@@ -2,6 +2,8 @@
 const battlePatternFixes = [
       ['36bab6c1-2a4d-44de-b9a7-256c8a68c50d', String.raw`/(<battle>[\s\S]*?<\/battle>)/g`, String.raw`/(<battle>(?:(?!<battle>)[\s\S])*?<\/battle>)/g`],
       ['dnd-clean-old-battle-map', String.raw`/<battle>[\s\S]*?<\/battle>/g`, String.raw`/<battle>(?:(?!<battle>)[\s\S])*?<\/battle>/g`],
+      ['36bab6c1-2a4d-44de-b9a7-256c8a68c50d', String.raw`/(<battle>(?:(?!<battle>)[\s\S])*?<\/battle>)/g`, String.raw`/(<(battle-delta|battle)\b[^>]*>(?:(?!<(?:battle-delta|battle)\b)[\s\S])*?<\/\2>)/gi`],
+      ['dnd-clean-old-battle-map', String.raw`/<battle>(?:(?!<battle>)[\s\S])*?<\/battle>/g`, String.raw`/<(battle-delta|battle)\b[^>]*>(?:(?!<(?:battle-delta|battle)\b)[\s\S])*?<\/\1>/gi`],
     ];
 
 // Only these two shipped patterns need the global flag. Keep custom patterns as entered.
@@ -17,7 +19,7 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
     'e2a5bb3c-baa2-47dd-a306-494339a4b5fb','fbf175a5-3276-443f-9765-f16e3e843ada','28c1bd41-a967-4869-99d1-e8d935f62b3a',
     'c3c9ad44-9e9b-4c6e-ae93-f2b098a20125','87d2112d-e610-48c7-bae1-57f3c743be81','a39757e2-61fd-4aa0-8fd2-9ca4c264955a',
     '480d6777-f90d-4eba-a811-64cb2f1ffb00','736c0e4e-67b4-4113-a021-b3890714ba28',
-    'd5e20240-6d61-4700-9a11-7e5e20240001',
+    'd5e20240-6d61-4700-9a11-7e5e20240001','a1b2c3d4-7072-4772-8001-202400000001',
     '01c632e5-1071-4a08-aebd-6a0e5424ea99','07f940a4-9b91-450f-99d9-0eecfb0b6175','d4e1e18e-63e6-4a94-b63b-a140798d0b3b',
     'afa5df56-5392-4e15-b8a6-157791fe56a7','4b31a3fe-d7df-4f51-ac2d-5e4efda6fbe5','869d4177-a5a3-47b5-9b53-26ecd557d6f3',
     '36bab6c1-2a4d-44de-b9a7-256c8a68c50d','c150cf94-b876-499f-a9e3-80ccc0e96ff0','958c00c8-f1e0-4470-b81c-09de4601f71f',
@@ -25,10 +27,10 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
     'battle-check-1774752962048','d7a9c17d-960e-4a56-9e17-0c77e86c71a8','1c6924c3-1308-430b-b62c-e2ce7e0d1814','b179c655-147d-4572-a6ea-1c0326363009',
   ]);
   const legacy = card.data.character_version === 'vf.0.2.21';
-  if (!legacy && !/^vf\.0\.(?:3|4|5)\.\d+$/.test(card.data.character_version)) throw Error('本更新器支持 vf.0.2.21、vf.0.3.x、vf.0.4.x 与 vf.0.5.x 卡');
+  if (!legacy && !/^vf\.0\.(?:3|4|5|6)\.\d+$/.test(card.data.character_version)) throw Error('本更新器支持 vf.0.2.21、vf.0.3.x、vf.0.4.x、vf.0.5.x 与 vf.0.6.x 卡');
   const emptyRegexes = manifest.empty_regexes ?? [];
   if (!Array.isArray(emptyRegexes) || emptyRegexes.some(item => item?.kind !== 'regex')) throw Error('空替换规则清单无效');
-  if (manifest.format !== 1 || !/^vf\.0\.(?:3|4|5)\.\d+$/.test(manifest.version) || manifest.minimum_card_version !== 'vf.0.3.0' || !Array.isArray(manifest.components)) throw Error('更新清单不适用于本卡');
+  if (manifest.format !== 1 || !/^vf\.0\.(?:3|4|5|6)\.\d+$/.test(manifest.version) || manifest.minimum_card_version !== 'vf.0.3.0' || !Array.isArray(manifest.components)) throw Error('更新清单不适用于本卡');
   if (legacy && !manifest.legacy_card_versions?.includes('vf.0.2.21')) throw Error('此发布尚未提供 vf.0.2.21 接入支持');
   const current = card.data.extensions;
   const helper = structuredClone(current.tavern_helper), regexes = structuredClone(current.regex_scripts);
@@ -58,6 +60,9 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
         info: 'D&D 官方模组运行辅助插件：从 5e.kiwee.top 读取模组与生物原版数据，自动生成每层地城拓扑图，提供玩家可拖动探索的多边形战争迷雾地图，并随剧情推进自动滑窗切换世界书房间数据。',
         button: {enabled: true, buttons: [{name: '模组地图', visible: true}]}, data: {}, export_with: {data: true, button: true}};
       helper.scripts.push(map); scripts.push(map); changed.push('新增模组地图'); continue;
+    }
+    if (item.kind==='script' && item.id==='a1b2c3d4-7072-4772-8001-202400000001' && matches.length===0) {
+      const added={...{"type":"script","enabled":true,"name":"角色头像库","id":"a1b2c3d4-7072-4772-8001-202400000001","info":"独立存储玩家裁剪后的角色头像图片数据（IndexedDB + 内存高速缓存），完全脱离 MVU 聊天变量与图床 URL/本地文件名限制。","button":{"enabled":false,"buttons":[]},"data":{},"export_with":{"data":true,"button":true}},content:body}; helper.scripts.push(added); scripts.push(added); changed.push('新增角色头像库'); continue;
     }
     if (matches.length === 0) throw Error('未找到组件：' + item.name);
     if (matches.length > 1) throw Error('组件 ID 重复：' + item.name);
@@ -131,7 +136,7 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
 }
 
 function planDndWorldbook(book, patches, kept = [], additions = []) {
-  const allowed = new Set([18, 643316, 781421, 12, 207976, 6, 781420]);
+  const allowed = new Set([18, 643316, 781421, 12, 207976, 6, 781420, 2, 781429, 781426]);
   const plan = patches.map(patch => {
     if (!allowed.delete(patch.uid) || typeof patch.previous !== 'string' || typeof patch.content !== 'string' || !patch.content.trim()) throw Error('世界书更新条目无效');
     const entry = book.entries[patch.uid];

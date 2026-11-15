@@ -1,5 +1,5 @@
 {
-  "version": "vf.0.5.0",
+  "version": "vf.0.6.0",
   "scripts": [
     {
       "type": "script",
@@ -333,6 +333,23 @@
         "button": true
       },
       "source": "src/scripts/模组地图.js"
+    },
+    {
+      "type": "script",
+      "enabled": true,
+      "name": "角色头像库",
+      "id": "a1b2c3d4-7072-4772-8001-202400000001",
+      "info": "独立存储玩家裁剪后的角色头像图片数据（IndexedDB + 内存高速缓存），完全脱离 MVU 聊天变量与图床 URL/本地文件名限制。",
+      "button": {
+        "enabled": false,
+        "buttons": []
+      },
+      "data": {},
+      "export_with": {
+        "data": true,
+        "button": true
+      },
+      "source": "src/scripts/角色头像库.js"
     }
   ],
   "regexes": [
@@ -444,7 +461,7 @@
     },
     {
       "disabled": false,
-      "findRegex": "/(<battle>(?:(?!<battle>)[\\s\\S])*?<\\/battle>)/g",
+      "findRegex": "/(<(battle-delta|battle)\\b[^>]*>(?:(?!<(?:battle-delta|battle)\\b)[\\s\\S])*?<\\/\\2>)/gi",
       "id": "36bab6c1-2a4d-44de-b9a7-256c8a68c50d",
       "markdownOnly": true,
       "maxDepth": 3,
@@ -642,7 +659,7 @@
     {
       "id": "dnd-clean-old-battle-map",
       "scriptName": "[不发送]旧战斗面板清理",
-      "findRegex": "/<battle>(?:(?!<battle>)[\\s\\S])*?<\\/battle>/g",
+      "findRegex": "/<(battle-delta|battle)\\b[^>]*>(?:(?!<(?:battle-delta|battle)\\b)[\\s\\S])*?<\\/\\1>/gi",
       "trimStrings": [],
       "placement": [
         1,

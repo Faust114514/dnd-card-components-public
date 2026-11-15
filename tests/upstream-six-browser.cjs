@@ -1,0 +1,47 @@
+// New upstream controls in actual Edge; all Tavern storage and AI calls are fixtures.
+const fs=require('node:fs'),path=require('node:path');
+const harness=fs.readFileSync(path.join(__dirname,'tool-proficiencies.cjs'),'utf8');
+async function runScenarios(){
+ await navigate('/creator');await wait("document.getElementById('char-species-search')&&!minimalRenderMode");
+ check(await run("document.querySelectorAll('#biography-fields').length===1&&!document.getElementById('char-age')"),'one biography form, no duplicate upstream fields');
+ await run(`window.generateRaw=async()=>JSON.stringify({persona:{name:'合并测试',gender:'女',age:'120',height:'170',weight:'60',eyes:'灰',skin:'白',hair:'黑',appearance:'多行\\n外貌',alignment:'中立善良',playerName:'测试者',ideals:'理想',bonds:'牵绊',flaws:'缺点',personalityTraits:'性格',backstory:'长传记\\n第二段'}});`);
+ await click('[data-ai-mode=persona]');await wait("document.getElementById('ai-helper-status').classList.contains('ok') || document.getElementById('ai-helper-status').classList.contains('error')");
+ check(await run("state.name==='合并测试'&&state.biography.age==='120'&&document.getElementById('bio-age').value==='120'"),'AI persona button fills existing biography state and visible controls');
+ check(await run('fixtureWrites===0&&fixtureSends===0'),'AI draft does not save a character or send a chat');
+ await choose('char-species','Human');await set('char-class','战士');await choose('char-background','Guard');
+ await click('[data-mode="4d6"]');await click('#attr-roll');
+ check(await run('state.rollHistory.length===5'),'free dice still supplies five groups: '+await run('JSON.stringify({mode:state.attributeMode,groups:state.rollHistory.length,errors:fixtureErrors})'));
+ await click('[data-mode="4d6fixed"]');await click('#attr-roll');
+ check(await run("state.rollsRemaining===4&&Object.keys(state.dicePoolAssigned).length===6&&FIXED_ATTR_ORDER.every((a,i)=>state.attributes[a]===state.dicePool[i].value)"),'fixed dice assigns the six attributes in order');
+ await run('for(let i=0;i<8;i++)roll4d6Attributes()');
+ check(await run('state.rollsRemaining===0'),'fixed dice stops after five rolls');
+ await click('[data-mode="4d6"]');await click('#attr-roll');
+ check(await run('state.rollHistory.length===5&&!elements.attrRoll.disabled'),'free dice remains unlimited after fixed mode');
+ await run(`state.class='战士';state.species='人类';state.background='警卫';state.attributes={力量:12,敏捷:14,体质:14,智力:10,感知:12,魅力:10};state.biographyEnabled=false;const c=buildMvuCharacterSheet();c.生命值.当前=7;replaceVariables({stat_data:{当前角色ID:c.姓名,角色列表:{[c.姓名]:c}},mvu_lite_ui:{[c.姓名]:{头像:'https://example.invalid/portrait.png'}},otherPlugin:{keep:true}});`);
+ await navigate('/status');await wait("window.sheet && document.getElementById('char-name').textContent==='合并测试'");
+ check(await run("['AC +7','最大HP +17','力量 = 21','武器额外 2d8','隐匿 +2'].every(s=>sheet.parse(s))"),'all formerly broken numeric tag forms parse');
+ check(await run("sheet.portrait('https://example.invalid/portrait.png')==='https://example.invalid/portrait.png'"),'external portraits remain readable');
+ await run(`sheet.data.inventory.equipment.push({name:'测试斗篷',details:'测试',isEquipped:true,requiresAttunement:false,isAttuned:false,effects:[],effectTags:[]});sheet.open('equipment',sheet.data.inventory.equipment.length-1);`);
+ await set('tag-effect-custom-input','AC +7','input');await click('#tag-effect-custom-add-btn');await set('tag-effect-custom-input','力量 = 21','input');await click('#tag-effect-custom-add-btn');await click('#tag-effect-save-btn');await wait('fixtureWrites>0');
+ check(await run("sheet.effective('str')===21&&sheet.data.stats.str===12"),'attribute tags raise effective strength without changing base');
+ await run("const e=sheet.data.inventory.equipment.at(-1);e.requiresAttunement=true;e.isAttuned=false;");
+ check(await run("sheet.effective('str')===12"),'unattuned item does not apply its attribute bonus');
+ await run("sheet.data.inventory.equipment.at(-1).isAttuned=true;sheet.save()");
+ check(await run("Object.values(MvuLite.expandCharacter(getVariables().stat_data.角色列表['合并测试'],'合并测试').物品).flatMap(Object.values).some(e=>e.规则标签?.includes('AC +7')&&e.effects.some(f=>f.changes.some(c=>c.target==='ac.bonus'&&c.value===7)))"),'custom tag stores both its label and canonical numeric effect');
+ const ac=await run("getVariables().stat_data.角色列表['合并测试']._有效AC");
+ await run('sheet.save()');await navigate('/status');await wait('window.sheet&&document.getElementById("char-name").textContent==="合并测试"');await run('sheet.save()');
+ check(await run("getVariables().stat_data.角色列表['合并测试']._有效AC")===ac,'repeat save and reload do not double tag AC');
+ check(await run("MvuLite.expandCharacter(getVariables().stat_data.角色列表['合并测试'],'合并测试').生命值.当前===7&&getVariables().otherPlugin.keep"),'HP and unrelated plugin data survive tag save');
+ await run(`window.generateRaw=async()=>JSON.stringify({appearance:{age:'130',description:'档案外貌'},personality:{ideal:'新理想',biography:'新传记\\n第二段'}});document.querySelector('[data-status-ai=bio]').click();`);await wait("document.getElementById('status-ai-status').textContent.includes('已保存')");
+ check(await run("sheet.data.appearance.age==='130'&&sheet.data.personality.ideal==='新理想'&&sheet.data.personality.biography.includes('第二段')&&sheet.data.currentHp===7"),'status AI biography writes original fields without changing combat resources');
+ await run(`window.generateRaw=async()=>JSON.stringify({inventory:{weapons:[{name:'测试剑',damage:'1d6',damageType:'穿刺',isProficient:true,properties:'灵巧'}],equipment:[{name:'全身板甲',type:'armor',isEquipped:true},{name:'盾牌',type:'shield',isEquipped:true}]}});document.querySelector('[data-status-ai=items]').click();`);await wait("document.getElementById('status-ai-status').textContent.includes('已保存')");
+ check(await run("sheet.data.inventory.weapons[0].type==='穿刺'&&sheet.data.inventory.weapons[0].proficient&&sheet.data.inventory.weapons[0].tags==='灵巧'&&sheet.data.inventory.equipment[0].baseAc===18&&sheet.data.inventory.equipment[1].armorType==='shield'&&getVariables().stat_data.角色列表['合并测试']._有效AC===20"),'AI equipment preserves damage, proficiency, properties and armor/shield AC');
+ await click('#collapse-toggle-btn');await shot('状态栏-参数化标签');
+ await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:false});await shot('状态栏-390');
+ check(await run('fixtureErrors.length===0&&fixtureSends===0'),'no page errors or automatic messages');
+ console.log(JSON.stringify({passed:true,checks:checks.length,untested:['Real Tavern persistence','Real model output']}));
+}
+let prefix=harness.slice(0,harness.indexOf('async function runScenarios()'));
+prefix=prefix.replace(" if(url.pathname==='/levelup')html=",` if(url.pathname==='/status')html=html.replace('// --- PRESET DATA --- //',"window.sheet={get data(){return characterData},parse:parseDynamicRuleTag,save:saveData,open:openTagEffectEditor,portrait:getPortraitSrc,effective:getEffectiveStat}; // --- PRESET DATA --- //");\n if(url.pathname==='/levelup')html=`);
+const footer=harness.slice(harness.indexOf('(async()=>{',harness.indexOf('async function runScenarios()')));
+new Function('require','__dirname',prefix+runScenarios.toString()+'\n'+footer)(require,__dirname);

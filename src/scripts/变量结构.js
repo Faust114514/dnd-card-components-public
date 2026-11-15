@@ -75,7 +75,7 @@ function validateDndEffects(root, issue) {
         if (!object(change)) { fail(cp,'变化项必须是对象'); return; }
         for (const key of ['path','key','amount','operator']) if (Object.hasOwn(change,key)) fail([...cp,key],'不支持字段别名；请使用 target/mode/value');
         const target = change.target;
-        if (!targets.has(target) && !/^save\.(str|dex|con|int|wis|cha)$/.test(target || '') && !(typeof target === 'string' && target.startsWith('skill.') && skills.has(target.slice(6)))) fail([...cp,'target'],`不支持的效果目标：${target}`);
+        if (!targets.has(target) && !/^(?:save|stat)\.(str|dex|con|int|wis|cha)$/.test(target || '') && !(typeof target === 'string' && target.startsWith('skill.') && skills.has(target.slice(6)))) fail([...cp,'target'],`不支持的效果目标：${target}`);
         const mode = change.mode ?? 'add';
         if (!['add','multiply','override','upgrade','downgrade'].includes(mode)) fail([...cp,'mode'],`不支持的运算方式：${mode}`);
         for (const key of ['enabled']) if (change[key] !== undefined && typeof change[key] !== 'boolean') fail([...cp,key],`${key} 必须是真/假`);
@@ -213,7 +213,7 @@ function convertWeaponFromSchema(name, raw = {}) {
         weight: normalizeNumber(raw.重量, 0),
         value: normalizeString(raw.价值, ''),
         isEquipped: !!raw.已装备,
-        requiresAttunement: !!raw.需要同调,
+        requiresAttunement: !!raw.需要同调 || (raw.规则标签 || []).includes('需同调'),
         isAttuned: !!raw.已同调,
         effects: normalizeEffects(raw.effects)
     };
@@ -236,7 +236,7 @@ function convertEquipmentFromSchema(name, raw = {}, category = 'misc') {
         weight: normalizeNumber(raw.重量, 0),
         value: normalizeString(raw.价值, ''),
         isEquipped: !!raw.已装备,
-        requiresAttunement: !!raw.需要同调,
+        requiresAttunement: !!raw.需要同调 || (raw.规则标签 || []).includes('需同调'),
         isAttuned: !!raw.已同调,
         details: normalizeString(raw.描述, ''),
         tags: normalizeString(raw.属性特征 ?? raw.标签 ?? '', ''),
@@ -439,9 +439,9 @@ function calculateACDetails(mode = (characterData.acMode || 'auto')) {
     if (!characterData || !characterData.stats) return { value: 10, description: '—', usingArmor: false };
     mode = normalizeAcMode(mode, 'auto');
     
-    const dexMod = getModifier(characterData.stats.dex);
-    const conMod = getModifier(characterData.stats.con);
-    const wisMod = getModifier(characterData.stats.wis);
+    const dexMod = getModifier(applyNumericEffects(characterData.stats.dex, ['stat.dex']));
+    const conMod = getModifier(applyNumericEffects(characterData.stats.con, ['stat.con']));
+    const wisMod = getModifier(applyNumericEffects(characterData.stats.wis, ['stat.wis']));
     const useClassUnarmoredDefense = characterData.useUnarmoredDefense !== false;
     const isArmorLike = (item) => {
         if (!item || typeof item !== 'object') return false;
@@ -858,7 +858,7 @@ function applyNumericEffects(baseValue, targetKeys, context = {}, trace = null) 
 // Inserted inside the existing shared derived-stat evaluator, beside its effect helpers.
 function calculateInitiativeDetails() {
   const signed=n=>n>=0?`+${n}`:String(n);
-  const dex=getModifier(characterData.stats.dex);
+  const dex=getModifier(applyNumericEffects(characterData.stats.dex, ['stat.dex']));
   const prof=normalizeNumber(characterData.proficiencyBonus,2);
   const extra=normalizeNumber(characterData.initiativeBonus,0);
   let base=dex+extra;
@@ -886,10 +886,10 @@ function calculateInitiativeDetails() {
       key=legacy?'alert2014':'proficiency';bonus=legacy?5:prof;
       if(!legacy&&!/交换/.test(text))notes.push(`${name}：先攻交换需双方自愿且未失能`);
     }else if(feature&&hare.test(name)){key='proficiency';bonus=prof;
-    }else if(feature&&/恐惧伏击|恐怖伏击|Dread Ambusher/i.test(name)){key='dread-ambusher';bonus=getModifier(characterData.stats.wis);
-    }else if(feature&&/战术之智|Tactical Wit/i.test(name)){key='tactical-wit';bonus=getModifier(characterData.stats.int);
-    }else if(feature&&/时序感知|Temporal Awar(?:e)?ness/i.test(name)){key='temporal-awareness';bonus=getModifier(characterData.stats.int);
-    }else if(feature&&/潇洒无畏|Rakish Audacity/i.test(name)){key='rakish-audacity';bonus=getModifier(characterData.stats.cha);
+    }else if(feature&&/恐惧伏击|恐怖伏击|Dread Ambusher/i.test(name)){key='dread-ambusher';bonus=getModifier(applyNumericEffects(characterData.stats.wis, ['stat.wis']));
+    }else if(feature&&/战术之智|Tactical Wit/i.test(name)){key='tactical-wit';bonus=getModifier(applyNumericEffects(characterData.stats.int, ['stat.int']));
+    }else if(feature&&/时序感知|Temporal Awar(?:e)?ness/i.test(name)){key='temporal-awareness';bonus=getModifier(applyNumericEffects(characterData.stats.int, ['stat.int']));
+    }else if(feature&&/潇洒无畏|Rakish Audacity/i.test(name)){key='rakish-audacity';bonus=getModifier(applyNumericEffects(characterData.stats.cha, ['stat.cha']));
     }else if(feature&&/万事通|Jack of All Trades/i.test(name)){
       if(legacy&&!profSources.length){key='legacy-jack';bonus=Math.floor(prof/2);}
       else if(!legacy)notes.push('万事通（2024）：不适用于先攻');

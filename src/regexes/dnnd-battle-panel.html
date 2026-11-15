@@ -1185,6 +1185,10 @@ const root = document.currentScript?.closest(".battle-embed") || document.queryS
 if (!root) return;
 
 const rawData = root.querySelector('[data-role="rawData"]') || root.querySelector("#raw-data");
+const rawBattle = rawData?.innerHTML || '';
+if (/<battle-delta\b/i.test(rawBattle) || /^\s*@map\b/im.test(rawBattle) || /<svg\b/i.test(rawBattle)) {
+  root.className=''; root.innerHTML="<span class=\"dnd-battle-sync-pill\" style=\"display:inline-flex;padding:2px 9px;color:#f3dfb6;background:rgba(234,185,99,.14);border:1px solid #a88e55;border-radius:12px\">⚔️ 战斗状态已同步至《模组地图》悬浮窗</span>"; document.body.style.cssText='margin:0;padding:0;min-height:0;height:auto;background:transparent'; return;
+}
 const demoPortraitA = root.dataset?.portraitA || "";
 
 const themes = {
