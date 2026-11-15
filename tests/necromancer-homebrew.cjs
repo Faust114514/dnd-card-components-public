@@ -46,6 +46,7 @@ async function runScenarios(){
   state.plan={req:[],gained:[]};state.selectedCharacterId='';state.targetLevel=0;state.pending={};arcanaSubmitting=null;levelGrowthBefore=null;growthMode='upgrade';
   const c=buildDemoCharacter('wizard',level);c.姓名='死灵师测试';c.种族='人类';c.子职业=sub;c.个人自定义={keep:'保留其他资料'};c.法师数据.子职业=sub;
   for(const name of ['寻获魔宠','活化死尸']){delete c.施法.法术书[name];for(const d of [c.法师数据])for(const [k,v]of Object.entries(d))if(Array.isArray(v))d[k]=v.filter(n=>n!==name);}
+  if(level>=6)c.特性.职业.亡灵仆役={描述:'凋零打击：攻击检定与额外黯蚀伤害均加熟练加值。',来源:'奥术书·死灵师（自制） 6级'};
   if(level>=14)c.特性.职业.死之尊主={描述:'亡灵增幅：附赠动作给予临时生命值。湮灭亡灵：令亡灵爆裂。',来源:'奥术书·死灵师 14级'};
   const v={stat_data:{角色列表:{死灵师测试:c},当前角色ID:'死灵师测试'},otherPlugin:{keep:true}};
   for(const type of ['message','chat'])localStorage.setItem('necromancer-homebrew-check'+type,JSON.stringify(v));
@@ -86,7 +87,7 @@ async function runScenarios(){
  check(await run("!state.plan.req.some(r=>['wizard_school_spell','au_school_book'].includes(r.id))"),'level six grants no extra school copy when the spell-slot level stays unchanged');
  await save();
  check(await run("state.level===6&&fullRules(saved())&&saved().施法.法术书.活化死尸.准备中==='always'&&saved().资源.亡灵仆役.当前值===1&&saved().资源.亡灵仆役.最大值===1&&saved().资源.亡灵仆役.恢复规则==='长休'"),'level six grants always-prepared Animate Dead and one long-rest free cast');
- check(await run("saved().施法.可准备法术===getWizardRule(6).prepared&&saved().特性.职业.亡灵仆役.描述.includes('将你的熟练加值加入该次攻击检定')&&saved().特性.职业.亡灵仆役.描述.includes('等同于你熟练加值的额外黯蚀伤害')"),'Animate Dead does not raise ordinary preparation capacity and Withering Strike uses proficiency for both bonuses');
+ check(await run("saved().施法.可准备法术===getWizardRule(6).prepared&&saved().特性.职业.亡灵仆役.描述.includes('由你的活化死尸（Animate Dead）法术创造的亡灵，在受你控制期间，可以使用你的法师法术攻击加值代替其原有的攻击加值。')&&saved().特性.职业.亡灵仆役.描述.includes('每当位于你60尺内、由你控制的亡灵以攻击检定命中一个生物时，该亡灵额外造成等同于你智力调整值的黯蚀伤害（至少1点）。')"),'Animate Dead retains preparation capacity; only its controlled creations can replace attack bonuses, while all controlled undead within 60 feet add Intelligence damage (minimum one)');
  await run("state.charObj.资源.亡灵仆役.当前值=0;state.charObj.资源.亡灵仆役.个人备注='次数手记';state.charObj.施法.法术书.活化死尸.描述+='\\n自己的法术备注';state.charObj.生命值.当前=7;window.hpBefore=state.charObj.生命值.当前;window.slotsBefore=JSON.stringify(state.charObj.施法.法术位)");
  await click('#hexblade-config-btn');await save();
  check(await run("state.level===6&&saved().资源.亡灵仆役.当前值===0&&saved().资源.亡灵仆役.个人备注==='次数手记'&&saved().施法.法术书.活化死尸.描述.includes('自己的法术备注')&&saved().生命值.当前===hpBefore&&JSON.stringify(saved().施法.法术位)===slotsBefore"),'configuration preserves spent free casts, custom spell text, HP and slots');
