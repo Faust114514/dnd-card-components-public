@@ -1095,6 +1095,84 @@ const MvuLite = (() => {
     }
     return result;
   }
+
+  const FEATURE_ALIASES={"奥术回响":"奥术回想","秘法回想":"奥术回想","仪式精通":"仪式学家","铭记法术":"记忆法术","吟游激励":"吟游诗人激励","武术":"武艺","元素神威":"元素狂怒","防护学派专家":"防护学者","奥术结界":"奥术守御","投射结界":"投射守御","破咒师":"破法者","预言学派专家":"预言学者","精通预言":"专业预言","第三只眼":"天眼通","塑能学派专家":"塑能学者","强效戏法":"强力戏法","塑形法术":"法术塑形","强化塑能":"强效塑能","过度施法":"超限导能","幻术学派专家":"幻术学者","幻影生物":"魅影生灵","幻象替身":"幻影化形","幻象成真":"亦真亦幻"};
+  const FEATURE_WEAPONS={"短棒Club":"短棒Club","短棒":"短棒Club","Club":"短棒Club","匕首Dagger":"匕首Dagger","匕首":"匕首Dagger","Dagger":"匕首Dagger","巨棒Greatclub":"巨棒Greatclub","巨棒":"巨棒Greatclub","Greatclub":"巨棒Greatclub","手斧Handaxe":"手斧Handaxe","手斧":"手斧Handaxe","Handaxe":"手斧Handaxe","标枪Javelin":"标枪Javelin","标枪":"标枪Javelin","Javelin":"标枪Javelin","轻锤Light Hammer":"轻锤Light Hammer","轻锤":"轻锤Light Hammer","Light Hammer":"轻锤Light Hammer","硬头锤Mace":"硬头锤Mace","硬头锤":"硬头锤Mace","Mace":"硬头锤Mace","长棍Quarterstaff":"长棍Quarterstaff","长棍":"长棍Quarterstaff","Quarterstaff":"长棍Quarterstaff","镰刀Sickle":"镰刀Sickle","镰刀":"镰刀Sickle","Sickle":"镰刀Sickle","矛Spear":"矛Spear","矛":"矛Spear","Spear":"矛Spear","飞镖Dart":"飞镖Dart","飞镖":"飞镖Dart","Dart":"飞镖Dart","轻弩Light Crossbow":"轻弩Light Crossbow","轻弩":"轻弩Light Crossbow","Light Crossbow":"轻弩Light Crossbow","短弓Shortbow":"短弓Shortbow","短弓":"短弓Shortbow","Shortbow":"短弓Shortbow","投石索Sling":"投石索Sling","投石索":"投石索Sling","Sling":"投石索Sling","战斧Battleaxe":"战斧Battleaxe","战斧":"战斧Battleaxe","Battleaxe":"战斧Battleaxe","链枷Flail":"链枷Flail","链枷":"链枷Flail","Flail":"链枷Flail","长柄刀Glaive":"长柄刀Glaive","长柄刀":"长柄刀Glaive","Glaive":"长柄刀Glaive","巨斧Greataxe":"巨斧Greataxe","巨斧":"巨斧Greataxe","Greataxe":"巨斧Greataxe","巨剑Greatsword":"巨剑Greatsword","巨剑":"巨剑Greatsword","Greatsword":"巨剑Greatsword","戟Halberd":"戟Halberd","戟":"戟Halberd","Halberd":"戟Halberd","骑枪Lance":"骑枪Lance","骑枪":"骑枪Lance","Lance":"骑枪Lance","长剑Longsword":"长剑Longsword","长剑":"长剑Longsword","Longsword":"长剑Longsword","巨锤Maul":"巨锤Maul","巨锤":"巨锤Maul","Maul":"巨锤Maul","钉头锤Morningstar":"钉头锤Morningstar","钉头锤":"钉头锤Morningstar","Morningstar":"钉头锤Morningstar","长矛Pike":"长矛Pike","长矛":"长矛Pike","Pike":"长矛Pike","刺剑Rapier":"刺剑Rapier","刺剑":"刺剑Rapier","Rapier":"刺剑Rapier","弯刀Scimitar":"弯刀Scimitar","弯刀":"弯刀Scimitar","Scimitar":"弯刀Scimitar","短剑Shortsword":"短剑Shortsword","短剑":"短剑Shortsword","Shortsword":"短剑Shortsword","三叉戟Trident":"三叉戟Trident","三叉戟":"三叉戟Trident","Trident":"三叉戟Trident","战镐Warpick":"战镐Warpick","战镐":"战镐Warpick","Warpick":"战镐Warpick","战锤Warhammer":"战锤Warhammer","战锤":"战锤Warhammer","Warhammer":"战锤Warhammer","鞭Whip":"鞭Whip","鞭":"鞭Whip","Whip":"鞭Whip","吹箭筒Blowgun":"吹箭筒Blowgun","吹箭筒":"吹箭筒Blowgun","Blowgun":"吹箭筒Blowgun","手弩Hand Crossbow":"手弩Hand Crossbow","手弩":"手弩Hand Crossbow","Hand Crossbow":"手弩Hand Crossbow","重弩Heavy Crossbow":"重弩Heavy Crossbow","重弩":"重弩Heavy Crossbow","Heavy Crossbow":"重弩Heavy Crossbow","长弓Longbow":"长弓Longbow","长弓":"长弓Longbow","Longbow":"长弓Longbow","火铳Musket":"火铳Musket","火铳":"火铳Musket","Musket":"火铳Musket","手铳Pistol":"手铳Pistol","手铳":"手铳Pistol","Pistol":"手铳Pistol"};
+  const FEATURE_OPTIONS={"武器精通: 短棒Club":"Slow：若你命中一个生物并对其造成伤害，该生物的速度在你下个回合开始前降低10尺。","武器精通: 匕首Dagger":"Nick：当你使用轻型武器在攻击动作中进行额外的副手攻击时，你可以将此攻击作为攻击动作的一部分进行，而不是作为附赠动作。","武器精通: 巨棒Greatclub":"Push：若你命中一个生物，该生物必须进行力量豁免，失败则被推离你15尺。","武器精通: 手斧Handaxe":"Vex：若你命中一个生物并对其造成伤害，你在下个回合结束前对该生物的下一次攻击检定具有优势。","武器精通: 标枪Javelin":"Slow：若你命中一个生物并对其造成伤害，该生物的速度在你下个回合开始前降低10尺。","武器精通: 轻锤Light Hammer":"Nick：当你使用轻型武器在攻击动作中进行额外的副手攻击时，你可以将此攻击作为攻击动作的一部分进行，而不是作为附赠动作。","武器精通: 硬头锤Mace":"Sap：若你命中一个生物，该生物在你下个回合开始前的下一次攻击检定具有劣势。","武器精通: 长棍Quarterstaff":"Topple：若你命中一个生物，该生物必须进行体质豁免，失败则倒地。","武器精通: 镰刀Sickle":"Nick：当你使用轻型武器在攻击动作中进行额外的副手攻击时，你可以将此攻击作为攻击动作的一部分进行，而不是作为附赠动作。","武器精通: 矛Spear":"Sap：若你命中一个生物，该生物在你下个回合开始前的下一次攻击检定具有劣势。","武器精通: 飞镖Dart":"Vex：若你命中一个生物并对其造成伤害，你在下个回合结束前对该生物的下一次攻击检定具有优势。","武器精通: 轻弩Light Crossbow":"Slow：若你命中一个生物并对其造成伤害，该生物的速度在你下个回合开始前降低10尺。","武器精通: 短弓Shortbow":"Vex：若你命中一个生物并对其造成伤害，你在下个回合结束前对该生物的下一次攻击检定具有优势。","武器精通: 投石索Sling":"Slow：若你命中一个生物并对其造成伤害，该生物的速度在你下个回合开始前降低10尺。","武器精通: 战斧Battleaxe":"Topple：若你命中一个生物，该生物必须进行体质豁免，失败则倒地。","武器精通: 链枷Flail":"Sap：若你命中一个生物，该生物在你下个回合开始前的下一次攻击检定具有劣势。","武器精通: 长柄刀Glaive":"Graze：当你未命中一个生物时，你对该生物造成等同于你用于进行攻击的属性调整值的伤害。","武器精通: 巨斧Greataxe":"Cleave：若你用近战武器攻击命中一个生物，你可以对在你触及范围内且距离第一个目标5尺内的另一个生物进行一次攻击。命中时，第二次攻击只造成武器伤害骰的伤害，不加属性调整值（除非调整值为负）。","武器精通: 巨剑Greatsword":"Graze：当你未命中一个生物时，你对该生物造成等同于你用于进行攻击的属性调整值的伤害。","武器精通: 戟Halberd":"Cleave：若你用近战武器攻击命中一个生物，你可以对在你触及范围内且距离第一个目标5尺内的另一个生物进行一次攻击。命中时，第二次攻击只造成武器伤害骰的伤害，不加属性调整值（除非调整值为负）。","武器精通: 骑枪Lance":"Topple：若你命中一个生物，该生物必须进行体质豁免，失败则倒地。","武器精通: 长剑Longsword":"Sap：若你命中一个生物，该生物在你下个回合开始前的下一次攻击检定具有劣势。","武器精通: 巨锤Maul":"Topple：若你命中一个生物，该生物必须进行体质豁免，失败则倒地。","武器精通: 钉头锤Morningstar":"Sap：若你命中一个生物，该生物在你下个回合开始前的下一次攻击检定具有劣势。","武器精通: 长矛Pike":"Push：若你命中一个生物，该生物必须进行力量豁免，失败则被推离你15尺。","武器精通: 刺剑Rapier":"Vex：若你命中一个生物并对其造成伤害，你在下个回合结束前对该生物的下一次攻击检定具有优势。","武器精通: 弯刀Scimitar":"Nick：当你使用轻型武器在攻击动作中进行额外的副手攻击时，你可以将此攻击作为攻击动作的一部分进行，而不是作为附赠动作。","武器精通: 短剑Shortsword":"Vex：若你命中一个生物并对其造成伤害，你在下个回合结束前对该生物的下一次攻击检定具有优势。","武器精通: 三叉戟Trident":"Topple：若你命中一个生物，该生物必须进行体质豁免，失败则倒地。","武器精通: 战镐Warpick":"Sap：若你命中一个生物，该生物在你下个回合开始前的下一次攻击检定具有劣势。","武器精通: 战锤Warhammer":"Push：若你命中一个生物，该生物必须进行力量豁免，失败则被推离你15尺。","武器精通: 鞭Whip":"Slow：若你命中一个生物并对其造成伤害，该生物的速度在你下个回合开始前降低10尺。","武器精通: 吹箭筒Blowgun":"Vex：若你命中一个生物并对其造成伤害，你在下个回合结束前对该生物的下一次攻击检定具有优势。","武器精通: 手弩Hand Crossbow":"Vex：若你命中一个生物并对其造成伤害，你在下个回合结束前对该生物的下一次攻击检定具有优势。","武器精通: 重弩Heavy Crossbow":"Push：若你命中一个生物，该生物必须进行力量豁免，失败则被推离你15尺。","武器精通: 长弓Longbow":"Slow：若你命中一个生物并对其造成伤害，该生物的速度在你下个回合开始前降低10尺。","武器精通: 火铳Musket":"Slow：若你命中一个生物并对其造成伤害，该生物的速度在你下个回合开始前降低10尺。","武器精通: 手铳Pistol":"Vex：若你命中一个生物并对其造成伤害，你在下个回合结束前对该生物的下一次攻击检定具有优势。","战斗风格: 箭术":"你使用远程武器进行的攻击检定获得+2加值。","战斗风格: 盲斗":"你具有10尺盲视。","战斗风格: 防御":"着装轻甲、中甲或重甲期间，你的护甲等级获得+1加值。","战斗风格: 对决":"当你单手持用一把近战武器且没有持用其他武器时，你使用那把武器进行的伤害掷骰获得+2加值。","战斗风格: 巨武器战斗":"当你用双手持握的一把近战武器发动了一次攻击并为其进行伤害掷骰时，若该武器具有双手或多用词条，那么你便可以将伤害骰投出的1和2都视为3。","战斗风格: 拦截":"当一名你可见的生物以攻击检定命中你5尺内的另一名生物，你能够以反应减少对目标造成的伤害，使该伤害降低1d10+你的熟练加值。你必须持握着一面盾牌或者一把简易/军用武器才能使用这个反应。","战斗风格: 守护":"当一名你可见的生物对一个你5尺内的除你以外的目标发动攻击时，若你正持握着一面盾牌，你能够以反应将盾牌挡在中间。你对触发攻击检定施加劣势，并且只要你还位于目标5尺内，其他所有对该目标进行的攻击检定也具有劣势，持续至你的下回合开始。","战斗风格: 投掷武器战斗":"当你使用具有投掷词条的武器进行远程攻击检定并命中时，你在该次伤害掷骰中获得+2加值。","战斗风格: 双武器战斗":"当你因使用具有轻型词条的武器而得以发动额外的攻击时，若此次额外的攻击的伤害本来无法加入你的属性调整值，你可以加入你的属性调整值。","战斗风格: 徒手战斗":"当你使用徒手打击命中并造成了伤害时，你可以改为造成1d6+你的力量调整值点钝击伤害，而非原本的徒手打击伤害。如果你进行攻击检定时并没有持握任何武器与盾牌，则上述伤害中的d6将变为d8。每当你的回合开始时，你还可以对一个因你受擒的生物造成1d4点钝击伤害。","魔能祈唤: 幽影护甲":"你能对自身无需法术位地施展 法师护甲Mage Armor \n。","魔能祈唤: 魔能意志":"你为保持 专注 所进行的体质豁免具有 优势 。","魔能祈唤: 刃之魔契":"你能以附赠动作在手中咒唤出一把契约武器（一把与你建立连结的你选择的简易或军用近战武器）或者与一把你所触摸的魔法武器建立连结。你不能与一把已经被其他生物同调或是已和另一魔契师建立连结的魔法武器建立连结。直到连结结束，你拥有其熟练，且你可以将其用作施法的法器。\n当你用你连结的武器发动攻击时，你能使用魅力调整值进行攻击检定和伤害掷骰，取代使用力量或敏捷，且你可以令该武器造成暗蚀、心灵或光耀伤害，或造成其通常类型的伤害。\n若你再次使用此特性的附赠动作、武器距你超过5尺持续1分钟或更久或是你死亡，你与武器的连结结束。被咒唤出的武器会在连结结束时消失。","魔能祈唤: 链之魔契":"你习得法术 寻获魔宠Find Familiar 且能以一个魔法动作无需法术位地施展之。\n每当你施展该法术，并为你的魔宠选择形态时，除了通常的形态选项，你还可以改为选择下列特殊形态之一： \n 小魔鬼Imp 、 \n 伪龙Pseudodragon 、 \n 小恶魔Quasit 、 \n 骷髅Skeleton 、 \n 史拉蟾蝌蚪Slaad Tadpole 、 \n 求索斯芬克斯Sphinx of Wonder 、 \n 小仙灵Sprite 或 毒蛇Venomous \nSnake \n\n（魔宠的数据见附录B）。\n\n 此外，当你执行 攻击 动作时，你可以牺牲其中一次你自己的攻击，来让你的魔宠使用其反应发动一次魔宠的攻击。","魔能祈唤: 书之魔契":"在一次短休或长休结束时，你将幽影聚在手中，编织为一本书册。这本书（由你决定外观）中承载着只有你能理解的骇人魔法，令你获得以下增益。书册会在你以此特性咒唤另一本书或死亡时消失。\n 戏法和仪式Cantrips \nand \nRituals。 当书册出现时，选择三道戏法和两道带有仪式标签的一环法术。这些法术可以来自任何职业的法术列表，且不能是你已经准备了的法术。当这本书册在你的角色身上时，你总是准备了这些法术，且对你而言这些法术是魔契师法术。\n 施法法器Spallcasting \nFocus。 你可以将此书册作为施法法器。","魔能祈唤: 苦痛魔爆":"先决：魔契师等级2+，知晓一道能造成伤害的魔契师戏法 \n\n选择一道你已知的造成伤害的魔契师戏法。你可以将你的魅力调整值加到该法术的每次伤害掷骰中。\n 复选Repeatable。 你可以多次选择本祈唤。每次这么做时，你都必须选择不同的满足先决的戏法。","魔能祈唤: 魔鬼视界":"先决：魔契师等级2+ \n你在 黑暗 和 微光光照 中拥有120尺的可视距离，而无论其属于魔法性的还是非魔法性的。","魔能祈唤: 魔能长枪":"先决：魔契师等级2+，知晓一道造成伤害的魔契师戏法 \n\n选择一道你已知的造成伤害且射程至少为10尺的魔契师戏法。当你施展此法术时，其射程增加等于你魔契师等级30倍的尺数。\n 复选Repeatable。 你可以多次选择本祈唤。每次这么做时，你都必须选择不同的满足先决的戏法。","魔能祈唤: 邪魔活力":"先决：魔契师等级2+ \n你能无需法术位地施展 虚假生命False Life \n。当你以此特性施展该法术时，你不需要掷骰来决定 临时生命值 ，你自动在此骰子上获得最大值。","魔能祈唤: 原初之一的教习":"先决：魔契师等级2+ \n你从多元宇宙中的一位亘古存在那里收获了知识，令你习得一项由你选择的起源专长（见第五章）。\n 复选Repeatable。 你可以多次选择本祈唤。每次这么做时，你都必须选择不同的起源专长。","魔能祈唤: 千面之颜":"先决：魔契师等级2+ \n你能无需法术位地施展 易容术Disguise Self 。","魔能祈唤: 幻象迷踪":"先决：魔契师等级2+ \n你能无需法术位地施展 无声幻影Silent Image 。","魔能祈唤: 超凡跳跃":"先决：魔契师等级2+ \n 你能对自身无需法术位地施展 跳跃术Jump 。","魔能祈唤: 斥力魔爆":"先决：魔契师等级2+，知晓一道通过攻击检定造成伤害的魔契师戏法\n 选择一道你已知的需要一次攻击检定的魔契师戏法。当你用该戏法命中一名体型不超过大型的生物时，你可以将目标推开至多10尺。\n 复选Repeatable。 你可以多次选择本祈唤。每次这么做时，你都必须选择不同的满足先决的戏法。","魔能祈唤: 星移步法":"先决：魔契师等级5+\n 你能对自身无需法术位地施展 浮空术Levitate 。","魔能祈唤: 魔能斩":"先决：魔契师等级5+，具有 刃之魔契 祈唤 \n每回合一次，当你用契约武器命中一个生物时，你可以消耗一枚契约魔法特性的法术位，以此对目标造成额外 \n1d8+每法术位环阶1d8 点的力场伤害，如果目标的体型在巨型或以下，则你还可以令目标陷入 倒地 状态。","魔能祈唤: 共视感官":"先决：魔契师等级5+ \n你能够以附赠动作触碰一个自愿的生物，并与其建立起感官的连接。连接状态持续到你下回合结束时终止。其间，只要你与该生物还处于同一位面中，你就可以用附赠动作继续维持连接，使其持续时间延长至你下回合结束时终止。如果你不再使用这种方式延续持续时间，这种连接便会结束。\n以所连接生物的感官进行观察时，你将拥有该生物所有的特殊感官的增益，且如果你们之间的距离不超过60尺，你就可以如同在该生物的位置上般施展法术。","魔能祈唤: 深海馈赠":"先决：魔契师等级5+ \n你可以在水下呼吸，且你具有等于你速度的游泳速度。\n此外，你还可以无需法术位地施展一次 水下呼吸Water Breathing 。完成一次 长休 时，你重获以此法施展该法术的能力。","魔能祈唤: 链主赋能":"先决：魔契师等级5+，具有 链之魔契 祈唤 \n当你施展 寻获魔宠Find \nFamiliar \n时，你将一定程度的魔能力量灌注给被召唤的魔宠，给予这个生物以下增益： \n\n 翔空/潜渊Aerial or Aquatic。 该魔宠获得40尺的飞行速度或游泳速度（由你选择）。\n\n 迅捷打击Quick Attack。 以一个附赠动作，你可以指挥你的魔宠执行 攻击 动作。\n\n 光影注能Necrotic or Radiant Damage。 该魔宠造成钝击、穿刺或挥砍伤害时，你可以改为令其造成光耀或暗蚀伤害。\n\n 你的豁免DC Your Save DC。 若该魔宠强迫一个生物进行豁免检定，则它改为使用你的法术豁免DC。\n\n 抗性Resistance。 若该魔宠受到伤害，则你可以使用反应给予它对于那次伤害的抗性。","魔能祈唤: 融身入影":"先决：魔契师等级5+ \n 若身处微光或黑暗环境，你能对自身无需法术位地施展 隐形术Invisibility 。","魔能祈唤: 饥渴魔刃":"先决：魔契师等级5+，具有 刃之魔契 祈唤 \n你获得 额外攻击 特性（仅可使用你的契约武器）。此特性令你在自己的回合内执行 攻击 动作时可以用该武器攻击两次而非一次。","魔能祈唤: 坟茔殁语":"先决：魔契师等级7+ \n你能无需法术位地施展 死者交谈Speak With Dead 。","魔能祈唤: 守护者赠礼":"先决：魔契师等级9+，具有 书之魔契 祈唤 \n你召唤影之书时，一张新的书页会在其中出现。在你的允许之下，一个生物可以使用一个动作来将他的名字写在这一页上，这一页能包括的名字数量等于你的魅力调整值（至少为1）。当一个名字在这一页上的生物生命值降为0，但是还没有立刻死亡，这个生物的生命值魔法地变为1。每当这个魔法效应被触发，直至你完成 长休 ，没有任何生物可以再次触发该效应。\n你能够以一个 魔法 动作，以触摸的形式消除一个在书页上的名字。","魔能祈唤: 汲命者":"先决：魔契师等级9+，具有 刃之魔契 祈唤 \n\n每回合一次，当你用契约武器命中一个生物时，你可以对其额外造成1d6的暗蚀、心灵或光耀伤害（由你选择），且你可以投掷并消耗一颗你的生命骰，恢复等于其骰值再加上你的体质调整值（最小为1）的生命值。","魔能祈唤: 穹宇尽视":"先决：魔契师等级9+ \n你能无需法术位地施展 秘法眼Arcane Eye 。","魔能祈唤: 灭世魔刃":"先决：魔契师等级12+，具有 饥渴魔刃 祈唤\n 饥渴魔刃祈唤为你提供的额外攻击次数变为两次而非一次。","魔能祈唤: 万形之主":"先决：魔契师等级5+ \n你能无需法术位地施展 变身术Alter Self 。","魔能祈唤: 女巫之视":"先决：魔契师等级15+\n你具有30尺 真实视觉 。"};
+  const FEATURE_LEGACY_DESCRIPTIONS=["每天可狂暴次数等于你的熟练加值。狂暴时伤害抗性,力量检定和豁免优势,近战武器攻击额外伤害+2。","不穿护甲时,你的AC等于10+敏捷调整值+体质调整值。","你在2种武器上获得精通。","你可以施展吟游诗人法术。你的施法关键属性是魅力。","你可以使用激励骰(d6)激励盟友。每天次数等于你的魅力调整值(最少1次)。","你可以施展牧师法术。你的施法关键属性是感知。","你可以施展德鲁伊法术。你的施法关键属性是感知。","你知道德鲁伊语,这是一种秘密语言。","你选择一种战斗风格作为特长。","以附赠动作恢复1d10+战士等级生命值。1级时可用2次；短休恢复1次已消耗次数，长休恢复全部。","你在3种武器上获得精通,能够使用特殊的精通技巧。","不穿护甲和盾牌时,你的AC等于10+敏捷调整值+感知调整值。","徒手攻击和武僧武器伤害骰至少为d6。你可以用敏捷代替力量进行攻击和伤害检定。","你拥有总量为圣武士等级×5的治疗池。以附赠动作触碰生物恢复生命值，也可消耗5点移除其中毒状态。","你可以施展圣武士法术。你的施法关键属性是魅力。","你在2种武器上获得精通。","你可以施展游侠法术。你的施法关键属性是感知。","你始终准备着猎人印记。你可无需法术位施展该法术2次，并在长休后恢复所有次数。","你在2种武器上获得精通。","每回合一次,当你有优势或盟友邻近敌人时,你可以造成额外1d6伤害。","你知道盗贼黑话,一种秘密的混合语言、行话和暗号。","你获得两项由你选择的你已熟练的技能的专精。如果你有这两项技能的熟练的话,推荐选择巧手和隐匿。","你在2种武器上获得精通。","你可以施展术士法术。你的施法关键属性是魅力。","以附赠动作激活，持续1分钟：你的术士法术豁免DC+1，且你的术士法术攻击检定具有优势。每长休可用2次。","你可以施展魔契师法术。你的施法关键属性是魅力。","你知道一个魔能祈唤,这是你从宗主那里获得的特殊能力。","你可以施展法师法术。你的施法关键属性是智力。","短休时,你可以恢复总环阶不超过你法师等级一半的法术位。","1级：施法 Spellcasting 你已经了解到如何通过物品引导魔法能量。参见《玩家手册》有关施法的规则。下述信息将详述如何将这些规则应用于奇械师法术，奇械师法术详见后文职业描述中的奇械师法术表。 必备工具Tools Required。 你通过工具来施展你的奇械师法术。你可以使用盗贼工具，修补工具，或其他你具有熟练的工匠工具作为你的施法法器，且当你施展一个奇械师法术时必须持握着其中一件法器（意味着当你施法时，法术具有“材料M”成分）。 戏法Cantrips。 你习得两个你选择的奇械师戏法。推荐 酸液飞溅Acid Splash 和 魔法伎俩Prestidigitation 。 每当你完成一次长休时，你都能将通过此特性得到的其中一个戏法替换为另一个你所选择的奇械师戏法。 当你的奇械师等级达到10级和14级时，你都能习得另一个你所选择的奇械师戏法，如奇械师特性表中戏法一列所示。 法术位Spell Slots。 奇械师特性表显示了你可用于施展一环及以上法术的法术位数量。你在完成一次长休时恢复所有已消耗的法术位。 准备一环或以上的法术Prepared Spells of Level 1+。 你准备可供你以此特性施展的1+环的法术列表。为此，选择两个一环奇械师法术。推荐 疗伤术Cure Wounds 和 油腻术Grease 。 你列表中的法术数量会在你提升奇械师等级时增加，如奇械师特性表中的准备法术一列所示。每当这一列的数字增加时，选择额外的奇械师法术，直至你列表中的法术数量的数量与表格中的数字一致。选择的法术必须有相对应环阶的法术位。例如，如果你是一位5级奇械师，你的准备法术列表能包括6道一环或二环的奇械师法术，随意组合。 如果其他奇械师特性给了你永远已准备的法术，这些法术不计入你以此法准备的法术数量，但除此以外对你来说都视为奇械师法术。 改变准备法术Changing Your Prepared Spells。 每当你结束一次长休时，你可以改变你的法术准备列表，将任意数量的法术替换为你具有对应法术位的奇械师法术。 施法属性Spellcasting Ability。 你奇械师法术的施法属性是智力。","1级：工艺魔法 Tinker's Magicl 你习得戏法 修复术Mending 。 你可以在持握修补工具时以一个魔法动作，在你自身5尺内一个未占据空间创造一件物品，从下表中选择这件物品： 滚珠 扁瓶 小包 篮子 爪钩 绳索 铺盖 捕猎陷阱 麻袋 铃铛 壶 铲子 毯子 油灯 铁钉 滑轮组 镣铐 细线 玻璃瓶 捕网 火绒盒 吊桶 燃油 火把 铁蒺藜 纸张 小瓶 蜡烛 羊皮纸 撬棍 长杆 对应物品的规则见《玩家手册》。该特性创造的物品将在你完成一次长休时消失。 你可以使用此特性的次数等于你的智力调整值(最少一次)，你会在完成一次长休后恢复所有已使用的次数。","使用智力施放法师法术，并维护个人法术书。","法术书中的仪式法术无需准备即可作为仪式施放。","短休后恢复部分已消耗法术位。","将一项法师相关技能提升为专精。","获得属性值提升或通用专长。","短休后可将一项已备法术替换为法术书中的另一项法术。","选择 1 个 1 环法术与 1 个 2 环法术，可无消耗施放其最低环版本。","获得传奇恩惠。","选择 2 个 3 环法术，始终准备且各可免费施放 1 次。","选择一种战斗风格专精自身战法。","用附赠动作回复生命值。","掌握多种武器专精。","在自己的回合额外获得一个动作。","获得属性值提升或通用专长。","奥术回响","秘法回想","仪式精通","铭记法术","吟游激励","武术","元素神威","防护学派专家","奥术结界","投射结界","破咒师","预言学派专家","精通预言","第三只眼","塑能学派专家","强效戏法","塑形法术","强化塑能","过度施法","幻术学派专家","幻影生物","幻象替身","幻象成真","已掌握该武器的精通。","Cleave","Topple","Slow","Nick","Push","Sap","Vex","Graze"];
+  const FEATURE_PLACEHOLDERS=["你选择获得一项吟游诗人子职： 舞蹈学院 ， 魅心学院 ， 逸闻学院 或 勇气学院 。子职的内容见后文。子职是一种特化，在特定的吟游诗人等级给予你对应的独特能力。此后你将获得你所选的子职所有能力——只要其所需等级不超过你的吟游诗人等级。吟游诗人特性表列出了你从子职中获得新特性的吟游诗人等级。 \n\n吟游诗人们会形成被称为“学院”的松散联系，用以维持他们的传承。","你选择获得一项德鲁伊子职： 大地结社 、 月亮结社 、 海洋结社 或 星辰结社 。子职的内容见后文。子职是一种特化，在特定的德鲁伊等级给予你对应的独特能力。此后你将获得每一个你所选的子职的能力，只要其所需等级等于或低于你的德鲁伊等级。\n德鲁伊们会形成松散的联系，他们称之为“结社”。","你选择获得一项战士子职： 战斗大师 、 \n\n勇士 \n\n 、 \n 奥法骑士 或 \n\n 灵能武士 。子职的内容见后文。子职是一种特化，在特定的战士等级给予你对应的独特能力。此后你将获得你所选的子职所有能力——只要其所需等级不超过你的战士等级。战士特性表列出了你从子职中获得新特性的战士等级。","你选择获得一项术士子职。 畸变术法 、 时械术法 、 龙族术法 和 狂野术法。 子职的内容见后文。子职是一种特化，在特定的术士等级给予你对应的独特能力。此后你将获得你所选的子职所有能力——只要其所需等级不超过你的术士等级。术士特性表列出了你从子职中获得新特性的术士等级。","你选择获得一项武僧子职： 命流武者 、 暗影武者 、 \n 四 象 武 者 和 散打武者 。子职的内容见后文。子职是一种特化，在特定的武僧等级给予你对应的独特能力。以后你将获得你所选的子职的所有能力——只要其所需等级不超过你的武僧等级。武僧特性表列出了你从子职中获得新特性的武僧等级。","你选择获得一项法师子职。 防护师 ， 预言师 ， \n 塑能师 以及 幻术师 。子职的内容见后文。子职是一种特化，在特定的法师等级给予你对应的独特能力。此后你将获得你所选的子职所有能力——只要其所需等级不超过你的法师等级。法师职业特性表列出了你从子职中获得新特性的法师等级。","你选择获得一项游侠子职： 驯兽师 ， 妖精漫游者 ， 幽域追猎者 或 猎人 。子职的内容见后文。子职是一种特化，在特定的游侠等级给予你对应的独特能力。此后你将获得你所选的子职所有能力——只要其所需等级不超过你的游侠等级。游侠特性表列出了你从子职中获得新特性的游侠等级。","你选择获得一项游荡者子职： 诡术师 ， 刺客 ， \n\n魂刃 \n\n 或 \n 盗贼。 子职的内容见后文。子职是一种特化，在特定的游荡者等级给予你对应的独特能力。此后你将获得你所选的子职所有能力——只要其所需等级不超过你的游荡者等级。游荡者特性表列出了你从子职中获得新特性的游荡者等级。","你选择获得一项牧师子职： 生命领域 ， 光明领域 ， \n 诡术领域 或 战争领域 。子职的内容见后文。子职是一种特化，在特定的牧师等级给予你对应的独特能力。此后你将获得你所选的子职所有能力——只要其所需等级不超过你的牧师等级。牧师特性表列出了你从子职中获得新特性的牧师等级。 \n\n牧师的每个子职都以某神明、神殿或宗教青睐的“领域”命名。","你选择获得一项野蛮人子职： 狂战士道途 ， 兽心道途 ， 世界树道途 或 狂热者道途 。子职的内容见后文。子职是一种特化，在特定的野蛮人等级给予你对应的独特能力。此后你将获得你所选的子职所有能力——只要其所需等级不超过你的野蛮人等级。野蛮人特性表列出了你从子职中获得新特性的野蛮人等级。","你选择获得一项魔契师子职： 至高妖精宗主 ， 天界宗主 ， 邪魔宗主 或 旧日支配者宗主 。子职的内容见后文。子职是一种特化，在特定的魔契师等级给予你对应的独特能力。此后你将获得你所选的子职所有能力——只要其所需等级不超过你的魔契师等级。魔契师特性表列出了你从子职中获得新特性的魔契师等级。"];
+  function featureName(name) {
+    const text=String(name||'').trim();
+    const weapon=text.match(/^武器精通\s*[:：]\s*(.+)$/);
+    if(weapon){const n=weapon[1].trim();return '武器精通: '+(FEATURE_WEAPONS[n]||FEATURE_WEAPONS[n.replace(/[A-Za-z][A-Za-z\s’'()-]*$/,'').trim()]||n);}
+    return FEATURE_ALIASES[text]||text;
+  }
+  function featureText(value) {
+    const entry=object(value)?value:{描述:String(value||'')};
+    let text=String(entry.完整描述??entry.描述??'').trim(),last;
+    const prefixes=[entry.来源,'职业','种族','专长'].filter(Boolean);
+    do{last=text;for(const source of prefixes){if(text.startsWith(source)){const rest=text.slice(source.length);if(/^\s*[|｜]/.test(rest))text=rest.replace(/^\s*[|｜]\s*/,'');}}}while(text!==last);
+    return text;
+  }
+  function featurePlaceholder(name,value) {
+    const entry=object(value)?value:{};
+    if(Object.keys(entry).some(k=>!['描述','完整描述','来源'].includes(k))||/自定义|自创|自订|homebrew/i.test(entry.来源||''))return false;
+    const text=featureText(value);
+    return text===name&&/子职|特性\d+$/.test(name)
+      || /特性\d+$/.test(name)&&/子职特性$/.test(text)
+      || name==='子职业'&&text.length<100&&!/[。；\n]/.test(text)
+      || /子职$/.test(name)&&FEATURE_PLACEHOLDERS.some(t=>featureComparable(t)===featureComparable(text))
+      || name==='子职特性'&&/^(?:[^｜]*｜)?子职特性$/.test(text);
+  }
+  function featureComparable(text){return String(text||'').replace(/<[^>]*>/g,'').replace(/[\s。；;，,：:｜|]/g,'');}
+  function mergeFeatureRecords(first,second) {
+    const a=object(first)?first:{描述:String(first||'')},b=object(second)?second:{描述:String(second||'')};
+    const out={...b,...a};
+    const parts=[featureText(a),featureText(b)].filter(Boolean);
+    const useful=parts.filter(t=>!FEATURE_LEGACY_DESCRIPTIONS.some(s=>featureComparable(s)===featureComparable(t)));
+    out.描述=(useful.length?useful:parts).filter((t,i,all)=>all.findIndex(x=>featureComparable(x)===featureComparable(t))===i).join('\n\n');delete out.完整描述;
+    if(a.标签||b.标签)out.标签=[...new Set([a.标签,b.标签].filter(Boolean))].join('；');
+    if(a.effects||b.effects)out.effects=[...(a.effects||[]),...(b.effects||[])].filter((e,i,all)=>all.findIndex(x=>JSON.stringify(x)===JSON.stringify(e))===i);
+    return out;
+  }
+  function normalizeFeatures(c) {
+    if(!object(c?.特性))return c;
+    for(const [bucket,group] of entries(c.特性)) {
+      if(!object(group))continue;
+      for(const name of Object.keys(group)) {
+        const value=group[name];
+        const entry=object(value)?value:{描述:String(value||'')};
+        entry.描述=featureText(entry);delete entry.完整描述;
+        if(featurePlaceholder(name,entry)){delete group[name];continue;}
+        const target=bucket==='职业'&&!/自定义|自创|自订|homebrew/i.test(entry.来源||'')?featureName(name):name;
+        if(target!==name){group[target]=group[target]?mergeFeatureRecords(group[target],entry):entry;delete group[name];}
+        else group[name]=entry;
+      }
+    }
+    // These creator/configuration summaries duplicate choices already stored below.
+    const race=c.特性.种族||{};
+    for(const [bucket,group]of entries(c.特性))for(const [name,entry]of entries(group)){
+      if(!/^(?:选择|配置)[:：]/.test(name))continue;
+      let field=null;
+      if(/^(?:选择|配置)[:：](?:复生者[:：])?生物类型/.test(name))field='生物类型';
+      if(/^(?:选择|配置)[:：]体型(?:[（(]|$)/.test(name))field='体型';
+      if(/^(?:选择|配置)[:：]奇异耐性[:：]伤害抗性/.test(name))field='奇异耐性';
+      const plain=featureText(entry),protectedEntry=Object.keys(entry).some(k=>!['描述','完整描述','来源'].includes(k));
+      const values=plain.split(/[；;、]/).map(s=>s.trim()).filter(Boolean),profs=c.熟练配置||{};
+      const recorded=n=>Number(profs.技能?.[n])>=1||['熟练','专精'].includes(profs.技能?.[n])||list(profs.工具).includes(n)||!!profs.工具?.[n]||list(c.语言||profs.语言).includes(n);
+      if(!protectedEntry&&/技能熟练|工具熟练|乐器熟练|技能或工具|语言/.test(name)&&values.length&&values.every(recorded)){delete group[name];continue;}
+      if(field&&race[field]&&!protectedEntry&&(/^(?:类人|亡灵|中型|小型|寒冷|暗蚀|毒素)$/.test(plain)))delete group[name];
+      else if(bucket==='职业'){
+        const title=name.replace(/^(?:选择|配置)[:：]/,'').replace(/（.*$/,'');
+        const speciesLabel=String(c.种族||'').replace(/[（(].*$/,'');
+        const feat=Object.keys(c.特性.专长||{}).find(n=>title.startsWith(n.replace(/[A-Za-z][A-Za-z\s’'()-]*$/,'').trim()+'：'));
+        const target=title.startsWith(speciesLabel+'：')||title.startsWith('种族施法：')?'种族':feat?'专长':null;
+        if(target){c.特性[target]||={};c.特性[target][name]=c.特性[target][name]?mergeFeatureRecords(c.特性[target][name],entry):entry;delete group[name];}
+      }
+    }
+    return c;
+  }
+
   function masteryRecords(c) {
     const records=new Map();
     const key=name=>String(name).replace(/[\sA-Za-z]/g,'').trim();
@@ -1126,12 +1204,13 @@ const MvuLite = (() => {
   }
   function compactVariableFields(c) {
     if(!object(c))return c;
+    normalizeFeatures(c);
     const records=masteryRecords(c);
     if(records.length){
       c.特性??={};c.特性.职业??={};
       for(const {name,source} of records){
         const existing=Object.keys(c.特性.职业).find(k=>k.replace(/[\sA-Za-z]/g,'')===('武器精通:'+name).replace(/[\sA-Za-z]/g,''));
-        if(!existing)c.特性.职业['武器精通: '+name]={描述:'已掌握该武器的精通。',...(source?{来源:source}:{})};
+        if(!existing)c.特性.职业[featureName('武器精通: '+name)]={描述:FEATURE_OPTIONS[featureName('武器精通: '+name)]||'已掌握该武器的精通。',...(source?{来源:source}:{})};
       }
     }
     delete c.武器精通;delete c.weaponMasteries;
@@ -1144,6 +1223,7 @@ const MvuLite = (() => {
   }
   function expandVariableFields(c) {
     if(!object(c))return c;
+    normalizeFeatures(c);
     const records=masteryRecords(c);
     if(records.length)c.武器精通=records.map(r=>r.name);
     const names=new Set(records.map(r=>String(r.name).replace(/[\sA-Za-z]/g,'')));
@@ -1566,6 +1646,7 @@ function enrichSpellVariables(variables) {
   function readRoot(vars) {
     const root=clone(vars?.stat_data);
     normalizeDndRootEffects(root);
+    for(const [,c]of entries(root?.角色列表))normalizeFeatures(c);
     DndArmor.syncRoot(root);
     for (const [,c] of entries(root?.角色列表)) { syncExpertise(c); normalizeSpellPreparation(c); }
     ui=clone(vars?.mvu_lite_ui || {});
@@ -1607,7 +1688,7 @@ function enrichSpellVariables(variables) {
       await window.replaceVariables(next,scope);
     }
   }
-  return {syncExpertise,racialMagicInfo,applyRacialMagic,wizardPreparedLimit,compactCharacter,expandCharacter,compactRoot:r=>mapRoot(r,compactCharacter),expandRoot:r=>mapRoot(r,expandCharacter),mergeStatus,write,prune,readRoot,stripDefaults};
+  return {featureName,featureText,featurePlaceholder,featureComparable,mergeFeatureRecords,normalizeFeatures,featureRule:name=>FEATURE_OPTIONS[featureName(name).replace(/^(战斗风格|魔能祈唤)[:：]\s*(.*)$/,(_,p,n)=>p+": "+n.replace(/[A-Za-z][A-Za-z\s’'()-]*$/,"").trim())]||"",featureLegacy:text=>FEATURE_LEGACY_DESCRIPTIONS.some(s=>featureComparable(s)===featureComparable(text)),syncExpertise,racialMagicInfo,applyRacialMagic,wizardPreparedLimit,compactCharacter,expandCharacter,compactRoot:r=>mapRoot(r,compactCharacter),expandRoot:r=>mapRoot(r,expandCharacter),mergeStatus,write,prune,readRoot,stripDefaults};
 })();
 
 </script>

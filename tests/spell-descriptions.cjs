@@ -93,6 +93,7 @@ async function runScenarios(){
  await click('.spell-modal-close');
  await click('#spell-grid-cantrips .spell-name');
  await run(`toggleSpellSelection('cantrips','燃火术',2);for(const s of getClassSpellList('德鲁伊').filter(s=>s.level===1).slice(0,4))toggleSpellSelection('level1',s.name,4);requestRender();`);await sleep(150);
+ await run("for(const d of ebCreatorDefs().filter(d=>d.kind==='tool'))ebCreatorState()[d.key]=d.values.slice(0,d.count);requestRender()");await sleep(100);
  check(await run('!elements.saveBtn.disabled'),'normal druid creation is ready with the full spell selected');
  await click('#save-character');await wait("!!getVariables().stat_data.角色列表.描述恢复测试");
  check(await run("['感知天气','24小时','盛放','感官效应','玩火'].every(s=>getVariables().stat_data.角色列表.描述恢复测试.施法.法术书.德鲁伊伎俩.描述.includes(s))"),'actual creator save preserves every Druidcraft option');
