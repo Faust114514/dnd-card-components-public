@@ -107,6 +107,10 @@ check(context.planDndWorldbook(book,patches)[0].action==='current','already upda
 const wrongBook=structuredClone(book);delete wrongBook.entries[18];
 assert.throws(()=>context.planDndWorldbook(wrongBook,patches));checks.push('wrong or incomplete bound worldbook stops update');
 assert.throws(()=>context.planDndWorldbook(book,[...patches,patches[0]]));checks.push('duplicate worldbook patch rejected');
+const retiredBook=structuredClone(book);retiredBook.entries[781429]={uid:781429,content:'<战场生成规则>旧地形</战场生成规则>'};
+check(context.planDndWorldbook(retiredBook,patches).some(p=>p.uid===781429&&p.action==='remove'),'retired map rule has an explicit deletion action');
+check(!!retiredBook.entries[781429]&&context.planDndWorldbook(book,patches).every(p=>p.action!=='remove'),'planning does not delete data and new cards need no deletion');
+retiredBook.entries[781429].content='个人其他规则';assert.throws(()=>context.planDndWorldbook(retiredBook,patches));checks.push('unrelated content at retired UID is not silently removed');
 const travel=additions[0],travelPlan=(value,kept=[])=>context.planDndWorldbook(value,patches,kept,additions).at(-1);
 check(travelPlan(book).action==='add'&&!book.entries[travel.uid],'missing travel rule is planned without mutating the book');
 const mention=structuredClone(book);mention.entries[950]={uid:950,content:'Reference to <长途旅行规则> elsewhere'};
@@ -168,7 +172,8 @@ if(baselinePath){
 const selected=latest.components.filter(c=>['c3c9ad44-9e9b-4c6e-ae93-f2b098a20125','480d6777-f90d-4eba-a811-64cb2f1ffb00','736c0e4e-67b4-4113-a021-b3890714ba28','01c632e5-1071-4a08-aebd-6a0e5424ea99','36bab6c1-2a4d-44de-b9a7-256c8a68c50d',...archiveIds].includes(c.id));
 const fixtureManifest={...latest,components:selected,empty_regexes:latest.empty_regexes.filter(c=>archiveIds.includes(c.id))};
 const withWorldbook=process.argv.includes('--worldbook');
-const bootstrap=process.argv.includes('--bootstrap');
+const retireBootstrap=process.argv.includes('--retire-map-bootstrap');
+const bootstrap=process.argv.includes('--bootstrap')||retireBootstrap;
 if(bootstrap)assert.ok(withWorldbook,'bootstrap test requires --worldbook');
 // Include the map cleanup needed by the current pattern migration.
 fixtureManifest.added_regexes=latest.added_regexes.filter(r=>r.id==='dnd-clean-old-battle-map');
@@ -195,6 +200,7 @@ const jsJSON=value=>JSON.stringify(value).replaceAll('<','\\u003c');
 const setup=`
 window.fixtureCard=${jsJSON(fixture)};window.initialCard=structuredClone(fixtureCard);window.remoteManifest=${jsJSON(fixtureManifest)};window.remoteSources=${jsJSON(fixtureSources)};
 window.fixtureBook=${jsJSON(book)};fixtureBook.entries[18].content='personal edit';
+const oldMapRule={uid:781429,content:'<战场生成规则>旧地图</战场生成规则>',disable:false};fixtureBook.entries[781429]=structuredClone(oldMapRule);
 fixtureBook.personalMetadata={keep:true};fixtureBook.entries[999]={uid:999,comment:'personal',content:'keep',disable:true,displayIndex:80,unknown:{keep:true}};
 window.errors=[];window.calls=[];window.saves=0;window.reloads=0;window.failure=null;window.delayNext=null;window.frozenCalls=[];
 addEventListener('error',e=>errors.push(e.message));addEventListener('unhandledrejection',e=>errors.push(String(e.reason)));
@@ -203,7 +209,7 @@ window.emit=(e,...args)=>{for(const f of [...(listeners.get(e)||[])])f(...args);
 window.context={characterId:0,groupId:null,chatId:'a',characters:[fixtureCard],getCurrentChatId:()=>context.chatId,getRequestHeaders:()=>({'Content-Type':'application/json','X-CSRF-Token':'fixture-local'}),eventSource:events,event_types:{CHAT_CHANGED:'chat',GENERATION_STARTED:'start',GENERATION_ENDED:'end',GENERATION_STOPPED:'stop'}};
 window.SillyTavern={getContext:()=>context};window.__fixtureReload=()=>{reloads++;};
 context.loadWorldInfo=async()=>structuredClone(fixtureBook);
-context.saveWorldInfo=async(name,data)=>{if(failure==='world-save'){failure=null;throw Error('fixture world save failed');}fixtureBook=structuredClone(data);if(failure==='world-settings'){fixtureBook.entries[781430].constant=false;failure=null;}};
+context.saveWorldInfo=async(name,data)=>{if(failure==='world-save'){failure=null;throw Error('fixture world save failed');}fixtureBook=structuredClone(data);if(failure==='world-retain-map'){fixtureBook.entries[781429]=structuredClone(oldMapRule);failure=null;}if(failure==='world-settings'){fixtureBook.entries[781430].constant=false;failure=null;}};
 window.TavernHelper={getCharWorldbookNames:()=>({primary:fixtureCard.data.extensions.world}),getButtonEvent:()=> 'update-button',eventOn:(name,fn)=>{events.on(name,fn);return{stop:()=>events.removeListener(name,fn)};}};
 window.fetch=async(url,options={})=>{
  calls.push({url,method:options.method,body:options.body});
@@ -256,6 +262,9 @@ addEventListener('DOMContentLoaded',async()=>{
   assert(q('.dpu-status').textContent.includes('501')&&q('.dpu-status').textContent.includes(decodeURIComponent(calls.at(-1).url.split('/').at(-1))),'failed nonempty download reports status and filename');
   let release;delayNext=new Promise(r=>release=r);q('.dpu-install').click();await tick();context.chatId='b';emit('chat');release();await wait(()=>!q('.dpu-check').disabled,'cancel switched chat');assert(saves===0,'chat switch during download cancels before save');context.chatId='a';emit('chat');
   emit('start','normal',{},false);assert(q('.dpu-install').disabled&&q('.dpu-check').disabled,'generation disables update actions');emit('end');
+  if(${withWorldbook}&&!${bootstrap}){
+   failure='world-retain-map';await install();assert(saves===0&&reloads===0&&q('.dpu-status').textContent.includes('旧地图规则未成功删除'),'failed deletion readback stops card save and reload');await check();
+  }
   failure='save';await install();assert(saves===0&&JSON.stringify(fixtureCard)===initial&&reloads===0,'save failure does not claim success or reload');
   if(${withWorldbook}){
    for(const fault of ['missing-record','wrong-name','wrong-version','lost-keep','missing-rules']){
@@ -266,13 +275,15 @@ addEventListener('DOMContentLoaded',async()=>{
   }
   await check();await install();assert(saves===1&&reloads===1,'all sources saved in one native merge then verified before reload / '+q('.dpu-status').textContent);
   if(${bootstrap}){
-   assert(!fixtureBook.entries[781430],'actual vf.0.4.16 updater ignores the new manifest field and installs new code successfully');
+   if(${retireBootstrap})assert(!!fixtureBook.entries[781429],'actual 0.6.5 updater installs sources before retiring the old rule');
+   else assert(!fixtureBook.entries[781430],'actual vf.0.4.16 updater ignores the new manifest field and installs new code successfully');
    const previous=window.__dndPrivateUpdates;window.useUpdatedRuntime=true;document.querySelector('iframe').src='/helper';
    await wait(()=>window.__dndPrivateUpdates!==previous,'updated script startup');window.__dndPrivateUpdates.open();
-   await check();assert(!q('.dpu-install').disabled&&q('.dpu-worldbook').textContent.includes('补入新条目'),'new updater detects missing rule despite same component version receipt');
-   await install();assert(saves===2&&reloads===2&&!!fixtureBook.entries[781430],'second install adds the rule without manually importing a script or worldbook');
+   await check();assert(!q('.dpu-install').disabled&&q('.dpu-worldbook').textContent.includes(${retireBootstrap}?'删除旧条目':'补入新条目'),'new updater detects missing rule despite same component version receipt');
+   await install();assert(saves===2&&reloads===2&&!!fixtureBook.entries[781430]&&!fixtureBook.entries[781429],'second install applies pending worldbook changes without manually importing a script or worldbook');
   }
   if(${withWorldbook}){
+   assert(!fixtureBook.entries[781429],'UI installation removes only the retired map rule');
    const receipt=fixtureCard.data.extensions.dnd_component_updates.worldbook;
    assert(Object.keys(receipt).join(',')==='kept,name,version','native reordered receipt accepted without false failure');
    assert(receipt.kept.length===1&&receipt.kept[0]===18&&fixtureBook.entries[18].content==='personal edit','personal worldbook choice preserved in receipt');
@@ -343,7 +354,7 @@ addEventListener('DOMContentLoaded',async()=>{
  }catch(e){document.getElementById('fixture-result').textContent=JSON.stringify({passed:false,error:e.stack,checks,errors});}
 });`;
 const runtime=source.replace('host.location.reload();','host.__fixtureReload();');assert.notEqual(runtime,source);
-const oldRuntime=bootstrap?require('node:child_process').execFileSync('git',['show','vf.0.4.16:src/scripts/私有组件更新.js'],{cwd:root,encoding:'utf8',windowsHide:true}).replace('host.location.reload();','host.__fixtureReload();'):'';
+const oldRuntime=bootstrap?require('node:child_process').execFileSync('git',['show',(retireBootstrap?'vf.0.6.5':'vf.0.4.16')+':src/scripts/私有组件更新.js'],{cwd:root,encoding:'utf8',windowsHide:true}).replace('host.location.reload();','host.__fixtureReload();'):'';
 const html=`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Public updater isolated check</title><style>body{background:#111a18}</style><pre id="fixture-result" hidden>pending</pre><script>${setup.replaceAll('</script','<\/script')}${test}</script><iframe id="TH-script--character--${runningId}" src="/helper" hidden></iframe>`;
 const helper=`<!doctype html><script>window.TavernHelper=parent.TavernHelper;window.getScriptId=()=>window.frameElement.id.replace(/TH-script--.+--/,'');${(bootstrap?'if(parent.useUpdatedRuntime){'+runtime+'}else{'+oldRuntime+'}':runtime).replaceAll('</script','<\/script')}</script>`;
 (async()=>{

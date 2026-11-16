@@ -136,7 +136,7 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
 }
 
 function planDndWorldbook(book, patches, kept = [], additions = []) {
-  const allowed = new Set([18, 643316, 781421, 12, 207976, 6, 781420, 2, 781429, 781426]);
+  const allowed = new Set([18, 643316, 781421, 12, 207976, 6, 781420, 2, 781426]);
   const plan = patches.map(patch => {
     if (!allowed.delete(patch.uid) || typeof patch.previous !== 'string' || typeof patch.content !== 'string' || !patch.content.trim()) throw Error('世界书更新条目无效');
     const entry = book.entries[patch.uid];
@@ -144,6 +144,11 @@ function planDndWorldbook(book, patches, kept = [], additions = []) {
     const action = entry.content === patch.content ? 'current' : kept.includes(patch.uid) ? 'keep' : entry.content === patch.previous ? 'replace' : '';
     return {...patch, before: entry.content, action};
   });
+  const retired = book.entries[781429];
+  if (retired) {
+    if (retired.uid !== 781429 || typeof retired.content !== 'string' || !retired.content.trim().startsWith('<战场生成规则>')) throw Error('旧地图规则编号已被其他内容占用，请先核对 UID 781429');
+    plan.push({uid:781429, name:'移除自制旧地图规则', before:retired.content, action:'remove'});
+  }
   const addable = new Set([781430]);
   for (const template of additions) {
     if (!addable.delete(template.uid) || typeof template.content !== 'string' ||
@@ -266,12 +271,12 @@ function dndVersionIsNewer(next, current) {
     const receipt = current().data.extensions.dnd_component_updates?.worldbook;
     const same = receipt?.name === name && receipt.version === candidate.version;
     const entries = planDndWorldbook(book, patches, same ? receipt.kept : [], additions);
-    bookPlan = {name, entries, pending: !same || entries.some(entry => entry.action === 'add' || entry.action === 'replace' || !entry.action)};
+    bookPlan = {name, entries, pending: !same || entries.some(entry => entry.action === 'add' || entry.action === 'replace' || entry.action === 'remove' || !entry.action)};
     const box = dialog.querySelector('.dpu-worldbook'), title = doc.createElement('p');
     title.textContent = '世界书 · ' + name; box.append(title);
     for (const entry of entries) {
       const row = doc.createElement('div');
-      row.textContent = entry.name + ' · ' + ({current:'已同步', keep:'沿用个人修改', replace:'更新正文', add:'补入新条目（常开）'}[entry.action] || '发现个人修改');
+      row.textContent = entry.name + ' · ' + ({current:'已同步', keep:'沿用个人修改', replace:'更新正文', remove:'删除旧条目', add:'补入新条目（常开）'}[entry.action] || '发现个人修改');
       box.append(row);
       if (entry.action) continue;
       const details = doc.createElement('details'), summary = doc.createElement('summary');
@@ -349,12 +354,17 @@ function dndVersionIsNewer(next, current) {
             next.entries[entry.uid] = added;
           }
           if (entry.action === 'replace') next.entries[entry.uid].content = entry.content;
+          if (entry.action === 'remove') delete next.entries[entry.uid];
         }
         if (bookPlan.pending) {
           bookAttempted = true;
           await ctx().saveWorldInfo(bookPlan.name, next, true); guard(start);
           const verified = await (await local('/api/worldinfo/get', {name: bookPlan.name})).json(); guard(start);
           for (const entry of bookPlan.entries) {
+            if (entry.action === 'remove') {
+              if (Object.hasOwn(verified.entries, entry.uid)) throw Error('旧地图规则未成功删除：' + entry.name);
+              continue;
+            }
             if (verified.entries[entry.uid]?.content !== next.entries[entry.uid].content) throw Error('世界书保存后读回不一致：' + entry.name);
             if (entry.action === 'add' && ['uid', 'constant', 'disable'].some(field => verified.entries[entry.uid][field] !== next.entries[entry.uid][field])) throw Error('新增世界书设置保存不完整：' + entry.name);
           }

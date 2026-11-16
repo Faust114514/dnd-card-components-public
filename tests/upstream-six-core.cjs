@@ -20,8 +20,8 @@ const ended=core.compileBattleTimeline([start,'<battle-delta>\n@end\n</battle-de
 check(!core.compileBattleTimeline(['普通聊天'],null,ended).active,'manual ended-state base survives later chat');
 check(core.compileBattleTimeline([start],null,ended).active,'a new explicit encounter starts after an ended-state base');
 const sync=context.createModuleRunnerSync(core,{SillyTavern:{getContext:()=>({chat:[{mes:legacy}]})}},()=>{});
-check(sync.normalizeState(null).battleProtocol==='legacy','old chat defaults to legacy battle mode');
-check(sync.normalizeState({moduleId:'test',battleProtocol:'integrated'}).battleProtocol==='integrated','explicit new battle choice persists');
+check(!Object.hasOwn(sync.normalizeState(null),'battleProtocol'),'new chats have only the author map');
+check(!Object.hasOwn(sync.normalizeState({moduleId:'test',battleProtocol:'legacy'}),'battleProtocol'),'old saved mode cannot keep the retired map enabled');
 const cfg=JSON.parse(read('components.json')),latest=JSON.parse(read('latest.json'));
 const updater=read('src/scripts/私有组件更新.js');const uc={structuredClone,console};vm.createContext(uc);vm.runInContext(updater.split('// Runtime entry.')[0],uc);
 const scripts=cfg.scripts.filter(x=>x.id!=='a1b2c3d4-7072-4772-8001-202400000001').map(x=>({...x,content:read(x.source)}));

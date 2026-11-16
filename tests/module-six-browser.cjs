@@ -66,10 +66,10 @@ async function shot(name){const r=await send('Page.captureScreenshot',{format:'p
   await wait('__dndModuleRunner.getState().currentMapId==="1ab"');await sleep(350);
   await check('__dndModuleRunner.getAdventure().maps.find(m=>m.id==="1ab").requiresFog','dungeon uses exploration fog');
   await shot('模组地图-桌面');
-  await run(`delete vars.dnd_module_state.battleProtocol;context.chat=[{mes:'<battle>旧敌人|hp 5/10|pos 5,5|att 2</battle>'},{mes:'战斗已结束'}];emit('chat')`);
-  await wait('__dndModuleRunner.getState().battleProtocol==="legacy"');
-  await check('!__dndModuleRunner.getBattleState().units.length','legacy history is not resurrected');
-  await click('[data-action="battle-protocol"]');await wait('__dndModuleRunner.getState().battleProtocol==="integrated"');
+  await run(`vars.dnd_module_state.battleProtocol='legacy';context.chat=[{mes:'<battle>旧敌人|hp 5/10|pos 5,5|att 2</battle>'},{mes:'战斗已结束'}];emit('chat')`);
+  await wait('!Object.hasOwn(__dndModuleRunner.getState(),"battleProtocol")');
+  await check('!__dndModuleRunner.getBattleState().units.some(u=>u.id==="旧敌人")','legacy history is not resurrected');
+  await check('!document.querySelector("[data-action=battle-protocol]")&&!document.querySelector("[data-feature=battlemap]")','retired map controls are removed');
   await run(`context.chat.push({mes:'<battle-delta>\\n@start\\n新敌人|hp 10/10|pos 10,10|att 2|next\\n</battle-delta>'});emit('message')`);
   await wait('__dndModuleRunner.getBattleState().units.some(u=>u.id==="新敌人")');
   await check('!__dndModuleRunner.getBattleState().units.some(u=>u.id==="旧敌人")','new battle starts independently of old units');

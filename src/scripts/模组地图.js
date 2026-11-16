@@ -972,9 +972,6 @@ ${battleMapHint}
    \`\`\``);
     }
 
-    if (state.battleProtocol === 'legacy') {
-      return sections.filter(s=>!s.startsWith('#### 【六、')).join('\n\n').replace(battleCoordGuide,'').replace(/<battle-delta>/g, '<battle>') + '\n本聊天处于旧战场兼容模式：战斗按<战场生成规则>输出完整 map、terrain、参战者记录；不得输出增量 battle-delta 或 @map。战斗结束后停止输出旧战场。';
-    }
     return sections.join('\n\n')+'\n新遭遇首次战场记录必须用 battle-delta，第一行 @start，并列全体已确认参战者、先攻、当前HP、位置和行动者。后续只写变化，结束显式 @end。不要恢复旧 battle 历史，不重结算伤害或资源。';
   }
 
@@ -3280,12 +3277,9 @@ function createModuleRunnerSync(core, host, api) {
   }
 
   function normalizeState(raw, compiledAdv = null) {
-    const history=host.SillyTavern?.getContext?.()?.chat || [];
-    const battleProtocol = raw?.battleProtocol || (history.some(m=>/<battle>[\s\S]*?<\/battle>/i.test(m?.mes || '')) ? 'legacy' : 'integrated');
     if (!raw || typeof raw !== 'object' || !raw.moduleId) {
       return {
         enabled: false,
-        battleProtocol,
         moduleId: '',
         moduleName: '',
         currentMapId: '',
@@ -3325,7 +3319,6 @@ function createModuleRunnerSync(core, host, api) {
 
     return {
       enabled: raw.enabled !== false,
-      battleProtocol,
       moduleId: String(raw.moduleId),
       moduleName: String(raw.moduleName || compiledAdv?.name || raw.moduleId),
       currentMapId,
@@ -5480,7 +5473,6 @@ function mountDndModuleRunner() {
             <button type="button" class="dmr-btn" data-action="ai-correct" title="将当前地图画面、状态数据与最近5楼对话发给酒馆当前AI，自动修正探索进度与角色位置">✨ AI修正</button>
             <button type="button" class="dmr-btn" data-action="toggle-grid-snap" data-active="true" title="自动吸附5尺方格中心（点击解锁自由移动）">🧲 格点吸附</button>
             <button type="button" class="dmr-btn" data-action="toggle-softwall" data-active="false" title="允许棋子穿墙移动（卡墙脱困用，也可开 DM 透视或按住 Alt 拖拽）">👻 穿墙：关</button>
-            <button type="button" class="dmr-btn" data-action="battle-protocol" title="旧战斗打完后再启用新版；保留历史地图和人物资源">战场模式</button>
             <button type="button" class="dmr-btn" data-action="toggle-enable">⚪ 世界书同步：关闭</button>
             <button type="button" class="dmr-btn dmr-btn-icon" data-action="toggle-maximize" data-active="false" title="最大化/还原">□</button>
             <button type="button" class="dmr-btn" data-action="close">✕</button>
@@ -5697,10 +5689,6 @@ function mountDndModuleRunner() {
         renderModal();
         host.requestAnimationFrame(() => drawMapCanvas());
         return;
-      }
-      if (act === 'battle-protocol') {
-        await saveChatState({...currentState,battleProtocol:currentState.battleProtocol==='legacy'?'integrated':'legacy',battleOverride:null});
-        syncBattleFromChat(); return renderModal();
       }
       if (act === 'toggle-softwall') {
         softWallMode = !softWallMode;
@@ -6565,12 +6553,6 @@ function mountDndModuleRunner() {
 
   function syncBattleFromChat() {
     if (disposed) return battleState;
-    const modeButton=modalEl?.querySelector('[data-action="battle-protocol"]');
-    if (modeButton) modeButton.textContent=currentState.battleProtocol==='legacy'?'战场：旧版（点击启用新版）':'战场：新版';
-    if (currentState.battleProtocol==='legacy') {
-      battleState={active:false,ended:true,round:1,units:[],svgRawBlock:'',lastDeltaCount:0};
-      return battleState;
-    }
     const c = ctx();
     const chat = Array.isArray(c?.chat) ? c.chat : [];
     const map = getCurrentMap();
@@ -6720,7 +6702,7 @@ function mountDndModuleRunner() {
   const seedingMapIds = new Set();
   async function maybeAutoSeedMap(map, surface) {
     if (disposed || !currentAdv || !map || !surface) return;
-    if (!currentState?.enabled || currentState.battleProtocol === 'legacy' || currentState.autoAiSeed === false) return;
+    if (!currentState?.enabled || currentState.autoAiSeed === false) return;
     if (map.requiresFog === false || surface.isSvg) return;
     if (currentState.aiSeededMaps?.[map.id]?.units?.length) return;
     if (seedingMapIds.has(map.id)) return;
@@ -7373,7 +7355,7 @@ function mountDndModuleRunner() {
   };
 
   function getTacticalContextForAi() {
-    if (!currentAdv || currentState.battleProtocol === 'legacy') return null;
+    if (!currentAdv) return null;
     const map = getCurrentMap();
     if (!map) return null;
     const surface = getActiveSurface(map);
