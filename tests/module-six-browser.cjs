@@ -4,8 +4,14 @@ const {spawn}=require('node:child_process');
 const root=path.resolve(__dirname,'..'),data=path.resolve(process.argv[2]),out=path.resolve(process.argv[3]);
 fs.mkdirSync(out,{recursive:true});
 const mapSource=fs.readFileSync(path.join(root,'src/scripts/模组地图.js'),'utf8').replace("options.baseUrl || 'https://5e.kiwee.top'","options.baseUrl || (window.top.location.origin + '/remote')");
+const cosData=process.argv[4] ? path.resolve(process.argv[4]) : null;
 const orbSource=fs.readFileSync(path.join(root,'src/scripts/叙事悬浮开关.js'),'utf8');
 const setup=String.raw`
+window.paintedImages=[];window.paintedTexts=[];
+const draw=CanvasRenderingContext2D.prototype.drawImage,fill=CanvasRenderingContext2D.prototype.fillRect,text=CanvasRenderingContext2D.prototype.fillText;
+CanvasRenderingContext2D.prototype.fillRect=function(...a){if(this.canvas.classList.contains("dmr-canvas")&&this.fillStyle==="#0f0d0a"){paintedImages=[];paintedTexts=[];}return fill.apply(this,a)};
+CanvasRenderingContext2D.prototype.drawImage=function(img,...a){paintedImages.push({src:img.src||'',width:img.naturalWidth,height:img.naturalHeight});return draw.call(this,img,...a)};
+CanvasRenderingContext2D.prototype.fillText=function(t,...a){paintedTexts.push(String(t));return text.call(this,t,...a)};
 window.errors=[];window.sends=0;window.bookWrites=[];window.failPreset=false;
 addEventListener('error',e=>errors.push(e.message));addEventListener('unhandledrejection',e=>errors.push(String(e.reason)));
 window.vars=JSON.parse(localStorage.getItem('fixture-vars')||'{"stat_data":{"保留":"原游戏数据"},"旧EJS进度":{"房间":"原位置"}}');
@@ -13,7 +19,7 @@ window.entries=JSON.parse(localStorage.getItem('fixture-book')||'null')||[{uid:1
 window.preset={prompts:[{id:'dnd-cot-module-v01',enabled:false}]};
 const listeners=new Map();window.events={on:(n,f)=>{if(!listeners.has(n))listeners.set(n,new Set());listeners.get(n).add(f)},removeListener:(n,f)=>listeners.get(n)?.delete(f)};
 window.emit=async(n,...args)=>{for(const f of listeners.get(n)||[])await f(...args);};
-window.context={characterId:0,groupId:null,chatId:'fixture',chat:[],mainApi:'openai',eventSource:events,event_types:{CHAT_CHANGED:'chat',MESSAGE_RECEIVED:'message',GENERATION_ENDED:'end',WORLDINFO_ENTRIES_LOADED:'world',WORLDINFO_UPDATED:'book'},getCurrentChatId:()=>context.chatId};
+window.context={characterId:0,groupId:null,chatId:'fixture',chat:JSON.parse(localStorage.getItem('fixture-chat')||'[]'),mainApi:'openai',eventSource:events,event_types:{CHAT_CHANGED:'chat',MESSAGE_RECEIVED:'message',GENERATION_ENDED:'end',WORLDINFO_ENTRIES_LOADED:'world',WORLDINFO_UPDATED:'book'},getCurrentChatId:()=>context.chatId};
 window.SillyTavern={getContext:()=>context};
 window.TavernHelper={
  getVariables:()=>vars,updateVariablesWith:async fn=>{vars=await fn(vars);localStorage.setItem('fixture-vars',JSON.stringify(vars));return vars},
@@ -28,6 +34,8 @@ const server=http.createServer((req,res)=>{
  let file;
  if(url.pathname==='/remote/data/adventures.json')file=path.join(data,'catalog.json');
  else if(url.pathname==='/remote/data/adventure/adventure-lmop.json')file=path.join(data,'lmop.json');
+ else if(cosData&&url.pathname==='/remote/data/adventure/adventure-cos.json')file=path.join(cosData,'cos.json');
+ else if(cosData&&url.pathname.startsWith('/remote/img/adventure/CoS/'))file=path.join(cosData,'runtime-data',path.basename(decodeURIComponent(url.pathname)));
  else if(url.pathname.startsWith('/remote/data/bestiary/')||url.pathname.startsWith('/remote/img/adventure/LMoP/'))file=path.join(data,'runtime-data',path.basename(decodeURIComponent(url.pathname)));
  if(file){if(!fs.existsSync(file)){res.writeHead(404);res.end('missing fixture');return}res.setHeader('Content-Type',file.endsWith('.webp')?'image/webp':'application/json');res.end(fs.readFileSync(file));return}
  if(url.pathname!=='/'){res.writeHead(404);res.end();return}
@@ -91,6 +99,43 @@ async function shot(name){const r=await send('Page.captureScreenshot',{format:'p
   await check('vars.dnd_module_state.currentMapId==="1ab"&&vars.dnd_module_state.clearedRooms.length>0','page reload restores saved module and exploration progress');
   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await click('[data-dnd-module-btn="1"]');await sleep(250);await shot('模组地图-手机');
   await check('document.querySelector(".dmr-window").getBoundingClientRect().right<=innerWidth+1','module window fits 390px viewport');
+  if(cosData){
+   await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
+   await run(`context.chat=[];delete vars.dnd_module_state.battleOverride;__dndModuleRunner.selectModuleById('CoS')`);
+   await wait('__dndModuleRunner.getState().moduleId==="CoS"');
+   await run(`__dndModuleRunner.movePartyToRoom('102','6c7')`);
+   await wait('__dndModuleRunner.getState().currentMapId==="6c7"');
+   const encounter='<battle-delta>\n@start\n@map | title:森林遭遇测试 | size:100,80 | theme:forest\n@path | road | 0,60 -> 100,58 | width:15 | label:泥路\n@poly | foliage | 35,35 ; 65,35 ; 65,48 ; 35,48 | cover:half | los:block | label:灌木\n玩家|att:0|init:18|hp:44/44|pos:45,50|next\n敌人|att:2|init:22|hp:37/37|pos:30,20\n护卫|att:0|init:8|hp:5/21|pos:70,25\n</battle-delta>';
+   await run(`context.chat=[{mes:${JSON.stringify(encounter)}}];__dndModuleRunner.syncBattleFromChat()`);
+   await wait('paintedImages.some(i=>i.src.startsWith("data:image/svg+xml")&&i.width===1500&&i.height===1200)');
+   await check('__dndModuleRunner.getState().svgViewMode&&__dndModuleRunner.getBattleState().units.find(u=>u.id==="玩家").pos.join(",")==="45,50"','wild encounter automatically uses emitted terrain and unchanged local position');
+   await check('document.querySelector("[data-action=toggle-svg]").dataset.active==="true"','terrain switch state updates with a new encounter');
+   await check('paintedImages.some(i=>decodeURIComponent(i.src).includes("泥路"))','rendered image contains emitted terrain rather than generic fallback');
+   const preserved=await run('JSON.stringify(__dndModuleRunner.getBattleState().units)');
+   await shot('地区战斗-修复后');
+   await click('[data-action="toggle-svg"]');
+   await wait('paintedImages.some(i=>i.src.includes("007-001.webp"))');
+   await check('!paintedTexts.some(t=>/玩家|护卫|敌人/.test(t))','region map no longer overlays tactical unit tokens');
+   await run('__dndModuleRunner.syncBattleFromChat()');
+   await check('!__dndModuleRunner.getState().svgViewMode','ordinary refresh respects manual return to region');
+   await click('[data-action="toggle-svg"]');
+   await wait('paintedImages.some(i=>i.src.startsWith("data:image/svg+xml")&&i.height===1200)');
+   await check(`JSON.stringify(__dndModuleRunner.getBattleState().units)===${JSON.stringify(preserved)}`,'switching region and encounter does not change HP or coordinates');
+   await run(`context.chat.push({mes:'<battle-delta>敌人|hp:-4|move:40,25</battle-delta>'});__dndModuleRunner.syncBattleFromChat();__dndModuleRunner.syncBattleFromChat()`);
+   await check('__dndModuleRunner.getBattleState().units.find(u=>u.id==="敌人").hp.cur===33&&__dndModuleRunner.getBattleState().svgRawBlock.includes("size:100,80")','subsequent delta retains terrain and does not double damage');
+   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+   await click('[data-action="fit-map"]');await shot('地区战斗-手机');
+   await check('document.querySelector(".dmr-window").getBoundingClientRect().right<=innerWidth+1','encounter fits narrow viewport');
+   await run('localStorage.setItem("fixture-chat",JSON.stringify(context.chat))');
+   await send('Page.reload');await wait('!!window.__dndModuleRunner&&__dndModuleRunner.getBattleState().units.length===3');
+   await click('[data-dnd-module-btn="1"]');
+   await wait('paintedImages.some(i=>i.src.startsWith("data:image/svg+xml")&&i.height===1200)');
+   await check('__dndModuleRunner.getBattleState().units.find(u=>u.id==="敌人").hp.cur===33','reload reconstructs the same encounter and HP from saved chat');
+   await run(`context.chat.push({mes:'<battle-delta>\\n@start\\n@map | title:第二场 | size:120,70 | theme:cave\\n新对手|att:2|hp:8/8|pos:80,30\\n</battle-delta>'});__dndModuleRunner.syncBattleFromChat()`);
+   await wait('paintedImages.some(i=>i.src.startsWith("data:image/svg+xml")&&i.width===1800&&i.height===1050)');
+   await check('__dndModuleRunner.getBattleState().units.length===1','next encounter replaces the rendered terrain and old roster');
+
+  }
   await check('errors.length===0','no browser script errors');
   console.log(JSON.stringify({passed:true,count:checks.length,checks},null,2));
  }finally{try{if(ws?.readyState===1)await send('Browser.close',{},null)}catch{}ws?.close();child?.kill();server.closeAllConnections();server.close();}

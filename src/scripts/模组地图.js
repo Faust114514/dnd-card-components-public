@@ -908,9 +908,10 @@ DM 主持指引：以下为队伍当前位置**下一步可直接进入或触发
     const allMapsSummary = compiledAdv.maps.map(m => `[#${m.id}] ${m.chapterName}·${m.title}(${m.rooms.length}节点)`).join('、');
     const battleMapHint = (map?.mapKind === 'overworld' || curRoom?.isStoryNode)
       ? `- **无官方战术网格图时的 LLM 动态 SVG 战场绘制协议**：
-  当前节点为野外/无官方战术网格遭遇。当进入战斗并输出 \`<battle>\` 块时，请勿使用空白背景，必须在 \`<battle>\` 顶部绘制当前场景的 **SVG 战术地形与视线阻挡墙体**（单位坐标以尺 ft 为单位，1格=5尺）：
+  当前节点为野外/无官方战术网格遭遇。当进入战斗时，用 \`<battle-delta>\`，第一行 \`@start\`，随后绘制当前场景的 **SVG 战术地形与视线阻挡墙体**（单位坐标以尺 ft 为单位，1格=5尺）：
   \`\`\`
-  <battle>
+  <battle-delta>
+  @start
   @map | title:${curRoom?.name || map?.title || '战术遭遇'} | size:100,70 | theme:forest
   @path | road | 0,35 -> 50,35 -> 100,32 | width:15 | label:道路/小径
   @poly | foliage | 20,10 ; 80,10 ; 75,24 ; 20,24 | cover:half | los:block | label:茂密灌木/高地
@@ -918,10 +919,10 @@ DM 主持指引：以下为队伍当前位置**下一步可直接进入或触发
   @prop | wagon | 50,35 | size:10,15 | cover:half | label:翻倒货车/掩体
   角色名 | att:0 | init:16 | hp:12/12 | pos:35,35 | next
   敌人1 | att:2 | init:14 | hp:7/7 | pos:40,18
-  </battle>
+  </battle-delta>
   \`\`\``
       : `- **官方地图实景战斗联动协议**：
-  当前场景已挂载官方高清战术地图（《${map?.title || ''}》）。当在 \`[#${curRoom?.id || ''}] ${curRoom?.name || ''}\` 触发战斗并输出 \`<battle>\` 块时，战斗面板将自动以当前房间的官方地图实景作为战场底图并加载物理墙壁与角色视线。若玩家在面板中拖拽移动了角色坐标，请严格依据其最新坐标裁定距离、视线遮挡与借机攻击。`;
+  当前场景已挂载官方高清战术地图（《${map?.title || ''}》）。当在 \`[#${curRoom?.id || ''}] ${curRoom?.name || ''}\` 触发战斗并输出 \`<battle-delta>\` 块时，战斗面板将自动以当前房间的官方地图实景作为战场底图并加载物理墙壁与角色视线。若玩家在面板中拖拽移动了角色坐标，请严格依据其最新坐标裁定距离、视线遮挡与借机攻击。`;
 
     sections.push(`#### 【五、模组全场景索引、战斗地图联动与 AI 自主推进协议】
 本模组场景索引：${allMapsSummary}
@@ -2394,8 +2395,9 @@ ${battleMapHint}
     }
     const preset = map?.imageUrl ? matchOfficialMapPreset(map.imageUrl) : null;
     const printedGridPx = preset?.printedGridPx || preset?.gridPx || surface?.gridSize || map?.grid?.size || 150;
+    const distanceFt = map?.grid?.distance * (/^(mi|mile|miles)$/i.test(map?.grid?.units || '') ? 5280 : 1);
     const feetPerPrintedSquare = preset?.feetPerPrintedSquare
-      || map?.grid?.distance
+      || distanceFt
       || ((map?.grid?.scale || 1) * 5)
       || 5;
     const pxPerFt = surface?.pxPerFt || map?.pxPerFt || (printedGridPx / feetPerPrintedSquare) || 15;
@@ -2507,8 +2509,10 @@ ${battleMapHint}
         const tag = blk[1].toLowerCase();
         const body = blk[2] || '';
         if (tag === 'battle' && !/^\s*@map\b/im.test(body) && !/<svg\b/i.test(body)) continue;
+        const hasTerrain = /^\s*@map\b/im.test(body) || /<svg\b/i.test(body);
+        if (hasTerrain) svgRawBlock = blk[0];
+        else if (/^\s*@start(?:\s|$)/im.test(body)) svgRawBlock = '';
         if (tag === 'battle') {
-          svgRawBlock = blk[0];
           unitMap.clear();
           active = true;
           round = 1;
@@ -2646,6 +2650,11 @@ ${battleMapHint}
       }
     }
 
+    // Local encounter coordinates must never be fitted to an overworld's mile grid.
+    if (mapCtx?.isOverworld) {
+      const spec = parseTacticalMapDirectives(svgRawBlock);
+      mapCtx = spec ? { pxPerFt: 15, widthPx: spec.widthFt * 15, heightPx: spec.heightFt * 15 } : null;
+    }
     const units = [...unitMap.values()].sort((a, b) => (b.init - a.init));
     if (units.length && mapCtx?.widthPx && mapCtx?.heightPx && mapCtx?.pxPerFt) {
       const mapWFt = Math.max(25, (mapCtx.widthPx - (mapCtx.offsetX || 0)) / mapCtx.pxPerFt);
@@ -3920,11 +3929,12 @@ function mountDndModuleRunner() {
   function getActiveSurface(map) {
     if (!map) return null;
     const curRoom = map.rooms.find(r => r.id === currentState.currentRoomId) || map.rooms[0] || null;
-    const presetSvgSpec = core.getPresetSvgMapForNode(curRoom, map);
+    const encounterRaw = (map.mapKind === 'overworld' || curRoom?.isStoryNode) ? battleState.svgRawBlock : '';
+    const presetSvgSpec = core.parseTacticalMapDirectives(encounterRaw) || core.getPresetSvgMapForNode(curRoom, map);
     const isSvgMode = !!(currentState.svgViewMode && presetSvgSpec);
 
     if (isSvgMode) {
-      const cacheKey = `${map.id}:${curRoom?.id || ''}:svg`;
+      const cacheKey = `${map.id}:${curRoom?.id || ''}:svg:${encounterRaw}`;
       if (view.cachedSvgKey !== cacheKey || !view.cachedSvgCompiled) {
         view.cachedSvgKey = cacheKey;
         view.cachedSvgCompiled = core.compileSvgTacticalMap(presetSvgSpec, 15);
@@ -4192,7 +4202,7 @@ function mountDndModuleRunner() {
     const explored = new Set(currentState.exploredRooms || []);
     const cleared = new Set(currentState.clearedRooms || []);
     const useFog = surface.requiresFog && !currentState.dmView;
-    const hasBattleUnits = battleState.units.length > 0;
+    const hasBattleUnits = battleState.units.length > 0 && (surface.isSvg || map.mapKind !== 'overworld');
     const showToken = (surface.requiresFog || surface.isSvg || map.mapKind !== 'overworld') && !hasBattleUnits;
     const showVision = surface.requiresFog || surface.isSvg || map.mapKind !== 'overworld';
     let tokenPos = getTokenPosition(surface);
@@ -4511,7 +4521,7 @@ function mountDndModuleRunner() {
     }
 
     // Render Tactical Battle Units (<battle-delta> / <battle> / exploration tokens) + Drag Ruler
-    if (battleState.units.length) {
+    if (hasBattleUnits) {
       const cellPx = getTacticalCellPx(surface);
       const pxPerFt = surface.pxPerFt || (cellPx / 5) || 15;
       const offX = surface.gridOffsetX || 0;
@@ -4814,7 +4824,7 @@ function mountDndModuleRunner() {
   }
 
   function findBattleUnitAtPoint(sx, sy, surface) {
-    if (!surface || !battleState.units.length) return null;
+    if (!surface || !battleState.units.length || (!surface.isSvg && getCurrentMap()?.mapKind === 'overworld')) return null;
     const cellPx = getTacticalCellPx(surface);
     const pxPerFt = surface.pxPerFt || (cellPx / 5) || 15;
     const offX = surface.gridOffsetX || 0;
@@ -6567,7 +6577,9 @@ function mountDndModuleRunner() {
       offsetY: surface?.gridOffsetY || 0,
       walls: surface?.walls || [],
       curRoomId: currentState.currentRoomId || '',
+      isOverworld: map?.mapKind === 'overworld' || !!map?.rooms.find(r => r.id === currentState.currentRoomId)?.isStoryNode,
     };
+    const previousTerrain = battleState.svgRawBlock;
     const ov = currentState?.battleOverride;
     if (ov && ov.chatLen <= chat.length && ov.state) {
       battleState = core.compileBattleTimeline(chat.slice(ov.chatLen), mapCtx, ov.state);
@@ -6610,6 +6622,9 @@ function mountDndModuleRunner() {
         };
       }
     }
+    if (mapCtx.isOverworld && battleState.svgRawBlock && battleState.svgRawBlock !== previousTerrain) {
+      currentState.svgViewMode = true;
+    }
     for (const u of battleState.units || []) {
       if (battleState.active) {
         if (!Array.isArray(u._turnStartPos) && Array.isArray(u.pos)) {
@@ -6620,8 +6635,7 @@ function mountDndModuleRunner() {
       }
     }
     if (modalEl && !modalEl.hidden) {
-      renderInitStrip();
-      drawMapCanvas();
+      renderModal();
     }
     return battleState;
   }
