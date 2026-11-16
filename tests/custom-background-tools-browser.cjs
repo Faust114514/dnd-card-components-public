@@ -40,7 +40,7 @@ async function runScenarios(){
  await run('loadData()');await wait('!state.isLoading');
  check(await run(`!state.plan.req.some(r=>r.id==='growth_eb_background_tool')`),'repair is not offered again after reopening');
  await run(`installCustomToolFixture('抄写员',{eb_background_tool:['制毒工具']})`);await click('#hexblade-config-btn');await fillPlan();await click('#btn-submit');await wait('!growthSaving');
- check(await run(`growthOwned('tool','制毒工具')&&!growthOwned('tool','书法工具')`),'explicit custom choice survives even when its name matches a preset background');
+ check(await run(`growthOwned('tool','毒药工具')&&!growthOwned('tool','书法工具')`),'explicit custom choice survives even when its name matches a preset background');
  check(await run(`backgroundToolOptions('').length===0&&backgroundToolOptions('农民').join()==='木匠工具'&&backgroundToolOptions('抄写员').join()==='书法工具'`),'empty and preset backgrounds keep their existing behavior');
  check(await run('fixtureErrors.length===0&&fixtureSends===0'),'no browser errors or automatic AI sends');
  console.log(JSON.stringify({passed:checks.length,untested:['Real Tavern installation and persistence']}));
