@@ -906,7 +906,7 @@ DM 主持指引：以下为队伍当前位置**下一步可直接进入或触发
 
     // Section 5: Available Maps Index & AI Autonomous Progression + Tactical Battle Map Protocol
     const allMapsSummary = compiledAdv.maps.map(m => `[#${m.id}] ${m.chapterName}·${m.title}(${m.rooms.length}节点)`).join('、');
-    const battleMapHint = (map?.mapKind === 'overworld' || curRoom?.isStoryNode)
+    const battleMapHint = (map?.mapKind === 'overworld' || !map?.imageUrl)
       ? `- **无官方战术网格图时的 LLM 动态 SVG 战场绘制协议**：
   当前节点为野外/无官方战术网格遭遇。当进入战斗时，用 \`<battle-delta>\`，第一行 \`@start\`，随后绘制当前场景的 **SVG 战术地形与视线阻挡墙体**（单位坐标以尺 ft 为单位，1格=5尺）：
   \`\`\`
@@ -2280,14 +2280,15 @@ ${battleMapHint}
       if (!parsed || typeof parsed !== 'object') continue;
 
       const mapToken = parsed.map || parsed.mapId;
+      let requestedMap = null;
       if (mapToken) {
         const cleanMapTok = String(mapToken).trim().replace(/^#/, '');
-        const foundMap = compiledAdv.maps.find(x => x.id.toLowerCase() === cleanMapTok.toLowerCase() || x.title.includes(cleanMapTok));
+        requestedMap = compiledAdv.maps.find(x => x.id.toLowerCase() === cleanMapTok.toLowerCase() || x.title.includes(cleanMapTok));
+        const foundMap = requestedMap;
         if (foundMap && foundMap.id !== nextMapId) {
           nextMapId = foundMap.id;
-          if (foundMap.rooms[0] && !parsed.room && !parsed.currentRoom) {
+          if (foundMap.rooms[0]) {
             nextRoomId = foundMap.rooms[0].id;
-            explored.add(nextRoomId);
           }
           changed = true;
         }
@@ -2296,7 +2297,7 @@ ${battleMapHint}
       const roomToken = parsed.room || parsed.currentRoom || parsed.roomId || parsed.area;
       if (roomToken) {
         const resolved = resolveRoomToken(roomToken, compiledAdv, nextMapId);
-        if (resolved) {
+        if (resolved && (!requestedMap || resolved.mapId === requestedMap.id)) {
           const prevRoomId = nextRoomId;
           nextMapId = resolved.mapId;
           nextRoomId = resolved.roomId;
@@ -2312,6 +2313,8 @@ ${battleMapHint}
           }
         }
       }
+
+      if (requestedMap && requestedMap.id !== currentState.currentMapId && nextRoomId) explored.add(nextRoomId);
 
       const revealList = Array.isArray(parsed.reveal) ? parsed.reveal : Array.isArray(parsed.unlock) ? parsed.unlock : parsed.reveal ? [parsed.reveal] : [];
       for (const token of revealList) {
@@ -3607,14 +3610,40 @@ function mountDndModuleRunner() {
     }
   }
 
-  async function saveChatState(nextState, syncBook = true) {
+  async function saveChatState(nextState, syncBook = true, battleChatLen = ctx()?.chat?.length || 0) {
     const key = identity();
     const check = () => {
       if (disposed || identity() !== key) throw Error('聊天已切换，停止写入旧模组状态');
     };
     check();
     const normalized = sync.normalizeState(nextState, currentAdv);
+    const changedMap = currentState.moduleId === normalized.moduleId
+      && currentState.currentMapId && currentState.currentMapId !== normalized.currentMapId;
+    // A new map has its own coordinate frame. Keep resources, but not old terrain/positions.
+    if (changedMap) syncBattleFromChat(battleChatLen);
     currentState = normalized;
+    if (changedMap) {
+      normalized.svgViewMode = false;
+      const surface = getActiveSurface(getCurrentMap());
+      const anchor = getTokenPosition(surface);
+      const pxPerFt = surface.pxPerFt;
+      const cols = Math.min(3, battleState.units.length);
+      const rows = Math.ceil(battleState.units.length / (cols || 1));
+      const snap5 = v => Math.round(v / 5) * 5;
+      const baseX = Math.max(0, Math.min(snap5((anchor.x - (surface.gridOffsetX || 0)) / pxPerFt), Math.floor(surface.width / pxPerFt / 5) * 5 - cols * 5));
+      const baseY = Math.max(0, Math.min(snap5((anchor.y - (surface.gridOffsetY || 0)) / pxPerFt), Math.floor(surface.height / pxPerFt / 5) * 5 - rows * 5));
+      battleState = {
+        ...battleState,
+        svgRawBlock: '',
+        lastDeltaCount: 0,
+        units: battleState.units.map((u, i) => {
+          const pos = [baseX + i % cols * 5, baseY + Math.floor(i / cols) * 5];
+          return { ...u, pos, ...(u._turnStartPos ? { _turnStartPos: [...pos] } : {}) };
+        }),
+      };
+      normalized.battleOverride = { chatLen: battleChatLen, state: battleState };
+      pendingMoveDraft = null;
+    }
     if (!inspectedRoomId || ! getCurrentMap()?.rooms?.some(r => r.id === inspectedRoomId)) {
       inspectedRoomId = normalized.currentRoomId;
     }
@@ -3929,7 +3958,7 @@ function mountDndModuleRunner() {
   function getActiveSurface(map) {
     if (!map) return null;
     const curRoom = map.rooms.find(r => r.id === currentState.currentRoomId) || map.rooms[0] || null;
-    const encounterRaw = (map.mapKind === 'overworld' || curRoom?.isStoryNode) ? battleState.svgRawBlock : '';
+    const encounterRaw = (map.mapKind === 'overworld' || !map.imageUrl) ? battleState.svgRawBlock : '';
     const presetSvgSpec = core.parseTacticalMapDirectives(encounterRaw) || core.getPresetSvgMapForNode(curRoom, map);
     const isSvgMode = !!(currentState.svgViewMode && presetSvgSpec);
 
@@ -4008,8 +4037,8 @@ function mountDndModuleRunner() {
       mapKey,
       title: map.title,
       imageUrl: map.imageUrl,
-      width: view.img?.naturalWidth || map.width || 2048,
-      height: view.img?.naturalHeight || map.height || 1536,
+      width: (view.imgUrl === map.imageUrl && view.img?.naturalWidth) || map.width || 2048,
+      height: (view.imgUrl === map.imageUrl && view.img?.naturalHeight) || map.height || 1536,
       gridSize,
       cellPx: pxPerFt * 5,
       gridOffsetX,
@@ -6570,10 +6599,10 @@ function mountDndModuleRunner() {
     return true;
   }
 
-  function syncBattleFromChat() {
+  function syncBattleFromChat(chatEnd = ctx()?.chat?.length || 0) {
     if (disposed) return battleState;
     const c = ctx();
-    const chat = Array.isArray(c?.chat) ? c.chat : [];
+    const chat = Array.isArray(c?.chat) ? c.chat.slice(0, chatEnd) : [];
     const map = getCurrentMap();
     const surface = getActiveSurface(map);
     const mapCtx = {
@@ -6586,7 +6615,7 @@ function mountDndModuleRunner() {
       offsetY: surface?.gridOffsetY || 0,
       walls: surface?.walls || [],
       curRoomId: currentState.currentRoomId || '',
-      isOverworld: map?.mapKind === 'overworld' || !!map?.rooms.find(r => r.id === currentState.currentRoomId)?.isStoryNode,
+      isOverworld: map?.mapKind === 'overworld' || !map?.imageUrl,
     };
     const previousTerrain = battleState.svgRawBlock;
     const ov = currentState?.battleOverride;
@@ -7222,7 +7251,7 @@ function mountDndModuleRunner() {
           active: parsed.battleActive !== null ? parsed.battleActive : battleState.active,
           round: battleState.round || 1,
           units: parsed.units !== null ? parsed.units : battleState.units,
-          svgRawBlock: battleState.svgRawBlock,
+          svgRawBlock: surface.isSvg ? battleState.svgRawBlock : '',
           lastDeltaCount: parsed.units ? parsed.units.length : 0,
         };
         nextOverride = { chatLen: chat.length, state: nextBattle };
@@ -7300,7 +7329,7 @@ function mountDndModuleRunner() {
       const next = core.parseAiMapMarkers(msg.mes || '', currentAdv, currentState);
       if (next) {
         inspectedRoomId = next.currentRoomId;
-        await saveChatState(next, true);
+        await saveChatState(next, true, i);
         if (modalEl && !modalEl.hidden && next.currentRoomId) {
           focusRoomOnCanvas(next.currentRoomId);
         }
@@ -7318,18 +7347,19 @@ function mountDndModuleRunner() {
     removers.push(() => c.eventSource.removeListener?.(ev, fn));
   }
 
-  async function handleBattleMessageChange(messageId) {
+  async function handleBattleMessageChange(messageId, checkMap = false) {
     const ov = currentState.battleOverride;
     if (ov && Number.isInteger(messageId) && messageId < ov.chatLen) {
       await saveChatState({ ...currentState, battleOverride: null }, false);
       pendingMoveDraft = null;
     }
+    if (checkMap) await checkLatestAssistantMessageForMapMarkers();
     syncBattleFromChat();
   }
 
   observeEvent('CHAT_CHANGED', () => restoreFromCurrentChat());
-  observeEvent('MESSAGE_RECEIVED', async id => { await handleBattleMessageChange(id); await checkLatestAssistantMessageForMapMarkers(); });
-  observeEvent('GENERATION_ENDED', async id => { await handleBattleMessageChange(id); await checkLatestAssistantMessageForMapMarkers(); });
+  observeEvent('MESSAGE_RECEIVED', id => handleBattleMessageChange(id, true));
+  observeEvent('GENERATION_ENDED', id => handleBattleMessageChange(id, true));
   observeEvent('MESSAGE_EDITED', handleBattleMessageChange);
   observeEvent('MESSAGE_DELETED', handleBattleMessageChange);
   observeEvent('MESSAGE_SWIPED', handleBattleMessageChange);

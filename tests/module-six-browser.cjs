@@ -4,6 +4,7 @@ const {spawn}=require('node:child_process');
 const root=path.resolve(__dirname,'..'),data=path.resolve(process.argv[2]),out=path.resolve(process.argv[3]);
 fs.mkdirSync(out,{recursive:true});
 const mapSource=fs.readFileSync(path.join(root,'src/scripts/模组地图.js'),'utf8').replace("options.baseUrl || 'https://5e.kiwee.top'","options.baseUrl || (window.top.location.origin + '/remote')");
+const sceneCase=process.argv[6] ? JSON.parse(fs.readFileSync(process.argv[6],'utf8')) : null;
 const savedCase=process.argv[5] ? JSON.parse(fs.readFileSync(process.argv[5],'utf8')) : null;
 const cosData=process.argv[4] ? path.resolve(process.argv[4]) : null;
 const orbSource=fs.readFileSync(path.join(root,'src/scripts/叙事悬浮开关.js'),'utf8');
@@ -23,6 +24,7 @@ window.emit=async(n,...args)=>{for(const f of listeners.get(n)||[])await f(...ar
 window.context={characterId:0,groupId:null,chatId:'fixture',chat:JSON.parse(localStorage.getItem('fixture-chat')||'[]'),mainApi:'openai',eventSource:events,event_types:{CHAT_CHANGED:'chat',MESSAGE_RECEIVED:'message',MESSAGE_EDITED:'edited',MESSAGE_DELETED:'deleted',MESSAGE_SWIPED:'swiped',GENERATION_ENDED:'end',WORLDINFO_ENTRIES_LOADED:'world',WORLDINFO_UPDATED:'book'},getCurrentChatId:()=>context.chatId};
 window.SillyTavern={getContext:()=>context};
 window.TavernHelper={
+ generateRaw:async args=>{if(!window.aiReply)throw Error('No mocked AI reply');window.lastAiRequest=args;return window.aiReply;},
  getVariables:()=>vars,updateVariablesWith:async fn=>{vars=await fn(vars);localStorage.setItem('fixture-vars',JSON.stringify(vars));return vars},
  getCharWorldbookNames:()=>({primary:'自定义绑定书'}),getWorldbookNames:()=>['自定义绑定书'],getWorldbook:async()=>structuredClone(entries),
  updateWorldbookWith:async(name,fn)=>{if(name!=='自定义绑定书')throw Error('wrong book');entries=await fn(structuredClone(entries));bookWrites.push(name);localStorage.setItem('fixture-book',JSON.stringify(entries));return entries},
@@ -169,6 +171,52 @@ async function shot(name){const r=await send('Page.captureScreenshot',{format:'p
    await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
    await click('[data-action="fit-map"]');await shot('重读战场-手机');
    await check('document.querySelector("[data-action=battle-reload]").getBoundingClientRect().right<=innerWidth','recovery control stays reachable on mobile');
+  }
+  if(sceneCase){
+   await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
+   await run(`vars.dnd_module_state=${JSON.stringify(sceneCase.state)};context.chat=${JSON.stringify(sceneCase.chat)};emit('chat')`);
+   const units=sceneCase.state.battleOverride.state.units;
+   const fields=list=>list.map(({id,pos,init,hp})=>({id,pos,init,hp}));
+   await wait('__dndModuleRunner.getState().currentMapId==="0bd"&&paintedImages.some(i=>i.src.includes("013-003.webp"))');
+   await check(`JSON.stringify(__dndModuleRunner.getBattleState().units.map(({id,pos,init,hp})=>({id,pos,init,hp})))===${JSON.stringify(JSON.stringify(fields(units)))}`,'saved native village correction remains exact despite an old forest terrain block');
+   await check('!__dndModuleRunner.getState().svgViewMode&&!entries.find(e=>e.uid===781499).content.includes("首次遭遇必须")','native story node stays on the official map');
+   await click('[data-action="fit-map"]');await shot('村庄保存站位-修复后');
+   const shifted=units.map(u=>({...u,pos:[u.pos[0]-20,u.pos[1]+10]}));
+   const reply={currentRoomId:'13d',battleActive:false,units:shifted.map(({init,...u})=>u),reason:'mocked village correction'};
+   await run(`aiReply=JSON.stringify(${JSON.stringify(reply)})`);
+   await click('[data-action="ai-correct"]');
+   await wait('document.querySelector("[data-dmr-legend-status]").textContent.includes("AI修正完成")');
+   const corrected=await run('JSON.stringify(__dndModuleRunner.getBattleState().units.map(({id,pos,init,hp})=>({id,pos,init,hp})))');
+   assert.equal(corrected,JSON.stringify(fields(shifted)));checks.push('actual AI correction button saves and renders native coordinates without squeezing or zeroing initiative');
+   await check('vars.dnd_module_state.battleOverride.state.svgRawBlock===""','native AI correction clears unrelated old forest terrain');
+   await run('localStorage.setItem("fixture-chat",JSON.stringify(context.chat))');
+   await send('Page.reload');await wait('!!window.__dndModuleRunner&&__dndModuleRunner.getState().currentMapId==="0bd"');
+   await click('[data-dnd-module-btn="1"]');
+   await wait('paintedImages.some(i=>i.src.includes("013-003.webp"))');
+   await check(`JSON.stringify(__dndModuleRunner.getBattleState().units.map(({id,pos,init,hp})=>({id,pos,init,hp})))===${JSON.stringify(corrected)}`,'native correction survives full page reload');
+   const resources=await run('JSON.stringify(__dndModuleRunner.getBattleState().units.map(({id,init,hp,status})=>({id,init,hp,status})))');
+   await run(`__dndModuleRunner.movePartyToRoom('102','6c7')`);
+   await wait('__dndModuleRunner.getState().currentMapId==="6c7"&&paintedImages.some(i=>i.src.includes("007-001.webp"))');
+   await run(`{const m=document.querySelector('[data-dmr-map]');m.value='0bd';m.dispatchEvent(new Event('change'));}`);
+   await wait('__dndModuleRunner.getState().currentMapId==="0bd"&&paintedImages.some(i=>i.src.includes("013-003.webp"))');
+   await check('new Set(__dndModuleRunner.getBattleState().units.map(u=>u.pos.join(","))).size===__dndModuleRunner.getBattleState().units.length&&__dndModuleRunner.getBattleState().units.every(u=>u.pos[0]>100&&u.pos[1]>100)','manual scene selector places the whole roster separately near the target anchor');
+   await check(`JSON.stringify(__dndModuleRunner.getBattleState().units.map(({id,init,hp,status})=>({id,init,hp,status})))===${JSON.stringify(resources)}`,'cross-map placement preserves every HP, initiative and status value');
+   await check('!__dndModuleRunner.getBattleState().svgRawBlock&&!__dndModuleRunner.getState().svgViewMode','scene switch discards old terrain and opens the destination image');
+   await run(`__dndModuleRunner.movePartyToRoom('102','6c7')`);
+   await wait('__dndModuleRunner.getState().currentMapId==="6c7"');
+   const target=units[0].id;
+   const marker='<!-- dnd-map: '+JSON.stringify({map:'0bd',room:'13d'})+' -->\n<battle-delta>'+target+'|hp:-2|move:600,500</battle-delta>';
+   await run(`context.chat.push({mes:${JSON.stringify(marker)}});emit('message',context.chat.length-1)`);
+   await wait('__dndModuleRunner.getState().currentMapId==="0bd"');
+   await run('emit("end",context.chat.length-1)');await sleep(150);
+   await check(`(()=>{const u=__dndModuleRunner.getBattleState().units.find(u=>u.id===${JSON.stringify(target)});return u.hp.cur===${units[0].hp.cur-2}&&u.pos.join(',')==='600,500'})()`,'AI scene marker and same-message movement apply in the new frame with damage exactly once');
+   await check('vars.dnd_module_state.battleOverride.chatLen===context.chat.length-1','scene handoff retains the new message for battle delta replay');
+   await run(`context.chat.push({mes:'<!-- dnd-map: {"map":"0bd","room":"108"} -->'});emit('message',context.chat.length-1)`);
+   await sleep(150);
+   await check('__dndModuleRunner.getState().currentMapId==="0bd"&&__dndModuleRunner.getState().currentRoomId==="13d"','a stale room from the old map cannot override the explicit destination map');
+   await check('vars.stat_data.保留==="原游戏数据"','scene and AI fixes leave character resource variables untouched');
+   const zoomPoint=await run(`(()=>{const r=document.querySelector('.dmr-canvas').getBoundingClientRect();const s=Math.min(r.width/1950,r.height/2475)*.94;return{x:r.x+(r.width-1950*s)/2+1790*s,y:r.y+(r.height-2475*s)/2+1500*s}})()`);
+   await send('Input.dispatchMouseEvent',{type:'mouseWheel',...zoomPoint,deltaX:0,deltaY:-1100});await sleep(200);await shot('村庄修正-队伍近景');
   }
   await check('errors.length===0','no browser script errors');
   console.log(JSON.stringify({passed:true,count:checks.length,checks},null,2));

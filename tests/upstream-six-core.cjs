@@ -36,6 +36,13 @@ check(core.compileBattleTimeline([start],wrongScale).units.find(u=>u.id==='玩�
 const correction=core.parseAiCorrectionResult(JSON.stringify({units:[{id:'玩家',hp:'7/20',pos:[45,50]}]}),null,null,[{id:'玩家',init:18}]);
 check(correction.units[0].init===18,'AI correction without initiative preserves the current roll');
 check(core.parseAiCorrectionResult(JSON.stringify({units:[{id:'玩家',init:12}]}),null,null,[{id:'玩家',init:18}]).units[0].init===12,'explicit corrected initiative is still accepted');
+const sceneAdv={id:'demo',name:'demo',maps:[{id:'old',title:'Old',rooms:[{id:'a',name:'A'}]},{id:'new',title:'New',rooms:[{id:'b',name:'B'},{id:'c',name:'C'}]}]};
+const sceneBase={moduleId:'demo',currentMapId:'old',currentRoomId:'a',exploredRooms:['a']};
+const scene=core.parseAiMapMarkers('<!-- dnd-map: {"map":"new","room":"a"} -->',sceneAdv,sceneBase);
+check(scene.currentMapId==='new'&&scene.currentRoomId==='b','explicit scene destination wins over a stale room from the old map');
+check(core.parseAiMapMarkers('<!-- dnd-map: {"room":"b"} -->',sceneAdv,sceneBase).currentMapId==='new','room-only cross-map navigation still resolves');
+const targetScene=core.parseAiMapMarkers('<!-- dnd-map: {"map":"new","room":"c"} -->',sceneAdv,sceneBase);
+check(targetScene.currentRoomId==='c'&&!targetScene.exploredRooms.includes('b'),'explicit target room does not accidentally explore the map entry');
 const sync=context.createModuleRunnerSync(core,{SillyTavern:{getContext:()=>({chat:[{mes:legacy}]})}},()=>{});
 check(!Object.hasOwn(sync.normalizeState(null),'battleProtocol'),'new chats have only the author map');
 check(!Object.hasOwn(sync.normalizeState({moduleId:'test',battleProtocol:'legacy'}),'battleProtocol'),'old saved mode cannot keep the retired map enabled');
