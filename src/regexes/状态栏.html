@@ -1794,6 +1794,7 @@ function enrichSpellVariables(variables) {
 }
         #main-header { background-color: #343a40; border-radius: 12px; padding: 12px 24px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
         .header-icon-btn { background: #495057; border: none; color: #e0e0e0; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; transition: all 0.3s ease; font-size: 1.1rem; display: inline-flex; align-items: center; justify-content: center; }
+        #normalize-terms-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
         .header-icon-btn:hover { background-color: #6c757d; transform: scale(1.1); }
         .is-collapsed #collapse-toggle-btn { transform: rotate(180deg); }
         #char-class-level { margin-left: auto; }
@@ -2333,6 +2334,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     <button id="collapse-toggle-btn" class="header-icon-btn" title="折叠/展开面板" data-action="toggle-collapse"><i class="fa-solid fa-chevron-up"></i></button>
                     <button id="export-data-btn" class="header-icon-btn" title="导出存档"><i class="fa-solid fa-file-export"></i></button>
                     <button id="import-data-btn" class="header-icon-btn" title="导入存档"><i class="fa-solid fa-file-import"></i></button>
+                    <button id="normalize-terms-btn" type="button" class="header-icon-btn" style="width:auto;padding:0 10px;border-radius:8px;font-size:12px" title="按本地不全书统一当前队伍的已知旧名称并保存">统一队伍译名</button>
                 </div>
                 <div class="character-name-header">
                     <h1 id="char-name" class="text-3xl font-bold"></h1>
@@ -4462,8 +4464,9 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                 }, 100);
             }
             
-            function showSaveNotification() {
+            function showSaveNotification(message = '状态已更新!') {
                 const notification = document.getElementById('save-notification');
+                notification.textContent = message;
                 notification.style.opacity = '1';
                 setTimeout(() => { notification.style.opacity = '0'; }, 1500);
             }
@@ -6966,6 +6969,9 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                 btn.innerHTML = isEditing ? '<i class="fa-solid fa-save"></i>' : '<i class="fa-solid fa-wrench"></i>';
                 btn.title = isEditing ? '保存' : '编辑模式';
                 document.getElementById('char-name').setAttribute('contenteditable', isEditing);
+                const termsButton = document.getElementById('normalize-terms-btn');
+                termsButton.disabled = isEditing || !characterData.__mvuSource;
+                termsButton.title = isEditing ? '请先保存当前编辑，再统一队伍译名' : '按本地不全书统一当前队伍的已知旧名称并保存';
                 const aiPanel = document.getElementById('status-ai-assist-panel');
                 if (aiPanel) aiPanel.style.display = isEditing ? 'block' : 'none';
             }
@@ -8335,6 +8341,23 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
             document.getElementById('short-rest-btn').addEventListener('click', openShortRestModal);
             document.getElementById('mobile-toggle-btn').addEventListener('click', toggleMobileMode);
             document.getElementById('export-data-btn').addEventListener('click', exportCharacterData);
+            document.getElementById('normalize-terms-btn').addEventListener('click', async (event) => {
+                const button = event.currentTarget;
+                button.disabled = true;
+                button.textContent = '正在统一…';
+                try {
+                    // Read each storage scope afresh; the existing writer normalizes the whole roster.
+                    // Do not rebuild characters from the displayed form or overwrite unsaved edits.
+                    await MvuLite.write({stat_data:{}});
+                    await initializeApp();
+                    showSaveNotification('队伍译名已统一并保存');
+                } catch (error) {
+                    alert('译名整理未完成，请重试：' + error.message);
+                } finally {
+                    button.textContent = '统一队伍译名';
+                    button.disabled = isEditing || !characterData.__mvuSource;
+                }
+            });
             document.getElementById('import-data-btn').addEventListener('click', () => {
                 document.getElementById('import-file-input').click();
             });
