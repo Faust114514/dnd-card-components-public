@@ -33,6 +33,9 @@ check(deltaTerrain.svgRawBlock===terrain&&deltaTerrain.units.find(u=>u.id==='敌
 check(!core.compileBattleTimeline([terrain,start],wrongScale).svgRawBlock,'next encounter without terrain does not reuse the previous battlefield');
 check(core.compileBattleTimeline([terrain.replaceAll('battle-delta','battle')],wrongScale).units.length===2,'existing author battle terrain remains supported');
 check(core.compileBattleTimeline([start],wrongScale).units.find(u=>u.id==='玩家').pos.join(',')==='10,10','region view never rescales a roster without local terrain');
+const correction=core.parseAiCorrectionResult(JSON.stringify({units:[{id:'玩家',hp:'7/20',pos:[45,50]}]}),null,null,[{id:'玩家',init:18}]);
+check(correction.units[0].init===18,'AI correction without initiative preserves the current roll');
+check(core.parseAiCorrectionResult(JSON.stringify({units:[{id:'玩家',init:12}]}),null,null,[{id:'玩家',init:18}]).units[0].init===12,'explicit corrected initiative is still accepted');
 const sync=context.createModuleRunnerSync(core,{SillyTavern:{getContext:()=>({chat:[{mes:legacy}]})}},()=>{});
 check(!Object.hasOwn(sync.normalizeState(null),'battleProtocol'),'new chats have only the author map');
 check(!Object.hasOwn(sync.normalizeState({moduleId:'test',battleProtocol:'legacy'}),'battleProtocol'),'old saved mode cannot keep the retired map enabled');

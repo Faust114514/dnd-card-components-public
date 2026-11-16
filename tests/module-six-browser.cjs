@@ -4,6 +4,7 @@ const {spawn}=require('node:child_process');
 const root=path.resolve(__dirname,'..'),data=path.resolve(process.argv[2]),out=path.resolve(process.argv[3]);
 fs.mkdirSync(out,{recursive:true});
 const mapSource=fs.readFileSync(path.join(root,'src/scripts/模组地图.js'),'utf8').replace("options.baseUrl || 'https://5e.kiwee.top'","options.baseUrl || (window.top.location.origin + '/remote')");
+const savedCase=process.argv[5] ? JSON.parse(fs.readFileSync(process.argv[5],'utf8')) : null;
 const cosData=process.argv[4] ? path.resolve(process.argv[4]) : null;
 const orbSource=fs.readFileSync(path.join(root,'src/scripts/叙事悬浮开关.js'),'utf8');
 const setup=String.raw`
@@ -19,7 +20,7 @@ window.entries=JSON.parse(localStorage.getItem('fixture-book')||'null')||[{uid:1
 window.preset={prompts:[{id:'dnd-cot-module-v01',enabled:false}]};
 const listeners=new Map();window.events={on:(n,f)=>{if(!listeners.has(n))listeners.set(n,new Set());listeners.get(n).add(f)},removeListener:(n,f)=>listeners.get(n)?.delete(f)};
 window.emit=async(n,...args)=>{for(const f of listeners.get(n)||[])await f(...args);};
-window.context={characterId:0,groupId:null,chatId:'fixture',chat:JSON.parse(localStorage.getItem('fixture-chat')||'[]'),mainApi:'openai',eventSource:events,event_types:{CHAT_CHANGED:'chat',MESSAGE_RECEIVED:'message',GENERATION_ENDED:'end',WORLDINFO_ENTRIES_LOADED:'world',WORLDINFO_UPDATED:'book'},getCurrentChatId:()=>context.chatId};
+window.context={characterId:0,groupId:null,chatId:'fixture',chat:JSON.parse(localStorage.getItem('fixture-chat')||'[]'),mainApi:'openai',eventSource:events,event_types:{CHAT_CHANGED:'chat',MESSAGE_RECEIVED:'message',MESSAGE_EDITED:'edited',MESSAGE_DELETED:'deleted',MESSAGE_SWIPED:'swiped',GENERATION_ENDED:'end',WORLDINFO_ENTRIES_LOADED:'world',WORLDINFO_UPDATED:'book'},getCurrentChatId:()=>context.chatId};
 window.SillyTavern={getContext:()=>context};
 window.TavernHelper={
  getVariables:()=>vars,updateVariablesWith:async fn=>{vars=await fn(vars);localStorage.setItem('fixture-vars',JSON.stringify(vars));return vars},
@@ -82,7 +83,7 @@ async function shot(name){const r=await send('Page.captureScreenshot',{format:'p
   await wait('__dndModuleRunner.getBattleState().units.some(u=>u.id==="新敌人")');
   await check('!__dndModuleRunner.getBattleState().units.some(u=>u.id==="旧敌人")','new battle starts independently of old units');
   await click('[data-action="battle-end-keep"]');
-  await run(`context.chat.push({mes:'继续探索'});emit('message')`);
+  await run(`context.chat.push({mes:'继续探索'});emit('message',context.chat.length-1)`);
   await check('!__dndModuleRunner.getBattleState().active','manual combat end survives next ordinary reply');
   const room=await run('__dndModuleRunner.getAdventure().maps.find(m=>m.id==="1ab").rooms[1].id');
   await run(`context.chat=[{mes:'<!-- dnd-map: '+JSON.stringify({map:'1ab',room:${JSON.stringify(room)},clear:[__dndModuleRunner.getState().currentRoomId]})+' -->'}];emit('message')`);
@@ -123,6 +124,23 @@ async function shot(name){const r=await send('Page.captureScreenshot',{format:'p
    await check(`JSON.stringify(__dndModuleRunner.getBattleState().units)===${JSON.stringify(preserved)}`,'switching region and encounter does not change HP or coordinates');
    await run(`context.chat.push({mes:'<battle-delta>敌人|hp:-4|move:40,25</battle-delta>'});__dndModuleRunner.syncBattleFromChat();__dndModuleRunner.syncBattleFromChat()`);
    await check('__dndModuleRunner.getBattleState().units.find(u=>u.id==="敌人").hp.cur===33&&__dndModuleRunner.getBattleState().svgRawBlock.includes("size:100,80")','subsequent delta retains terrain and does not double damage');
+   const expected=await run('JSON.stringify(__dndModuleRunner.getBattleState().units.map(({id,pos,init,hp})=>({id,pos,init,hp})))');
+   await run(`vars.dnd_module_state.battleOverride={chatLen:context.chat.length,state:{...__dndModuleRunner.getBattleState(),svgRawBlock:'',units:__dndModuleRunner.getBattleState().units.map(u=>({...u,init:0,pos:[10,0]}))}};emit('chat')`);
+   await wait('__dndModuleRunner.getBattleState().units.every(u=>u.init===0&&u.pos[0]===10)');
+   await click('[data-action="battle-reload"]');
+   await check(`JSON.stringify(__dndModuleRunner.getBattleState().units.map(({id,pos,init,hp})=>({id,pos,init,hp})))===${JSON.stringify(expected)}`,'reload button restores actual chat positions, initiative and HP without duplicate damage');
+   await check('vars.dnd_module_state.battleOverride===null&&vars.stat_data.保留==="原游戏数据"','reload removes only map override and preserves character variables');
+   // Capture a manual result, then rewrite the same message floor: chat length is unchanged.
+   await click('[data-action="battle-end-keep"]');
+   await run(`context.chat[1]={mes:'<battle-delta>敌人|hp:-7|move:60,25</battle-delta>'};emit('message',1)`);
+   await wait('vars.dnd_module_state.battleOverride===null');
+   await check('__dndModuleRunner.getBattleState().units.find(u=>u.id==="敌人").hp.cur===30&&__dndModuleRunner.getBattleState().units.find(u=>u.id==="敌人").pos[0]===60','same-floor regeneration discards stale manual battle override');
+   for(const event of ['edited','swiped','deleted']){
+    await click('[data-action="battle-end-keep"]');
+    await run(`emit(${JSON.stringify(event)},1)`);
+    await wait('vars.dnd_module_state.battleOverride===null');
+    await check('__dndModuleRunner.getBattleState().active',event+' invalidates affected map override');
+   }
    await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
    await click('[data-action="fit-map"]');await shot('地区战斗-手机');
    await check('document.querySelector(".dmr-window").getBoundingClientRect().right<=innerWidth+1','encounter fits narrow viewport');
@@ -130,11 +148,27 @@ async function shot(name){const r=await send('Page.captureScreenshot',{format:'p
    await send('Page.reload');await wait('!!window.__dndModuleRunner&&__dndModuleRunner.getBattleState().units.length===3');
    await click('[data-dnd-module-btn="1"]');
    await wait('paintedImages.some(i=>i.src.startsWith("data:image/svg+xml")&&i.height===1200)');
-   await check('__dndModuleRunner.getBattleState().units.find(u=>u.id==="敌人").hp.cur===33','reload reconstructs the same encounter and HP from saved chat');
+   await check('__dndModuleRunner.getBattleState().units.find(u=>u.id==="敌人").hp.cur===30','reload reconstructs the same encounter and HP from saved chat');
    await run(`context.chat.push({mes:'<battle-delta>\\n@start\\n@map | title:第二场 | size:120,70 | theme:cave\\n新对手|att:2|hp:8/8|pos:80,30\\n</battle-delta>'});__dndModuleRunner.syncBattleFromChat()`);
    await wait('paintedImages.some(i=>i.src.startsWith("data:image/svg+xml")&&i.width===1800&&i.height===1050)');
    await check('__dndModuleRunner.getBattleState().units.length===1','next encounter replaces the rendered terrain and old roster');
 
+  }
+  if(savedCase){
+   await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
+   await run(`vars.dnd_module_state=${JSON.stringify(savedCase.state)};context.chat=${JSON.stringify(savedCase.chat)};emit('chat')`);
+   await wait('__dndModuleRunner.getBattleState().units.length===15&&__dndModuleRunner.getBattleState().units.every(u=>u.init===0)');
+   await shot('真实保存记录-修复前');
+   const original=await run('JSON.stringify(vars.stat_data)');
+   const expected=await run('JSON.stringify(__dndModuleRunner.core.compileBattleTimeline(context.chat).units.map(({id,pos,init,hp})=>({id,pos,init,hp})))');
+   await click('[data-action="battle-reload"]');
+   await wait('paintedImages.some(i=>i.src.startsWith("data:image/svg+xml")&&i.height===1200)');
+   await check(`JSON.stringify(__dndModuleRunner.getBattleState().units.map(({id,pos,init,hp})=>({id,pos,init,hp})))===${JSON.stringify(expected)}`,'real saved overlap restores all unit coordinates and initiative from its actual chat');
+   await check(`JSON.stringify(vars.stat_data)===${JSON.stringify(original)}`,'real-state recovery never changes character resource variables');
+   await shot('真实保存记录-修复后');
+   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+   await click('[data-action="fit-map"]');await shot('重读战场-手机');
+   await check('document.querySelector("[data-action=battle-reload]").getBoundingClientRect().right<=innerWidth','recovery control stays reachable on mobile');
   }
   await check('errors.length===0','no browser script errors');
   console.log(JSON.stringify({passed:true,count:checks.length,checks},null,2));

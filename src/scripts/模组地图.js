@@ -2774,7 +2774,7 @@ ${battleMapHint}
     return { active, ended, round, units, svgRawBlock, lastDeltaCount };
   }
 
-  function parseAiCorrectionResult(rawText, map, surface) {
+  function parseAiCorrectionResult(rawText, map, surface, existingUnits = []) {
     const str = String(rawText || '').trim();
     const jsonMatch = str.match(/```(?:json)?\s*([\s\S]*?)```/i) || str.match(/(\{[\s\S]*\})/);
     if (!jsonMatch) throw Error('AI 未返回有效 JSON 修正结果');
@@ -2833,7 +2833,7 @@ ${battleMapHint}
             id: String(u.id).trim(),
             att,
             faction,
-            init: Number(u.init) || 0,
+            init: Number(u.init ?? existingUnits.find(old => old.id === String(u.id).trim())?.init) || 0,
             hp: { cur, max },
             pos,
             status: Array.isArray(u.status) ? u.status.map(String) : [],
@@ -4857,6 +4857,7 @@ function mountDndModuleRunner() {
         const headerHtml = `<div class="dmr-init-header">
           <span class="dmr-init-round">第 ${battleState.round} 轮</span>
           <span class="dmr-init-actions">
+            <button type="button" class="dmr-btn" data-action="battle-reload" title="从当前聊天重读站位、先攻、HP和地形，撤销地图端手动修正；不修改人物档案或聊天正文">重读战场</button>
             <button type="button" class="dmr-btn" data-action="battle-end-keep" title="结束战斗（撤销先攻，保留棋子站位）">🕊️ 结束</button>
             <button type="button" class="dmr-btn" data-action="battle-wipe-enemies" title="敌人全歼（撤销先攻并删除所有敌方棋子）">💀 全歼</button>
           </span>
@@ -5707,6 +5708,14 @@ function mountDndModuleRunner() {
       if (act === 'toggle-grid-snap') {
         gridSnapMode = !gridSnapMode;
         return renderModal();
+      }
+      if (act === 'battle-reload') {
+        await saveChatState({ ...currentState, battleOverride: null }, false);
+        pendingMoveDraft = null;
+        battleState.svgRawBlock = '';
+        syncBattleFromChat();
+        fitMapToViewport();
+        return;
       }
       if (act === 'battle-end-keep' || act === 'battle-wipe-enemies') {
         const wipeHostiles = act === 'battle-wipe-enemies';
@@ -7182,16 +7191,16 @@ function mountDndModuleRunner() {
   "partyPosFt": [xFt, yFt],
   "battleActive": true,
   "units": [
-    { "id": "单位名", "att": 0, "hp": "12/12", "pos": [xFt, yFt], "status": [], "next": false }
+    { "id": "单位名", "att": 0, "init": 18, "hp": "12/12", "pos": [xFt, yFt], "status": [], "next": false }
   ],
   "reason": "简短说明修正依据"
 }
-注意：att 0=友方, 1=中立, 2=敌对；pos 为 5ft 整数倍且必须在 0~${wFt - 5}, 0~${hFt - 5} 合法范围内。`;
+注意：init 沿用已有先攻，未重新掷先攻时不得改为 0；att 0=友方, 1=中立, 2=敌对；pos 为 5ft 整数倍且必须在 0~${wFt - 5}, 0~${hFt - 5} 合法范围内。`;
 
       const userText = `【地图插件当前代码与状态快照】\n\`\`\`json\n${JSON.stringify(stateCodeSnapshot, null, 2)}\n\`\`\`\n\n【最近5楼聊天上下文】\n${recent5 || '（暂无聊天记录）'}`;
       const imageDataUrl = captureMapSnapshotDataUrl();
       const rawReply = await callCurrentTavernAI(systemPrompt, userText, imageDataUrl);
-      const parsed = core.parseAiCorrectionResult(rawReply, map, surface);
+      const parsed = core.parseAiCorrectionResult(rawReply, map, surface, battleState.units);
 
       const nextExplored = parsed.exploredRooms || [...(currentState.exploredRooms || [])];
       if (parsed.currentRoomId && !nextExplored.includes(parsed.currentRoomId)) {
@@ -7213,7 +7222,7 @@ function mountDndModuleRunner() {
           active: parsed.battleActive !== null ? parsed.battleActive : battleState.active,
           round: battleState.round || 1,
           units: parsed.units !== null ? parsed.units : battleState.units,
-          svgRawBlock: '',
+          svgRawBlock: battleState.svgRawBlock,
           lastDeltaCount: parsed.units ? parsed.units.length : 0,
         };
         nextOverride = { chatLen: chat.length, state: nextBattle };
@@ -7309,12 +7318,21 @@ function mountDndModuleRunner() {
     removers.push(() => c.eventSource.removeListener?.(ev, fn));
   }
 
+  async function handleBattleMessageChange(messageId) {
+    const ov = currentState.battleOverride;
+    if (ov && Number.isInteger(messageId) && messageId < ov.chatLen) {
+      await saveChatState({ ...currentState, battleOverride: null }, false);
+      pendingMoveDraft = null;
+    }
+    syncBattleFromChat();
+  }
+
   observeEvent('CHAT_CHANGED', () => restoreFromCurrentChat());
-  observeEvent('MESSAGE_RECEIVED', () => { checkLatestAssistantMessageForMapMarkers(); syncBattleFromChat(); });
-  observeEvent('GENERATION_ENDED', () => { checkLatestAssistantMessageForMapMarkers(); syncBattleFromChat(); });
-  observeEvent('MESSAGE_EDITED', () => syncBattleFromChat());
-  observeEvent('MESSAGE_DELETED', () => syncBattleFromChat());
-  observeEvent('MESSAGE_SWIPED', () => syncBattleFromChat());
+  observeEvent('MESSAGE_RECEIVED', async id => { await handleBattleMessageChange(id); await checkLatestAssistantMessageForMapMarkers(); });
+  observeEvent('GENERATION_ENDED', async id => { await handleBattleMessageChange(id); await checkLatestAssistantMessageForMapMarkers(); });
+  observeEvent('MESSAGE_EDITED', handleBattleMessageChange);
+  observeEvent('MESSAGE_DELETED', handleBattleMessageChange);
+  observeEvent('MESSAGE_SWIPED', handleBattleMessageChange);
   observeEvent('WORLDINFO_ENTRIES_LOADED', async (payload) => {
     const key = identity();
     const raw = await readChatState();
