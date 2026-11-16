@@ -1,0 +1,50 @@
+// Reproduce spell-choice rebuilds using the existing isolated Edge harness.
+const fs=require('node:fs'),path=require('node:path');
+const harness=fs.readFileSync(path.join(__dirname,'tool-proficiencies.cjs'),'utf8');
+async function runScenarios(){
+ await navigate('/levelup');await wait('window.fixtureReady');
+ await run(`window.installFilterFixture=async(level=4)=>{
+   const c=buildDemoCharacter('wizard',level);c.姓名='筛选测试';c.种族='矮人';c.背景='';
+   c.法师数据.法术书法术=['魔法飞弹','护盾术'];c.法师数据.已备法术=['护盾术'];
+   c.施法.法术书=buildSpellBookFromSources(['魔法飞弹','护盾术'],['护盾术'],['法师']);
+   const v={stat_data:MvuLite.compactRoot({当前角色ID:'筛选测试',角色列表:{筛选测试:c}}),otherPlugin:{keep:true}};
+   for(const type of ['chat','message'])localStorage.setItem('tool-proficiency-check'+type,JSON.stringify(v));
+   state.targetLevel=0;return loadData();
+ };installFilterFixture();`);
+ await wait("document.getElementById('search_wizard_book_add')");
+ await set('level_wizard_book_add','3');await set('school_wizard_book_add','塑能');await sleep(160);
+ check(await run(`spellSelectorState.wizard_book_add.filteredSpells.length>0`),'fixture has matching spells');
+ await click('#spell_grid_wizard_book_add .spell-card');
+ check(await run(`document.getElementById('level_wizard_book_add').value==='3'&&document.getElementById('school_wizard_book_add').value==='塑能'`),'school and ring survive spell selection rebuilding the plan');
+ check(await run(`spellSelectorState.wizard_book_add.filteredSpells.every(s=>s.level===3&&s.school==='塑能')`),'actual visible results remain filtered');
+ await click('#spell_grid_wizard_book_add .spell-card.selected');
+ check(await run(`state.pending.wizard_book_add.length===0&&document.getElementById('level_wizard_book_add').value==='3'&&document.getElementById('school_wizard_book_add').value==='塑能'`),'deselecting a card preserves filters');
+ await set('level_wizard_book_add','');await set('school_wizard_book_add','');await sleep(160);
+ await click('#page_next_wizard_book_add');
+ check(await run('spellSelectorState.wizard_book_add.page===2'),'second page is available');
+ await click('#spell_grid_wizard_book_add .spell-card');
+ check(await run('spellSelectorState.wizard_book_add.page===2'),'pagination survives choosing a spell');
+ await set('level_wizard_book_add','2');await set('school_wizard_book_add','咒法');await set('search_wizard_book_add','蛛网','input');
+ await run(`document.getElementById('concentration_wizard_book_add').click()`);await sleep(160);
+ await click('#spell_grid_wizard_book_add .spell-card');
+ check(await run(`document.getElementById('search_wizard_book_add').value==='蛛网'&&document.getElementById('concentration_wizard_book_add').checked&&document.getElementById('level_wizard_book_add').value==='2'&&document.getElementById('school_wizard_book_add').value==='咒法'`),'search and concentration survive a full selector rebuild');
+ await set('level_wizard_prepared_pick','1');await sleep(160);
+ await click('#spell_grid_wizard_book_add .spell-card.selected');
+ check(await run(`document.getElementById('level_wizard_prepared_pick').value==='1'&&document.getElementById('level_wizard_book_add').value==='2'`),'separate spell selectors keep their own filter values');
+ await set('level_wizard_book_add','1');await set('school_wizard_book_add','预言');await set('search_wizard_book_add','侦测魔法','input');
+ await run(`document.getElementById('concentration_wizard_book_add').click();document.getElementById('ritual_wizard_book_add').click()`);await sleep(160);
+ await click('#spell_grid_wizard_book_add .spell-card');
+ check(await run(`document.getElementById('ritual_wizard_book_add').checked&&document.getElementById('search_wizard_book_add').value==='侦测魔法'`),'ritual filtering survives selection');
+ await run(`state.pending.wizard_book_add=[];renderUI();`);
+ check(await run(`document.getElementById('level_wizard_book_add').value===''&&document.getElementById('school_wizard_book_add').value===''&&!document.getElementById('ritual_wizard_book_add').checked`),'normal navigation rebuild resets filters');
+ await shot('法术筛选保持-桌面');
+ await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:false});
+ await set('level_wizard_book_add','3');await set('school_wizard_book_add','塑能');await sleep(160);await click('#spell_grid_wizard_book_add .spell-card');
+ check(await run(`document.getElementById('level_wizard_book_add').value==='3'&&document.getElementById('school_wizard_book_add').value==='塑能'&&document.documentElement.scrollWidth<=innerWidth+1`),'mobile selection preserves filters without overflow');
+ await shot('法术筛选保持-390px');
+ check(await run('fixtureWrites===0&&fixtureSends===0&&fixtureErrors.length===0'),'filter and draft changes do not save data, send AI messages or raise errors');
+ console.log(JSON.stringify({passed:checks.length,untested:['Real Tavern installation']}));
+}
+const prefix=harness.slice(0,harness.indexOf('async function runScenarios()'));
+const footer=harness.slice(harness.indexOf('(async()=>{',harness.indexOf('async function runScenarios()')));
+new Function('require','__dirname',prefix+runScenarios.toString()+'\n'+footer)(require,__dirname);

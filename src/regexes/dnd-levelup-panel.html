@@ -3310,7 +3310,7 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
         counter.classList.toggle("complete", count===cache.maxCount);
       }
     }
-    function applySpellFilters(selectorId){
+    function applySpellFilters(selectorId, resetPage=true){
       const cache=spellSelectorState[selectorId];
       if(!cache) return;
       const searchTerm=(document.getElementById(`search_${selectorId}`)?.value||"").trim().toLowerCase();
@@ -3329,7 +3329,7 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
         const matchConcentration=!concentrationOnly||!!spell.concentration;
         return matchLevel&&matchSearch&&matchSchool&&matchRitual&&matchConcentration;
       });
-      cache.page=1;
+      if(resetPage) cache.page=1;
       renderSpellPage(selectorId);
     }
     function filterSpells(selectorId){
@@ -3374,7 +3374,7 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
       state.pending[selectorId]=list;
       if(["wizard_book_add","wizard_school_spell","au_school_book","ss_lore","ss_lore_to","ss_moon"].includes(selectorId)){
         state.plan=buildPlan(state.pending);
-        renderUI();
+        renderUI(true);
         return;
       }
       renderSpellPage(selectorId);
@@ -15401,10 +15401,32 @@ function featDuplicateCheck(name) {
       }
       holder.innerHTML=previewLines.join("");
     }
-    function renderUI(){
+    function renderUI(keepSpellFilters=false){
       const scrollers=[document.scrollingElement,...document.querySelectorAll('.dialog-body')].filter(Boolean);
       const positions=scrollers.map(el=>({el,top:el.scrollTop,left:el.scrollLeft}));
-      try{return renderUpgradeUI();}
+      // Spell picks rebuild dependent choices; retain this form's filters only for that redraw.
+      const filters=keepSpellFilters?Object.entries(spellSelectorState).map(([id,cache])=>({id,page:cache.page,
+        values:Object.fromEntries(['search','level','school'].map(key=>[key,document.getElementById(`${key}_${id}`).value])),
+        checks:Object.fromEntries(['ritual','concentration'].map(key=>[key,document.getElementById(`${key}_${id}`).checked])),
+        scrollTop:document.getElementById(`spell_grid_${id}`).scrollTop
+      })):[];
+      try{
+        const result=renderUpgradeUI();
+        for(const saved of filters){
+          const cache=spellSelectorState[saved.id];if(!cache)continue;
+          clearTimeout(spellFilterTimers[saved.id]);
+          for(const [key,value] of Object.entries(saved.values)){
+            const el=document.getElementById(`${key}_${saved.id}`);el.value=value;
+            if(el.tagName==='SELECT'&&el.selectedIndex<0)el.value='';
+          }
+          for(const [key,checked] of Object.entries(saved.checks)){
+            const el=document.getElementById(`${key}_${saved.id}`);el.checked=!el.disabled&&checked;
+          }
+          cache.page=saved.page;applySpellFilters(saved.id,false);
+          document.getElementById(`spell_grid_${saved.id}`).scrollTop=saved.scrollTop;
+        }
+        return result;
+      }
       finally{for(const {el,top,left} of positions){el.scrollTop=top;el.scrollLeft=left;}}
     }
     function renderUpgradeUI(){
