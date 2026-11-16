@@ -144,11 +144,12 @@ function getLiveLevelupHtml() {
   return stripFence(target?.replaceString || '');
 }
 
-function buildBridgeScript(characterId = '') {
+function buildBridgeScript(characterId = '', mode = 'upgrade') {
   const selectedId = JSON.stringify(characterId).replace(/</g, '\\u003c');
   return `<script>
 (() => {
   window.__dndLevelupCharacterId = ${selectedId};
+  window.__dndLevelupMode = ${JSON.stringify(mode)};
   const hosts = [];
   try { if (window.parent && window.parent !== window) hosts.push(window.parent); } catch {}
   try { if (window.top && window.top !== window && !hosts.includes(window.top)) hosts.push(window.top); } catch {}
@@ -182,8 +183,8 @@ function buildBridgeScript(characterId = '') {
 </scr` + `ipt>`;
 }
 
-function injectBridge(html, characterId = '') {
-  const bridge = buildBridgeScript(characterId);
+function injectBridge(html, characterId = '', mode = 'upgrade') {
+  const bridge = buildBridgeScript(characterId, mode);
   if (/<head[^>]*>/i.test(html)) {
     return html.replace(/<head[^>]*>/i, (match) => `${match}\n${bridge}`);
   }
@@ -429,6 +430,7 @@ function isMobileLayout() {
 function updateSummaryPanelVisibility() {
   const state = getState();
   if (!state.sideEl) return;
+  state.sideEl.style.display = state.mode === 'prepare' ? 'none' : '';
   const mobile = isMobileLayout();
   const isOpen = !mobile || !!state.mobileSummaryOpen;
   state.sideEl.classList.toggle('is-open', isOpen);
@@ -663,6 +665,9 @@ function ensureMessageListener() {
   state.messageHandler = (event) => {
     const data = event?.data;
     if (event.source !== state.iframe?.contentWindow || !data || data.source !== 'dnd-levelup-panel') return;
+    if (data.type === 'preparation_saved' && state.mode === 'prepare') {
+      state.onPrepared?.(data.payload?.characterId);
+    }
     if (data.type === 'upgrade_saved') {
       mergeUpgradeRecord(data.payload || {});
     }
@@ -671,7 +676,7 @@ function ensureMessageListener() {
   state.messageBound = true;
 }
 
-async function openLevelupPanel(characterId = '') {
+async function openLevelupPanel(characterId = '', mode = 'upgrade', onPrepared = null) {
   try {
     const state = getState();
     const modal = ensureModal();
@@ -690,7 +695,13 @@ async function openLevelupPanel(characterId = '') {
     }
 
     state.selectedCharacterId = characterId;
-    state.iframe.srcdoc = injectBridge(html, characterId);
+    state.mode = mode;state.onPrepared = onPrepared;
+    modal.querySelector('.th-levelup-main').style.gridTemplateColumns = mode === 'prepare' ? 'minmax(0, 1fr)' : '';
+    modal.querySelector('.th-levelup-title').textContent = mode === 'prepare' ? '准备法术' : '升级面板';
+    for (const button of modal.querySelectorAll('.th-levelup-toolbar-actions button')) {
+      if (button.dataset.action !== 'close') button.style.display = mode === 'prepare' ? 'none' : '';
+    }
+    state.iframe.srcdoc = injectBridge(html, characterId, mode);
     setModalOpen(true);
     renderSummary();
     setStatus(state.records.length ? '可继续升级，完成后手动发送汇总。' : '升级面板已打开。');
@@ -807,4 +818,4 @@ currentState.chat = ownerChat;
 currentState.records = sameChat ? (previousState?.records || []) : [];
 bindLevelupButton();
 window.addEventListener('pagehide', () => disposeLevelup(currentState), { once: true });
-if (reopenLevelup) void openLevelupPanel(previousState.selectedCharacterId);
+if (reopenLevelup) void openLevelupPanel(previousState.selectedCharacterId, previousState.mode, previousState.onPrepared);

@@ -6662,9 +6662,16 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                 return true;
             }
             
+            function hasPreparationAccess() {
+                const levels = characterData.__mvuSource?.职业详情?.classLevels || {};
+                return ['cleric','druid','paladin','ranger','artificer','wizard'].some(id => Number(levels[id]) > 0);
+            }
             function renderSpellsTab() {
                 const container = document.getElementById('spells');
-                if (renderSpellsTabModern(container)) return;
+                if (renderSpellsTabModern(container)) {
+                    if (hasPreparationAccess()) container.insertAdjacentHTML('afterbegin', `<button type="button" class="add-item-btn mb-4" data-action="prepare-spells" ${isEditing ? 'disabled' : ''}>更换准备法术</button><p class="text-sm text-gray-400 mb-4">${isEditing ? '请先保存或退出档案编辑，再更换准备法术。' : '长休后从职业法术表换备；法师从自己的法术书准备。'}</p>`);
+                    return;
+                }
                 const { spells } = characterData;
                 const spellAbilityMod = (spells.ability && spells.ability !== 'none') ? getModifier(getEffectiveStat(spells.ability)) : 0;
                 const autoSpellAttack = spellAbilityMod + getEffectiveProficiencyBonus();
@@ -7738,6 +7745,16 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     } else if (wrapper) {
                         wrapper.classList.toggle('expanded');
                     }
+                    return;
+                }
+                if (action === 'prepare-spells') {
+                    if (isEditing) return;
+                    const host = window.top.__thLevelupButton_v3;
+                    if (!host?.open) { alert('请启用本版“升级按钮”脚本后再打开准备法术。'); return; }
+                    void host.open(activeCharacterName, 'prepare', async (id) => {
+                        await initializeApp();
+                        if (allCharacters[id]) { activeCharacterName=id;characterData=sanitizeCharacterData(allCharacters[id]);renderAll(); }
+                    });
                     return;
                 }
                 if (action === 'enable-override') {

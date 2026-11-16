@@ -73,7 +73,7 @@ for(const [label,modify] of [
  ['unsupported format',m=>m.format=2],
 ]){const bad=structuredClone(latest);modify(bad);assert.throws(()=>merge(original,bad,sources));checks.push('reject '+label);}
 const missing={...sources};delete missing[latest.components[0].path];assert.throws(()=>merge(original,latest,missing));checks.push('missing download prevents write preparation');
-for(const version of ['vf.0.4.26','vf.0.5.0']){const card=structuredClone(original);card.data.character_version=version;check(merge(card,latest,sources).extensions.dnd_component_updates.version==='vf.0.6.0','accept '+version+' with current 0.6 updater');}
+for(const version of ['vf.0.4.26','vf.0.5.0','vf.0.6.0']){const card=structuredClone(original);card.data.character_version=version;check(merge(card,latest,sources).extensions.dnd_component_updates.version===latest.version,'accept '+version+' with current 0.6 updater');}
 const old=structuredClone(original);old.data.character_version='vf.0.2.20';assert.throws(()=>merge(old,latest,sources));checks.push('older card requires an explicit migration');
 const orbId='480d6777-f90d-4eba-a811-64cb2f1ffb00';
 const legacy=structuredClone(original);legacy.data.character_version='vf.0.2.21';legacy.data.extensions.world='D&D 2024 vf.0.2.21';legacy.data.extensions.tavern_helper.scripts=legacy.data.extensions.tavern_helper.scripts.filter(s=>s.id!==orbId);

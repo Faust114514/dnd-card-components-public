@@ -2394,15 +2394,16 @@ body:has(> .dnd-steps-layout) { background:#101115; }
 // Navigation only: drafts, validation and saving remain owned by the original pages.
 document.addEventListener('DOMContentLoaded', () => {
   const creator = document.querySelector('.creator-page');
+  const preparing = window.__dndLevelupMode === 'prepare';
   const content = creator || document.querySelector('.dialog-body');
   const layout = document.createElement('div');
   layout.className = 'dnd-steps-layout';
   content.before(layout);
   const nav = document.createElement('nav');
   nav.className = 'dnd-step-nav';
-  nav.setAttribute('aria-label', creator ? '创建步骤' : '升级步骤');
+  nav.setAttribute('aria-label', creator ? '创建步骤' : preparing ? '法术准备' : '升级步骤');
   nav.innerHTML = '<label class="dnd-nav-title" for="dnd-nav-select"></label><div class="dnd-nav-position"></div><progress class="dnd-nav-progress" aria-label="当前步骤位置"></progress><select id="dnd-nav-select" aria-label="跳转步骤"></select><ol class="dnd-nav-list"></ol>';
-  nav.querySelector('label').textContent = creator ? '创建步骤' : '升级步骤';
+  nav.querySelector('label').textContent = creator ? '创建步骤' : preparing ? '法术准备' : '升级步骤';
   layout.append(nav, content);
   const list = nav.querySelector('ol'), select = nav.querySelector('select');
   const position = nav.querySelector('.dnd-nav-position'), progress = nav.querySelector('progress');
@@ -2424,7 +2425,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const targets = creator ? [...content.querySelectorAll('.section[data-step]')]
       : [...content.querySelectorAll(':scope > .panel, :scope > details')].flatMap(panel => {
           const choices = panel.querySelector('#choices-container');
-          return choices?.querySelector('.req-card') ? [...choices.children] : [panel];
+          return choices?.querySelector('.req-card') ? [...choices.children].filter(el=>!preparing||el.matches('.req-card')) : [panel];
         });
     return targets.filter(el => el.getClientRects().length && getComputedStyle(el).display !== 'none').map(el => {
       const heading = el.querySelector(':scope > h2, :scope > h3, :scope > label, :scope > summary, :scope > .req-title, .spell-selection-header > label');
@@ -3244,7 +3245,7 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
     }
     function buildSpellCard(spell,selectorId,levelText,maxCount){
       const req=state.plan?.req?.find(r=>r.id===selectorId);
-      if(req&&duplicateChoiceReason(req,getSpellKey(spell)))return "";
+      if(req&&!req.preparationClass&&duplicateChoiceReason(req,getSpellKey(spell)))return "";
       spell=normalizeSpellForPanel(spell)||spell;
       const schoolColor=(window.SPELL_SCHOOL_COLORS&&window.SPELL_SCHOOL_COLORS[spell.school])||"#6b7280";
       const selectedSet=new Set(selectedSpellNames(selectorId));
@@ -3345,16 +3346,17 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
     function toggleSpellSelection(selectorId,spellId,maxCount){
       const cache=spellSelectorState[selectorId];
       if(!cache) return;
-      const spell=getSpellFromSources(cache.sourceNames||[cache.className],spellId);
+      const spell=cache.availableSpells.find(s=>getSpellKey(s)===spellId)||getSpellFromSources(cache.sourceNames||[cache.className],spellId);
       if(!spell) return;
       const key=getSpellKey(spell);
       const list=selectedSpellNames(selectorId);
       const idx=list.findIndex(x=>x===key);
       const req=state.plan?.req?.find(r=>r.id===selectorId);
-      const duplicate=req&&duplicateChoiceReason(req,key);
+      const duplicate=req&&!req.preparationClass&&duplicateChoiceReason(req,key);
       if(idx<0&&duplicate){setStatus(duplicate,true);return;}
       if(idx>=0) list.splice(idx,1);
       else{
+        if(req?.preparationClass&&list.length>=maxCount){setStatus("准备名额已满，请先取消要换出的法术",true);return;}
         if(list.length>=maxCount){
           const removed=list.shift();
           if(!maxCount){
@@ -3429,11 +3431,11 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
         return `<div class="req-card"><label>${esc(req.label)}</label><div class="muted">法术数据库未加载。</div></div>`;
       }
       if(!Array.isArray(state.pending?.[req.id]) && Array.isArray(req.defaultSelected)){
-        state.pending[req.id]=unique(req.defaultSelected).slice(0, req.count);
+        state.pending[req.id]=req.preparationClass?unique(req.defaultSelected):unique(req.defaultSelected).slice(0, req.count);
       }
       const selected=selectedSpellNames(req.id);
       const sourceNames=Array.isArray(req.spellSources)&&req.spellSources.length ? req.spellSources : [req.spellClass];
-      const availableSpells=(sourceNames.length>1 ? buildSpellOptionsFromSources(sourceNames,{
+      const availableSpells=req.preparationClass?preparationOptions(req):(sourceNames.length>1 ? buildSpellOptionsFromSources(sourceNames,{
         spellLevels:Array.isArray(req.spellLevels)&&req.spellLevels.length ? req.spellLevels : (Number.isFinite(Number(req.spellLevel)) ? [Number(req.spellLevel)] : null),
         maxSpellLevel:Number.isFinite(Number(req.maxSpellLevel)) ? Number(req.maxSpellLevel) : 0,
         onlySchools:req.onlySchools||null,
@@ -3452,7 +3454,7 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
       }));
       // Rebuilding after a subclass change must also discard now-excluded draft picks.
       const availableKeys=new Set(availableSpells.map(getSpellKey));
-      selected.splice(0,selected.length,...selected.filter(name=>availableKeys.has(name)).slice(0,req.count));
+      if(!req.preparationClass)selected.splice(0,selected.length,...selected.filter(name=>availableKeys.has(name)).slice(0,req.count));
       state.pending[req.id]=selected;
       const levelLabel = Array.isArray(req.spellLevels)&&req.spellLevels.length
         ? `${Math.min(...req.spellLevels)}-${Math.max(...req.spellLevels)}环法术`
@@ -3490,7 +3492,7 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
               <label class="spell-filter-toggle"><input type="checkbox" id="ritual_${req.id}" onchange="filterSpells('${esc(req.id)}')" ${req.spellLevel===0?"disabled":""}/>仅仪式</label>
               <label class="spell-filter-toggle"><input type="checkbox" id="concentration_${req.id}" onchange="filterSpells('${esc(req.id)}')"/>仅专注</label>
             </div>
-            <div class="hint">选满后继续点击其他法术，会直接替换最早已选的一项。</div>
+            <div class="hint">${req.preparationClass?"勾选加入准备清单；名额已满时，请先取消要换出的法术。":"选满后继续点击其他法术，会直接替换最早已选的一项。"}</div>
             <div class="hint">${esc(levelLabel)}${req.onlySchools?.length?` · 限定学派：${esc(req.onlySchools.join("、"))}`:""}</div>
             <div class="spell-pagination">
               <button type="button" id="page_prev_${req.id}" onclick="changeSpellPage('${esc(req.id)}',-1)">上一页</button>
@@ -4545,7 +4547,8 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
       const preparedNames=bookNames.filter((name)=>Number(pickU(spellBook[name],["等级","level"],0))>0&&[true,"true"].includes(pickU(spellBook[name],["准备中","prepared"],false)));
       const cantripNames=bookNames.filter((name)=>parseSpellLevelValue(pickU(spellBook[name],["等级","level"],0),0)===0);
       setByKnownKey(wd,["戏法","cantrips"], unique(pickListU(wd,["戏法","cantrips"],cantripNames)), "戏法");
-      setByKnownKey(wd,["法术书法术","spellbookSpells"], unique([...pickListU(wd,["法术书法术","spellbookSpells"],[]), ...bookNames.filter((name)=>!cantripNames.includes(name))]), "法术书法术");
+      const bookSpells=bookNames.filter((name)=>!cantripNames.includes(name));
+      setByKnownKey(wd,["法术书法术","spellbookSpells"], unique(preparationMode?pickListU(wd,["法术书法术","spellbookSpells"],bookSpells):[...pickListU(wd,["法术书法术","spellbookSpells"],[]),...bookSpells]), "法术书法术");
       setByKnownKey(wd,["已备法术","preparedSpells"], unique(pickListU(wd,["已备法术","preparedSpells"],preparedNames)), "已备法术");
       setByKnownKey(wd,["专长","feats"], unique([...pickListU(wd,["专长","feats"],[]), ...pickListU(charObj,["专长","feats"],[])]), "专长");
       setByKnownKey(wd,["传奇恩惠","epicBoons"], unique(pickListU(wd,["传奇恩惠","epicBoons"],[])), "传奇恩惠");
@@ -14902,7 +14905,117 @@ function growthValidate(plan,picks){
   return errors;
 }
 
-    function buildPlan(pending={}){ if(growthMode==="config")return growthConfigPlan(pending); subclassPending=pending; try { return growthPlan(subclassSpellPlan(bookPlan(arcanaPlan(buildBasePlan(pending),pending),pending),pending),pending); } finally { subclassPending=null; } }
+// Long-rest preparation uses the existing spell picker, without running level-up effects.
+const preparationMode = window.__dndLevelupMode === 'prepare';
+function preparationPlan(){
+  const req=[], always=new Set(getGrantedSpellState(state.charObj,state.level).spellNames.filter(n=>Number(getCharacterSpellBook(state.charObj)[n]?.等级??getSpellFromSources(EXTRA_SPELL_SOURCE_NAMES,n)?.level)>0));
+  for(const [name,spell] of Object.entries(getCharacterSpellBook(state.charObj)))if(spell.准备中==='always'&&Number(spell.等级)>0)always.add(name);
+  const views={};
+  for(const [id,level] of Object.entries(state.classLevels)){
+    if(!level)continue;
+    const view=getClassCasterView(id,level,state.classDataMap);if(!view)continue;
+    views[id]=view;for(const name of view.always)always.add(name);
+  }
+  const alwaysKeys=new Set([...always].map(normalizeSpellLookupKey));
+  for(const id of ['cleric','druid','paladin','ranger','artificer','wizard']){
+    const level=state.classLevels[id],view=views[id];if(!level||!view)continue;
+    const initial=view.prepared.filter(n=>!alwaysKeys.has(normalizeSpellLookupKey(n)));
+    const one=['paladin','ranger'].includes(id);
+    const manualWizardLimit=id==='wizard'&&Object.values(views).filter(v=>v.preparedLimit>0).length===1?state.charObj.施法?.可准备法术:null;
+    const count=Number.isInteger(manualWizardLimit)&&manualWizardLimit>=0?manualWizardLimit:view.preparedLimit;
+    req.push({id:'prepare_'+id,kind:'spell_picker',preparationClass:id,label:getClassLabel(id)+' · 准备法术',count,
+      spellClass:view.sourceNames[0],spellSources:view.sourceNames,
+      spellLevels:Array.from({length:getClassMaxSpellLevel(id,level)},(_,i)=>i+1),
+      defaultSelected:initial,initial,alwaysKeys,
+      owned:id==='wizard'?pickListU(state.wizardData,['法术书法术','spellbookSpells'],[]):null,
+      one,helpText:one?'长休后可替换一道；本次最多换一道，缺失的准备名额可补齐。':id==='wizard'?'长休后从自己的法术书重新准备，不会学到新法术。':'长休后可从本职业法术表重新准备，可更换多道。'});
+  }
+  return {req,always:[...always],views};
+}
+function preparationOptions(req){
+  const options=buildSpellOptionsFromSources(req.spellSources,{spellLevels:req.spellLevels,exclude:[...req.alwaysKeys],
+    spellPredicate:spell=>req.owned===null||req.owned.some(n=>normalizeSpellLookupKey(n)===normalizeSpellLookupKey(spell.name))});
+  // Keep explicitly recorded custom spells selectable; never discard their saved text.
+  for(const name of unique([...(req.owned||[]),...req.initial])){
+    const key=normalizeSpellLookupKey(name);if(req.alwaysKeys.has(key)||options.some(s=>normalizeSpellLookupKey(s.name)===key))continue;
+    const saved=Object.entries(getCharacterSpellBook(state.charObj)).find(([n])=>normalizeSpellLookupKey(n)===key)?.[1];
+    if(!saved||!req.spellLevels.includes(Number(saved.等级)))continue;
+    options.push({name,level:Number(saved.等级),school:saved.学派||'',castingTime:saved.施法时间||'',range:saved.距离||'',duration:saved.持续时间||'',components:saved.成分||'',desc:saved.完整描述||saved.描述||'',ritual:!!saved.仪式,concentration:!!saved.专注});
+  }
+  return options;
+}
+function validatePreparation(picks){
+  const errors=[];
+  for(const req of state.plan.req){
+    const names=picks[req.id]||[],keys=new Set(names.map(normalizeSpellLookupKey));
+    const allowed=new Set(preparationOptions(req).map(s=>normalizeSpellLookupKey(s.name)));
+    if(keys.size!==names.length||names.length>req.count)errors.push(req.label+'：超过准备上限或存在重复法术');
+    if(names.some(n=>!allowed.has(normalizeSpellLookupKey(n))))errors.push(req.label+'：含有当前不可准备的法术');
+    if(req.one){
+      const before=new Set(req.initial.map(normalizeSpellLookupKey));
+      const removed=[...before].filter(n=>!keys.has(n)).length,added=[...keys].filter(n=>!before.has(n)).length;
+      if(removed>1||added>1+Math.max(0,req.count-before.size))errors.push(req.label+'：每次长休只能替换一道法术');
+    }
+  }
+  return errors;
+}
+function applyPreparation(character,picks){
+  const next=cloneJson(character),casting=next.施法||={};const book=casting.法术书||={};
+  const always=new Set(state.plan.always.map(normalizeSpellLookupKey)),prepared=new Set(always),changed=new Set();
+  if(casting.可准备法术==null)casting.可准备法术=Object.values(state.plan.views).reduce((sum,view)=>sum+view.preparedLimit,0);
+  for(const [id,view] of Object.entries(state.plan.views)){
+    const req=state.plan.req.find(r=>r.preparationClass===id);
+    for(const name of req?picks[req.id]:view.prepared)prepared.add(normalizeSpellLookupKey(name));
+  }
+  for(const req of state.plan.req){
+    const names=picks[req.id];
+    const data=req.preparationClass==='wizard'?ensureObjectField(next,['法师数据','wizard_data','wizardData'],{},'法师数据'):(getOrCreateClassDataRoot(next)[req.preparationClass]||={});
+    setByKnownKey(data,['已备法术','preparedSpells'],[...names],'已备法术');
+    for(const name of [...req.initial,...names])changed.add(normalizeSpellLookupKey(name));
+    const additions=buildSpellBookFromSources(names,names,req.spellSources);
+    for(const [name,record] of Object.entries(additions))if(!Object.keys(book).some(n=>normalizeSpellLookupKey(n)===normalizeSpellLookupKey(name)))book[name]=record;
+  }
+  for(const [name,spell] of Object.entries(book)){
+    if(Number(spell.等级)<=0)continue;
+    const key=normalizeSpellLookupKey(name);
+    if(always.has(key))spell.准备中='always';
+    else if(spell.准备中!=='always'&&changed.has(key))spell.准备中=prepared.has(key);
+  }
+  return next;
+}
+function renderPreparationUI(){
+  document.getElementById('loading-view').style.display='none';document.getElementById('ui-content').style.display='block';
+  document.getElementById('char-name').textContent=pickU(state.charObj,['姓名','name'],state.activeId);
+  document.getElementById('char-class-level').textContent=formatClassLevels(state.classLevels)+' · 准备法术';
+  const choices=document.getElementById('choices-container'),panel=choices.parentElement;
+  for(const el of document.querySelector('.dialog-body').children)el.style.display=el===panel?'':'none';
+  panel.querySelector('h3').textContent='更换准备法术';
+  clearSpellSelectorState();
+  choices.innerHTML='<p class="hint">完成长休后使用。保存只更改准备清单，不升级，也不恢复生命值、法术位或免费次数。戏法不在这里更换。</p>'+
+    (state.plan.always.length?'<div class="req-card"><label>始终准备 · 不占普通名额</label><div class="hint">'+state.plan.always.map(n=>'☑ '+esc(n)).join('、')+'</div></div>':'')+
+    (state.plan.req.length?state.plan.req.map(generateSpellSelector).join(''):'<p>该角色没有可在长休后换备法术的职业。</p>');
+  Object.keys(spellSelectorState).forEach(id=>renderSpellPage(id));
+  const btn=document.getElementById('btn-submit');btn.textContent='保存准备法术';btn.disabled=!state.plan.req.length;
+  setStatus(state.isDemo?'演示模式：不会写入真实角色':'准备清单已载入');
+}
+async function savePreparation(){
+  if(growthSaving)return;
+  const picks=Object.fromEntries(state.plan.req.map(req=>[req.id,[...selectedSpellNames(req.id)]]));
+  const errors=validatePreparation(picks);if(errors.length){setStatus(errors.join('；'),true);return;}
+  growthSaving=true;document.getElementById('btn-submit').disabled=true;
+  try{
+    const current=state.isDemo?state.charObj:MvuLite.expandCharacter((await readMessageVariables()).stat_data.角色列表[state.activeId],state.activeId);
+    if(JSON.stringify(current.职业)!==JSON.stringify(state.charObj.职业)||Number(current.等级)!==Number(state.charObj.等级))throw new Error('角色等级已变化，请关闭后重新打开准备法术');
+    const next=applyPreparation(current,picks);
+    if(state.isDemo)localMockVars.stat_data.角色列表[state.activeId]=MvuLite.compactCharacter(next,state.activeId);
+    else await writeVariables({stat_data:{角色列表:{[state.activeId]:next}}});
+    state.statData.角色列表[state.activeId]=next;rebuildFromState();renderUI();setStatus('准备法术已保存到角色档案。');
+    if(!state.isDemo)window.parent.postMessage({source:'dnd-levelup-panel',type:'preparation_saved',payload:{characterId:state.activeId}},'*');
+  }catch(error){setStatus('保存失败：'+error.message,true);}
+  finally{growthSaving=false;document.getElementById('btn-submit').disabled=false;}
+}
+
+    function buildPlan(pending={}){ if(preparationMode)return preparationPlan(); if(growthMode==="config")return growthConfigPlan(pending); subclassPending=pending; try { return growthPlan(subclassSpellPlan(bookPlan(arcanaPlan(buildBasePlan(pending),pending),pending),pending),pending); } finally { subclassPending=null; } }
     function buildBasePlan(pending={}){
       if(state.level>=DEMO_MAX_LEVEL) return null;
       if(state.targetLevel && state.level>=state.targetLevel) return null;
@@ -15295,6 +15408,7 @@ function featDuplicateCheck(name) {
       finally{for(const {el,top,left} of positions){el.scrollTop=top;el.scrollLeft=left;}}
     }
     function renderUpgradeUI(){
+      if(preparationMode)return renderPreparationUI();
       renderBookLibrary();
       renderArcanaLibrary();
       growthRenderMode();
@@ -15883,6 +15997,7 @@ function levelGrowthPreview(selections={}){
 
     async function applyUpgrade(){
       if(levelGrowthBusy)return;
+      if(preparationMode)return savePreparation();
       if(growthMode==="config")return growthSaveConfig();
       if(!state.plan||!state.charObj||!SUPPORTED_CLASS_OPTIONS.some((meta)=>meta.id===state.plan.classNorm)) return;
       const {ok,selections,errors}=collect(true);
