@@ -13501,6 +13501,7 @@ const BACKGROUND_TOOLS={
   '狂欢者':['骰子','纸牌','龙棋','三龙牌'],'血徒':['厨师工具'],'吸血鬼幸存者':['木雕工具']
 };
 function backgroundToolOptions(name){
+  if(name==='自定义')return EB_ALL_TOOLS;
   if(BACKGROUND_TOOLS[name])return BACKGROUND_TOOLS[name];
   const tool=EB.backgrounds.find(b=>b.name===name)?.tool;
   if(!tool)return [];

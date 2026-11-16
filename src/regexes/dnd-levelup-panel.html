@@ -12377,7 +12377,10 @@ const BACKGROUND_TOOLS={
 };
 function backgroundToolOptions(name){
   if(BACKGROUND_TOOLS[name])return BACKGROUND_TOOLS[name];
-  const tool=EB.backgrounds.find(b=>b.name===name)?.tool;
+  const background=EB.backgrounds.find(b=>b.name===name);
+  // Custom backgrounds retain only the player's name in exported characters.
+  if(!background)return name?EB_ALL_TOOLS:[];
+  const tool=background.tool;
   if(!tool)return [];
   return tool.includes('工匠')?EB_TOOLS:tool.includes('乐器')?EB_ALL_TOOLS.slice(-10):tool.includes('赌具')?['骰子','纸牌','龙棋','三龙牌']:tool.includes('选择')?['盗贼工具','制毒工具','文书伪造工具']:[tool];
 }
