@@ -98,12 +98,34 @@ const patches=JSON.parse(fs.readFileSync(path.join(root,latest.worldbook_path)))
 const additions=Object.values(JSON.parse(fs.readFileSync(path.join(root,latest.worldbook_additions_path))).entries);
 const book={entries:Object.fromEntries(patches.map(p=>[p.uid,{uid:p.uid,content:p.previous,disable:true,extra:{keep:true}}]))};
 const plan=context.planDndWorldbook(book,patches);
-check(plan.every(p=>p.action==='replace'),'untouched shipped worldbook entries can update');
+check(plan.every(p=>p.action===(p.uid===781426?'current':'replace')),'shipped rules update; presence-only default changes need no replacement');
 book.entries[18].content='personal edit';
 check(context.planDndWorldbook(book,patches)[0].action==='','personal edit requires a choice');
 check(context.planDndWorldbook(book,patches,[18])[0].action==='keep','saved keep choice is respected');
 book.entries[18].content=patches[0].content;
 check(context.planDndWorldbook(book,patches)[0].action==='current','already updated entry is recognized');
+// The real DM writer restores these user settings after every refresh.
+const dmSource=fs.readFileSync(path.join(root,'src/scripts/DM人设选择.js'),'utf8');
+const presence=vm.runInNewContext(dmSource.slice(dmSource.indexOf('const PRESENCE_DIRECTIVES='),dmSource.indexOf('function createDmNativeSync'))+';PRESENCE_DIRECTIVES');
+const dmEntryFor=new Function('PRESENCE_DIRECTIVES',dmSource.slice(dmSource.indexOf('  function contentFor('),dmSource.indexOf('  return async function sync(selection'))+';return entryFor;')(presence);
+const dmModels=JSON.parse(dmSource.slice(dmSource.lastIndexOf('mountDmPersonas(')+'mountDmPersonas('.length).trim().replace(/\);$/,''));
+const dmRuntimeCases=Object.keys(presence).map(mode=>Object.fromEntries([[207976,'lily'],[781426,'custom']].map(([uid,id])=>{
+ const model=dmModels.find(m=>m.id===id),patch=patches.find(p=>p.uid===uid);
+ const entry=dmEntryFor(model,{id:'lily',enabled:true,presence:mode,custom:'保留自定义 DM\n字面字符 $&'}, {name:'[DM人设] '+id+' · '+model.name,content:patch.content});
+ return [uid,entry.content];
+})));
+for(const [index,contents]of dmRuntimeCases.entries()){
+ const currentBook={entries:Object.fromEntries(patches.map(p=>[p.uid,{uid:p.uid,content:contents[p.uid]||p.content}]))};
+ check(context.planDndWorldbook(currentBook,patches).every(p=>p.action==='current'),'actual DM settings do not request an update: '+Object.keys(presence)[index]);
+ const changed=patches.map(p=>p.uid===781426?{...p,previous:p.content,content:p.content.replace('</DM人设规则>','新增主持规则\n</DM人设规则>')}:p);
+ const plan=context.planDndWorldbook(currentBook,changed).find(p=>p.uid===781426);
+ check(plan.action==='replace'&&plan.content.includes('新增主持规则')&&plan.content.includes(presence[Object.keys(presence)[index]].trim())&&plan.content.includes('<自定义DM人设>\n保留自定义 DM\n字面字符 $&\n</自定义DM人设>'),'real rule update retains current presence and custom DM: '+index);
+ currentBook.entries[207976].content+='\n手写的额外主持规则';
+ check(context.planDndWorldbook(currentBook,patches).find(p=>p.uid===207976).action==='','DM edits outside owned setting blocks still require a choice: '+index);
+}
+const unrelatedTag={entries:Object.fromEntries(patches.map(p=>[p.uid,{uid:p.uid,content:p.content}]))};
+unrelatedTag.entries[6].content+=presence.weak;
+check(context.planDndWorldbook(unrelatedTag,patches).find(p=>p.uid===6).action==='','DM markers in unrelated rules are not ignored');
 const wrongBook=structuredClone(book);delete wrongBook.entries[18];
 assert.throws(()=>context.planDndWorldbook(wrongBook,patches));checks.push('wrong or incomplete bound worldbook stops update');
 assert.throws(()=>context.planDndWorldbook(book,[...patches,patches[0]]));checks.push('duplicate worldbook patch rejected');
@@ -202,14 +224,14 @@ window.fixtureCard=${jsJSON(fixture)};window.initialCard=structuredClone(fixture
 window.fixtureBook=${jsJSON(book)};fixtureBook.entries[18].content='personal edit';
 const oldMapRule={uid:781429,content:'<战场生成规则>旧地图</战场生成规则>',disable:false};fixtureBook.entries[781429]=structuredClone(oldMapRule);
 fixtureBook.personalMetadata={keep:true};fixtureBook.entries[999]={uid:999,comment:'personal',content:'keep',disable:true,displayIndex:80,unknown:{keep:true}};
-window.errors=[];window.calls=[];window.saves=0;window.reloads=0;window.failure=null;window.delayNext=null;window.frozenCalls=[];
+window.errors=[];window.calls=[];window.saves=0;window.bookSaves=0;window.reloads=0;window.failure=null;window.delayNext=null;window.frozenCalls=[];
 addEventListener('error',e=>errors.push(e.message));addEventListener('unhandledrejection',e=>errors.push(String(e.reason)));
 const listeners=new Map();window.events={on:(e,f)=>{if(!listeners.has(e))listeners.set(e,new Set());listeners.get(e).add(f);},removeListener:(e,f)=>listeners.get(e)?.delete(f)};
 window.emit=(e,...args)=>{for(const f of [...(listeners.get(e)||[])])f(...args);};
 window.context={characterId:0,groupId:null,chatId:'a',characters:[fixtureCard],getCurrentChatId:()=>context.chatId,getRequestHeaders:()=>({'Content-Type':'application/json','X-CSRF-Token':'fixture-local'}),eventSource:events,event_types:{CHAT_CHANGED:'chat',GENERATION_STARTED:'start',GENERATION_ENDED:'end',GENERATION_STOPPED:'stop'}};
 window.SillyTavern={getContext:()=>context};window.__fixtureReload=()=>{reloads++;};
 context.loadWorldInfo=async()=>structuredClone(fixtureBook);
-context.saveWorldInfo=async(name,data)=>{if(failure==='world-save'){failure=null;throw Error('fixture world save failed');}fixtureBook=structuredClone(data);if(failure==='world-retain-map'){fixtureBook.entries[781429]=structuredClone(oldMapRule);failure=null;}if(failure==='world-settings'){fixtureBook.entries[781430].constant=false;failure=null;}};
+context.saveWorldInfo=async(name,data)=>{bookSaves++;if(failure==='world-save'){failure=null;throw Error('fixture world save failed');}fixtureBook=structuredClone(data);if(failure==='world-retain-map'){fixtureBook.entries[781429]=structuredClone(oldMapRule);failure=null;}if(failure==='world-settings'){fixtureBook.entries[781430].constant=false;failure=null;}};
 window.TavernHelper={getCharWorldbookNames:()=>({primary:fixtureCard.data.extensions.world}),getButtonEvent:()=> 'update-button',eventOn:(name,fn)=>{events.on(name,fn);return{stop:()=>events.removeListener(name,fn)};}};
 window.fetch=async(url,options={})=>{
  calls.push({url,method:options.method,body:options.body});
@@ -346,7 +368,29 @@ addEventListener('DOMContentLoaded',async()=>{
    fixtureBook=structuredClone(clean);delete fixtureBook.entries[781430];await check();
    fixtureBook.entries[950]={...clean.entries[781430],uid:950};await install();
    assert(saves===beforeSave&&!fixtureBook.entries[781430]&&q('.dpu-status').textContent.includes('已被添加'),'manual addition after check prevents a duplicate');
-   fixtureBook=structuredClone(clean);await check();assert(q('.dpu-install').disabled,'existing full-card travel rule needs no additional installation');
+    fixtureBook=structuredClone(clean);await check();assert(q('.dpu-install').disabled,'existing full-card travel rule needs no additional installation');
+    // Reproduce post-refresh checks using the real DM-generated settings above.
+    const latestPatches=JSON.parse(remoteSources[remoteManifest.worldbook_path]);
+    for(const p of latestPatches)fixtureBook.entries[p.uid].content=p.content;
+    Object.entries(${jsJSON(dmRuntimeCases[1])}).forEach(([uid,content])=>fixtureBook.entries[uid].content=content);
+    const synced=JSON.stringify(fixtureBook),savedCount=saves,savedBookCount=bookSaves;
+    fixtureCard.data.extensions.dnd_component_updates.worldbook.kept=[];
+    await check();assert(q('.dpu-install').disabled&&!q('.dpu-worldbook select'),'weak presence and custom DM remain current after refresh');
+    const receipt=structuredClone(fixtureCard.data.extensions.dnd_component_updates.worldbook);
+    for(const record of [undefined,{...receipt,version:'vf.0.3.0'},{...receipt,name:'old binding name'}]){
+     fixtureCard.data.extensions.dnd_component_updates.worldbook=record;
+     await check();assert(q('.dpu-install').disabled,'matching content needs no install despite missing or outdated receipt');
+    }
+    assert(saves===savedCount&&bookSaves===savedBookCount&&JSON.stringify(fixtureBook)===synced,'repeat checks never write synchronized worldbook or card');
+    remoteManifest.version='vf.0.6.99';await check();await install();
+    assert(bookSaves===savedBookCount&&JSON.stringify(fixtureBook)===synced,'component-only release does not rewrite synchronized worldbook');
+    await check();assert(q('.dpu-install').disabled,'component upgrade plus restored DM settings stays current');
+    const changedPatches=latestPatches.map(p=>[207976,781426].includes(p.uid)?{...p,previous:p.content,content:p.content.replace('</DM人设规则>','新发布的主持规则\\n</DM人设规则>')}:p);
+    remoteSources[remoteManifest.worldbook_path]=JSON.stringify(changedPatches);
+    await check();assert(!q('.dpu-install').disabled&&!q('.dpu-worldbook select'),'actual DM rule changes still offer an update');
+    await install();
+    assert([207976,781426].every(uid=>fixtureBook.entries[uid].content.includes('新发布的主持规则')&&fixtureBook.entries[uid].content.includes('【弱存在感】'))&&fixtureBook.entries[781426].content.includes('保留自定义 DM\\n字面字符 $&'),'UI install preserves presence and custom profile while updating actual rule');
+    await check();assert(q('.dpu-install').disabled,'repeat check after real rule update is current');
   }
   assert(errors.length===0,'no browser errors');
   assert(calls.filter(c=>c.url.startsWith('https://')).every(c=>c.method==='GET'&&!c.body),'remote server receives only GET requests without card data');

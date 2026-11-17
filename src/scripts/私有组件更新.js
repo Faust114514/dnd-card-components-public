@@ -141,8 +141,21 @@ function planDndWorldbook(book, patches, kept = [], additions = []) {
     if (!allowed.delete(patch.uid) || typeof patch.previous !== 'string' || typeof patch.content !== 'string' || !patch.content.trim()) throw Error('世界书更新条目无效');
     const entry = book.entries[patch.uid];
     if (!entry || entry.uid !== patch.uid || typeof entry.content !== 'string') throw Error('绑定世界书缺少规则：' + patch.name);
-    const action = entry.content === patch.content ? 'current' : kept.includes(patch.uid) ? 'keep' : entry.content === patch.previous ? 'replace' : '';
-    return {...patch, before: entry.content, action};
+    // The DM selector rewrites these blocks on startup. They are user settings,
+    // not upstream rule changes; compare the rule body and retain the settings.
+    const dm = patch.uid === 207976 || patch.uid === 781426;
+    const ruleText = text => dm ? text.replace(/\r?\n?<(DM存在感模式|自定义DM人设)>[\s\S]*?<\/\1>/g, '').trim() : text;
+    const action = ruleText(entry.content) === ruleText(patch.content) ? 'current' : kept.includes(patch.uid) ? 'keep' : ruleText(entry.content) === ruleText(patch.previous) ? 'replace' : '';
+    let content = patch.content;
+    if (dm) for (const tag of ['DM存在感模式', '自定义DM人设']) {
+      const pattern = new RegExp('<' + tag + '>[\\s\\S]*?</' + tag + '>', 'g');
+      const selected = entry.content.match(pattern);
+      if (selected) {
+        const value = selected.join('\n');
+        content = pattern.test(content) ? content.replace(pattern, () => value) : content.replace('</DM人设规则>', () => value + '\n</DM人设规则>');
+      }
+    }
+    return {...patch, content, before: entry.content, action};
   });
   const retired = book.entries[781429];
   if (retired) {
@@ -271,7 +284,7 @@ function dndVersionIsNewer(next, current) {
     const receipt = current().data.extensions.dnd_component_updates?.worldbook;
     const same = receipt?.name === name && receipt.version === candidate.version;
     const entries = planDndWorldbook(book, patches, same ? receipt.kept : [], additions);
-    bookPlan = {name, entries, pending: !same || entries.some(entry => entry.action === 'add' || entry.action === 'replace' || entry.action === 'remove' || !entry.action)};
+    bookPlan = {name, entries, pending: entries.some(entry => entry.action === 'add' || entry.action === 'replace' || entry.action === 'remove' || !entry.action)};
     const box = dialog.querySelector('.dpu-worldbook'), title = doc.createElement('p');
     title.textContent = '世界书 · ' + name; box.append(title);
     for (const entry of entries) {
@@ -356,7 +369,7 @@ function dndVersionIsNewer(next, current) {
           if (entry.action === 'replace') next.entries[entry.uid].content = entry.content;
           if (entry.action === 'remove') delete next.entries[entry.uid];
         }
-        if (bookPlan.pending) {
+        if (bookPlan.entries.some(entry => ['add', 'replace', 'remove'].includes(entry.action))) {
           bookAttempted = true;
           await ctx().saveWorldInfo(bookPlan.name, next, true); guard(start);
           const verified = await (await local('/api/worldinfo/get', {name: bookPlan.name})).json(); guard(start);
