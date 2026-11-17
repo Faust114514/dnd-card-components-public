@@ -3303,6 +3303,7 @@ function createModuleRunnerSync(core, host, api) {
         doorStates: {},
         tokenPos: {},
         svgViewMode: false,
+        sendMapImage: false,
         transitions: [],
         dmView: false,
       };
@@ -3342,6 +3343,7 @@ function createModuleRunnerSync(core, host, api) {
       doorStates: raw.doorStates && typeof raw.doorStates === 'object' ? raw.doorStates : {},
       tokenPos,
       svgViewMode: raw.svgViewMode === true,
+      sendMapImage: raw.sendMapImage === true,
       transitions: Array.isArray(raw.transitions) ? raw.transitions.slice(-60) : [],
       dmView: raw.dmView === true,
       autoAiSeed: raw.autoAiSeed !== false,
@@ -5377,6 +5379,14 @@ function mountDndModuleRunner() {
       enableBtn.dataset.active = String(on);
       enableBtn.textContent = on ? '🟢 世界书同步：开启' : '⚪ 世界书同步：关闭';
     }
+    const imageBtn = modalEl.querySelector('[data-action="toggle-ai-image"]');
+    if (imageBtn) {
+      const on = currentState.sendMapImage === true;
+      imageBtn.disabled = !map;
+      imageBtn.dataset.active = String(on);
+      imageBtn.setAttribute('aria-pressed', String(on));
+      imageBtn.textContent = `📷 把截图发给AI：${on ? '开' : '关'}`;
+    }
     const undoBtn = modalEl.querySelector('[data-action="undo-progress"]');
     if (undoBtn) {
       const undoLabel = getUndoTargetLabel();
@@ -5510,7 +5520,8 @@ function mountDndModuleRunner() {
             <span class="dmr-spacer"></span>
             <button type="button" class="dmr-btn" data-action="undo-progress" disabled title="暂无可回退的推进记录">↩️ 回退</button>
             <button type="button" class="dmr-btn" data-action="open-tokenizer" title="FVTT Tokenizer 风格速制圆形边框 Token 并保存至《角色头像库》">🎨 Token</button>
-            <button type="button" class="dmr-btn" data-action="ai-correct" title="将当前地图画面、状态数据与最近5楼对话发给酒馆当前AI，自动修正探索进度与角色位置">✨ AI修正</button>
+            <button type="button" class="dmr-btn" data-action="ai-correct" title="根据当前站位、地图坐标和最近5楼正文校准；旁边的截图开关决定是否附图">✨ AI修正</button>
+            <button type="button" class="dmr-btn" data-action="toggle-ai-image" data-active="false" aria-pressed="false" title="默认关闭，按当前聊天保存。开启后，AI修正及已有的初始站位预置会附上地图截图，需要渠道和模型支持识图；切换开关本身不会发送请求">📷 把截图发给AI：关</button>
             <button type="button" class="dmr-btn" data-action="toggle-grid-snap" data-active="true" title="自动吸附5尺方格中心（点击解锁自由移动）">🧲 格点吸附</button>
             <button type="button" class="dmr-btn" data-action="toggle-softwall" data-active="false" title="允许棋子穿墙移动（卡墙脱困用，也可开 DM 透视或按住 Alt 拖拽）">👻 穿墙：关</button>
             <button type="button" class="dmr-btn" data-action="toggle-enable">⚪ 世界书同步：关闭</button>
@@ -5712,6 +5723,20 @@ function mountDndModuleRunner() {
       if (act === 'close') return closeModal();
       if (act === 'open-tokenizer') return openTokenMakerModal();
       if (act === 'ai-correct') return runAiMapCorrection(btn);
+      if (act === 'toggle-ai-image') {
+        const previous = currentState;
+        const key = identity();
+        try {
+          await saveChatState({ ...currentState, sendMapImage: !currentState.sendMapImage }, false);
+        } catch (err) {
+          if (identity() === key) {
+            currentState = previous;
+            renderModal();
+            modalEl.querySelector('[data-dmr-legend-status]').textContent = `❌ 截图开关保存失败：${err?.message || err}`;
+          }
+        }
+        return;
+      }
       if (act === 'toggle-auto-seed') {
         await saveChatState({ ...currentState, autoAiSeed: currentState.autoAiSeed === false }, false);
         return;
@@ -6680,7 +6705,7 @@ function mountDndModuleRunner() {
 
   function captureMapSnapshotDataUrl() {
     const canvas = modalEl?.querySelector('.dmr-canvas');
-    if (!canvas || !canvas.width || !canvas.height) return '';
+    if (!canvas || !canvas.width || !canvas.height || !view.img || view.imgLoading) return '';
     try {
       const maxW = 1280;
       const scale = canvas.width > maxW ? (maxW / canvas.width) : 1;
@@ -6768,6 +6793,8 @@ function mountDndModuleRunner() {
     const monsterBank = sync.getMonsterBankObject?.() || {};
     let seededUnits = [];
     let usedAi = false;
+    let imageFailure = false;
+    const sendImage = currentState.sendMapImage === true;
 
     try {
       const pxPerFt = surface.pxPerFt || 15;
@@ -6784,7 +6811,7 @@ function mountDndModuleRunner() {
           creatures: (r.refs?.creatures || []).map(c => `${c.name} x${c.count || 1}`),
         }));
 
-      const sys = `你是 D&D 2024 模组地图初始站位预置助手。你会收到一张无迷雾的完整 DM 地图（含房间标号）、房间与原版怪物清单以及玩家队伍成员。
+      const sys = `你是 D&D 2024 模组地图初始站位预置助手。你会收到${sendImage ? '一张无迷雾的完整 DM 地图（含房间标号）、' : ''}房间与原版怪物清单以及玩家队伍成员。
 请提前把玩家队伍放在入口/当前房间合理位置，把各房间的原版敌人放在各自房间合理地形位置（门口、掩体后等）。
 只输出 JSON：
 {
@@ -6797,7 +6824,8 @@ function mountDndModuleRunner() {
 注意：att 0=玩家/友方, 2=敌对；pos 为 5ft 倍数且在 0~${wFt - 5}, 0~${hFt - 5} 内；每个单位必须带 roomId。`;
 
       const usr = `队伍：${JSON.stringify(partyMembers)}\n房间与遭遇：${JSON.stringify(roomsPayload)}`;
-      const dmImg = captureDmUnfoggedSnapshotDataUrl(map, surface);
+      const dmImg = sendImage ? captureDmUnfoggedSnapshotDataUrl(map, surface) : '';
+      if (sendImage && !dmImg) throw Error('无法截取地图，请等地图图片加载完成后重试');
       const raw = await callCurrentTavernAI(sys, usr, dmImg);
       const parsed = core.parseAiCorrectionResult(raw, map, surface);
       if (parsed.units?.length) {
@@ -6810,6 +6838,7 @@ function mountDndModuleRunner() {
         usedAi = true;
       }
     } catch (err) {
+      imageFailure = sendImage;
       console.warn('[DND Module Runner] Auto-seed AI fallback to local:', err);
     }
 
@@ -6826,8 +6855,8 @@ function mountDndModuleRunner() {
       syncBattleFromChat();
       if (statusEl) {
         statusEl.textContent = usedAi
-          ? `🤖 已为《${map.title}》AI 预置 ${seededUnits.length} 个单位初始站位`
-          : `🤖 已为《${map.title}》本地预置 ${seededUnits.length} 个单位初始站位`;
+          ? `🤖 已为《${map.title}》AI 预置 ${seededUnits.length} 个单位初始站位（${sendImage ? '附图' : '仅文字'}）`
+          : `${imageFailure ? '⚠️ 附图预置失败，' : '🤖 '}已为《${map.title}》本地预置 ${seededUnits.length} 个单位初始站位`;
       }
     } else if (statusEl) {
       statusEl.textContent = prevStatus;
@@ -7095,49 +7124,19 @@ function mountDndModuleRunner() {
     }, { passive: false });
   }
 
-  async function callCurrentTavernAI(systemPrompt, userText, imageDataUrl) {
-    const c = ctx();
-    const s = c?.chatCompletionSettings || {};
-    const service = c?.ChatCompletionService;
-    if (service?.processRequest && imageDataUrl) {
-      try {
-        const model = c?.getChatCompletionModel?.(s) || s.model || '';
-        const messages = [
-          { role: 'system', content: systemPrompt },
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: userText },
-              { type: 'image_url', image_url: { url: imageDataUrl } },
-            ],
-          },
-        ];
-        const res = await service.processRequest({
-          messages,
-          stream: false,
-          max_tokens: 2048,
-          model,
-          chat_completion_source: s.chat_completion_source || 'custom',
-          custom_url: s.custom_url,
-          reverse_proxy: s.reverse_proxy,
-          proxy_password: s.proxy_password,
-        }, {}, true);
-        const text = typeof res === 'string' ? res : (res?.content || res?.choices?.[0]?.message?.content || '');
-        if (text && text.trim()) return text;
-      } catch (err) {
-        console.warn('[DND Module Runner] ChatCompletionService vision fallback to generateRaw:', err);
-      }
-    }
+  async function callCurrentTavernAI(systemPrompt, userText, imageDataUrl = '') {
     const genRaw = api('generateRaw', true);
-    if (!genRaw) throw Error('当前酒馆未提供 ChatCompletionService 或 generateRaw 接口');
+    if (!genRaw) throw Error('当前酒馆未提供酒馆助手 generateRaw 接口');
     return await genRaw({
       generation_id: `dnd-map-ai-fix-${Date.now()}`,
       should_stream: false,
       should_silence: true,
       max_chat_history: 0,
+      user_input: userText,
+      ...(imageDataUrl ? { image: [imageDataUrl] } : {}),
       ordered_prompts: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: userText },
+        'user_input',
       ],
     });
   }
@@ -7150,12 +7149,14 @@ function mountDndModuleRunner() {
       if (statusEl) statusEl.textContent = '请先加载模组地图后再使用 AI 修正。';
       return;
     }
+    const sendImage = currentState.sendMapImage === true;
+    const requestIdentity = identity();
     const prevText = btnEl?.textContent || '✨ AI修正';
     if (btnEl) {
       btnEl.disabled = true;
       btnEl.textContent = '⏳ AI分析中...';
     }
-    if (statusEl) statusEl.textContent = '正在将地图截图、状态代码与前5楼上下文发送给酒馆当前 AI...';
+    if (statusEl) statusEl.textContent = `正在将${sendImage ? '地图截图、' : ''}站位数据与前5楼正文发送给酒馆当前 AI（${sendImage ? '附图' : '仅文字'}）…`;
 
     try {
       const c = ctx();
@@ -7206,8 +7207,18 @@ function mountDndModuleRunner() {
         },
       };
 
+      if (sendImage) {
+        const canvas = modalEl.querySelector('.dmr-canvas');
+        const dpr = host.devicePixelRatio || 1;
+        stateCodeSnapshot.screenshotView = {
+          topLeftFt: [(-view.offsetX / view.scale - ox) / pxPerFt, (-view.offsetY / view.scale - oy) / pxPerFt],
+          bottomRightFt: [((canvas.width / dpr - view.offsetX) / view.scale - ox) / pxPerFt, ((canvas.height / dpr - view.offsetY) / view.scale - oy) / pxPerFt],
+          note: '截图是当前缩放和平移后的可见范围，含当前迷雾；截图边界对应以上尺坐标，不是完整原图边界。',
+        };
+      }
+
       const systemPrompt = `你是 D&D 2024 模组地图状态校对助手。你会收到：
-1. 当前战术地图截图（含房间编号、战争迷雾与当前棋子位置）；
+1. ${sendImage ? '当前战术地图截图（含房间编号、战争迷雾与当前棋子位置）' : '本次未附截图，请仅依据以下文字和坐标数据校准，不要声称看到了地图画面'}；
 2. 地图插件当前状态与房间坐标 JSON 代码；
 3. 最近 5 楼聊天上下文。
 
@@ -7227,8 +7238,10 @@ function mountDndModuleRunner() {
 注意：init 沿用已有先攻，未重新掷先攻时不得改为 0；att 0=友方, 1=中立, 2=敌对；pos 为 5ft 整数倍且必须在 0~${wFt - 5}, 0~${hFt - 5} 合法范围内。`;
 
       const userText = `【地图插件当前代码与状态快照】\n\`\`\`json\n${JSON.stringify(stateCodeSnapshot, null, 2)}\n\`\`\`\n\n【最近5楼聊天上下文】\n${recent5 || '（暂无聊天记录）'}`;
-      const imageDataUrl = captureMapSnapshotDataUrl();
+      const imageDataUrl = sendImage ? captureMapSnapshotDataUrl() : '';
+      if (sendImage && !imageDataUrl) throw Error('无法截取地图，请等地图图片加载完成后重试；或关闭“把截图发给AI”使用文字校准');
       const rawReply = await callCurrentTavernAI(systemPrompt, userText, imageDataUrl);
+      if (disposed || identity() !== requestIdentity || getCurrentMap() !== map) throw Error('聊天或地图已切换，本次修正结果未应用');
       const parsed = core.parseAiCorrectionResult(rawReply, map, surface, battleState.units);
 
       const nextExplored = parsed.exploredRooms || [...(currentState.exploredRooms || [])];
@@ -7276,10 +7289,10 @@ function mountDndModuleRunner() {
           parsed.units ? `${parsed.units.length}个单位` : '',
           parsed.reason || '',
         ].filter(Boolean).join(' · ');
-        statusEl.textContent = `✅ AI修正完成：${summary || '已同步状态'}`;
+        statusEl.textContent = `✅ AI修正完成（${sendImage ? '附图' : '仅文字'}）：${summary || '已同步状态'}`;
       }
     } catch (err) {
-      if (statusEl) statusEl.textContent = `❌ AI修正失败：${err?.message || err}`;
+      if (statusEl) statusEl.textContent = `❌ AI修正失败${sendImage ? '（附图请求未完成，未改用纯文字重试）' : ''}：${err?.message || err}`;
     } finally {
       if (btnEl) {
         btnEl.disabled = false;

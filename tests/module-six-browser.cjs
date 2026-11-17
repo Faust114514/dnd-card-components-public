@@ -14,6 +14,9 @@ const draw=CanvasRenderingContext2D.prototype.drawImage,fill=CanvasRenderingCont
 CanvasRenderingContext2D.prototype.fillRect=function(...a){if(this.canvas.classList.contains("dmr-canvas")&&this.fillStyle==="#0f0d0a"){paintedImages=[];paintedTexts=[];}return fill.apply(this,a)};
 CanvasRenderingContext2D.prototype.drawImage=function(img,...a){paintedImages.push({src:img.src||'',width:img.naturalWidth,height:img.naturalHeight});return draw.call(this,img,...a)};
 CanvasRenderingContext2D.prototype.fillText=function(t,...a){paintedTexts.push(String(t));return text.call(this,t,...a)};
+window.aiRequests=[];window.failAi=false;window.failVars=false;window.holdAi=false;window.captureFail=false;
+const capture=HTMLCanvasElement.prototype.toDataURL;
+HTMLCanvasElement.prototype.toDataURL=function(...args){if(window.captureFail)throw Error('fixture capture blocked');return capture.apply(this,args)};
 window.errors=[];window.sends=0;window.bookWrites=[];window.failPreset=false;
 addEventListener('error',e=>errors.push(e.message));addEventListener('unhandledrejection',e=>errors.push(String(e.reason)));
 window.vars=JSON.parse(localStorage.getItem('fixture-vars')||'{"stat_data":{"保留":"原游戏数据"},"旧EJS进度":{"房间":"原位置"}}');
@@ -24,8 +27,8 @@ window.emit=async(n,...args)=>{for(const f of listeners.get(n)||[])await f(...ar
 window.context={characterId:0,groupId:null,chatId:'fixture',chat:JSON.parse(localStorage.getItem('fixture-chat')||'[]'),mainApi:'openai',eventSource:events,event_types:{CHAT_CHANGED:'chat',MESSAGE_RECEIVED:'message',MESSAGE_EDITED:'edited',MESSAGE_DELETED:'deleted',MESSAGE_SWIPED:'swiped',GENERATION_ENDED:'end',WORLDINFO_ENTRIES_LOADED:'world',WORLDINFO_UPDATED:'book'},getCurrentChatId:()=>context.chatId};
 window.SillyTavern={getContext:()=>context};
 window.TavernHelper={
- generateRaw:async args=>{if(!window.aiReply)throw Error('No mocked AI reply');window.lastAiRequest=args;return window.aiReply;},
- getVariables:()=>vars,updateVariablesWith:async fn=>{vars=await fn(vars);localStorage.setItem('fixture-vars',JSON.stringify(vars));return vars},
+ generateRaw:async args=>{aiRequests.push(args);window.lastAiRequest=args;if(window.failAi)throw Error('fixture image rejected');if(window.holdAi)await new Promise(r=>window.releaseAi=r);if(!window.aiReply)throw Error('No mocked AI reply');return window.aiReply;},
+ getVariables:()=>vars,updateVariablesWith:async fn=>{if(failVars){failVars=false;throw Error('fixture save failure')}vars=await fn(vars);localStorage.setItem('fixture-vars',JSON.stringify(vars));return vars},
  getCharWorldbookNames:()=>({primary:'自定义绑定书'}),getWorldbookNames:()=>['自定义绑定书'],getWorldbook:async()=>structuredClone(entries),
  updateWorldbookWith:async(name,fn)=>{if(name!=='自定义绑定书')throw Error('wrong book');entries=await fn(structuredClone(entries));bookWrites.push(name);localStorage.setItem('fixture-book',JSON.stringify(entries));return entries},
  getLoadedPresetName:()=> '【DND】浮士德预设v1.0',getPreset:()=>structuredClone(preset),replacePreset:async(name,value)=>{if(failPreset){failPreset=false;throw Error('fixture preset save failure')}preset=value;}
@@ -98,10 +101,67 @@ async function shot(name){const r=await send('Page.captureScreenshot',{format:'p
   await run('failPreset=true');await click('[data-feature="module"] [data-value="on"]');await wait('document.querySelector(".dnc-status").textContent.includes("未完成")');
   await check('!__dndModuleRunner.getState().enabled&&!vars.dnd_module_state.enabled&&!entries.find(e=>e.uid===12).enabled','preset save failure rolls map state back');
   await click('[data-feature="module"] [data-value="on"]');await wait('__dndModuleRunner.getState().enabled&&preset.prompts[0].enabled');
+  await check('aiRequests.some(r=>r.ordered_prompts[0].content.includes("初始站位"))&&aiRequests.every(r=>!Object.hasOwn(r,"image"))','automatic initial placement sends no images by default');
   await send('Page.reload');await wait('!!window.__dndModuleRunner&&window.__dndModuleRunner.getState().currentRoomId==='+JSON.stringify(room));
   await check('vars.dnd_module_state.currentMapId==="1ab"&&vars.dnd_module_state.clearedRooms.length>0','page reload restores saved module and exploration progress');
   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await click('[data-dnd-module-btn="1"]');await sleep(250);await shot('模组地图-手机');
   await check('document.querySelector(".dmr-window").getBoundingClientRect().right<=innerWidth+1','module window fits 390px viewport');
+  // Default-off image preference, the actual correction button, and request failures.
+  await check('__dndModuleRunner.getState().sendMapImage===false&&document.querySelector("[data-action=toggle-ai-image]").getAttribute("aria-pressed")==="false"','existing chat defaults to text-only correction');
+  await check('(()=>{const r=document.querySelector("[data-action=toggle-ai-image]").getBoundingClientRect();return r.left>=0&&r.right<=innerWidth})()','image toggle is reachable at 390px');
+  await run(`context.chat=[{mes:'截图校准测试正文',is_user:false}];aiReply=JSON.stringify({currentRoomId:${JSON.stringify(room)},battleActive:false,units:[{id:'校准测试队员',att:0,init:17,hp:'7/20',pos:[10,10]}]})`);
+  await click('[data-action="ai-correct"]');
+  await wait('document.querySelector("[data-dmr-legend-status]").textContent.includes("AI修正完成（仅文字）")');
+  await check('!Object.hasOwn(lastAiRequest,"image")&&lastAiRequest.user_input.includes("截图校准测试正文")&&lastAiRequest.user_input.includes("coordSystem")&&lastAiRequest.user_input.includes("battleState")','off sends recent story and current positions without any image payload');
+  await check('lastAiRequest.ordered_prompts.includes("user_input")&&lastAiRequest.ordered_prompts[0].content.includes("本次未附截图")','text request does not claim the model received a screenshot');
+  const callsBeforeToggle=await run('aiRequests.length'),writesBeforeToggle=await run('bookWrites.length');
+  await click('[data-action="toggle-ai-image"]');
+  await check(`vars.dnd_module_state.sendMapImage===true&&aiRequests.length===${callsBeforeToggle}&&bookWrites.length===${writesBeforeToggle}`,'enabling saves only the chat preference without sending AI or rewriting worldbook');
+  await click('[data-action="ai-correct"]');
+  await wait('document.querySelector("[data-dmr-legend-status]").textContent.includes("AI修正完成（附图）")');
+  await check('Array.isArray(lastAiRequest.image)&&lastAiRequest.image.length===1&&lastAiRequest.image[0].startsWith("data:image/jpeg;base64,")&&lastAiRequest.user_input.includes("截图校准测试正文")','enabled correction attaches a real canvas JPEG alongside the story and coordinates');
+  await check('new Promise(resolve=>{const i=new Image();i.onload=()=>resolve(i.width>10&&i.width<=1280&&i.height>10);i.onerror=()=>resolve(false);i.src=lastAiRequest.image[0]})','attached screenshot decodes and respects the existing width limit');
+  const firstBounds=await run('JSON.parse(lastAiRequest.user_input.split(String.fromCharCode(96).repeat(3))[1].slice(4)).screenshotView');
+  await click('[data-action="zoom-in"]');await click('[data-action="ai-correct"]');
+  await wait('document.querySelector("[data-dmr-legend-status]").textContent.includes("AI修正完成（附图）")');
+  const zoomedBounds=await run('JSON.parse(lastAiRequest.user_input.split(String.fromCharCode(96).repeat(3))[1].slice(4)).screenshotView');
+  assert.ok(Math.abs((zoomedBounds.bottomRightFt[0]-zoomedBounds.topLeftFt[0])/(firstBounds.bottomRightFt[0]-firstBounds.topLeftFt[0])-.8)<.001);checks.push('screenshot coordinate bounds follow the actual zoom instead of treating the cropped view as the full map');
+  await shot('截图开关-手机');
+  await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});await shot('截图开关-桌面');
+  await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+  const overrideBeforeFailure=await run('JSON.stringify(vars.dnd_module_state.battleOverride)');
+  const callsBeforeFailure=await run('aiRequests.length');
+  await run('failAi=true');await click('[data-action="ai-correct"]');
+  await wait('document.querySelector("[data-dmr-legend-status]").textContent.includes("fixture image rejected")');
+  await check(`aiRequests.length===${callsBeforeFailure+1}&&JSON.stringify(vars.dnd_module_state.battleOverride)===${JSON.stringify(overrideBeforeFailure)}&&document.querySelector("[data-dmr-legend-status]").textContent.includes("未改用纯文字重试")`,'image request failure is explicit, does not retry without the image, and preserves old positions');
+  await run('failAi=false;captureFail=true');await click('[data-action="ai-correct"]');
+  await wait('document.querySelector("[data-dmr-legend-status]").textContent.includes("无法截取地图")');
+  await check(`aiRequests.length===${callsBeforeFailure+1}&&JSON.stringify(vars.dnd_module_state.battleOverride)===${JSON.stringify(overrideBeforeFailure)}`,'capture failure stops before an AI request or map write');
+  await click('[data-action="toggle-ai-image"]');await click('[data-action="ai-correct"]');
+  await wait('document.querySelector("[data-dmr-legend-status]").textContent.includes("AI修正完成（仅文字）")');
+  await check('!Object.hasOwn(lastAiRequest,"image")','turning off works even when screenshot capture is unavailable');
+  await run('captureFail=false;failVars=true');await click('[data-action="toggle-ai-image"]');
+  await wait('document.querySelector("[data-dmr-legend-status]").textContent.includes("截图开关保存失败")');
+  await check('vars.dnd_module_state.sendMapImage===false&&__dndModuleRunner.getState().sendMapImage===false&&document.querySelector("[data-action=toggle-ai-image]").getAttribute("aria-pressed")==="false"','failed preference save keeps the old switch state');
+  await click('[data-action="toggle-ai-image"]');
+  await run('localStorage.setItem("fixture-chat",JSON.stringify(context.chat));delete vars.dnd_module_state.aiSeededMaps[vars.dnd_module_state.currentMapId];localStorage.setItem("fixture-vars",JSON.stringify(vars))');
+  await send('Page.reload');await wait('!!window.__dndModuleRunner&&__dndModuleRunner.getState().sendMapImage===true');
+  await click('[data-dnd-module-btn="1"]');
+  await wait('aiRequests.some(r=>r.ordered_prompts[0].content.includes("初始站位"))');
+  await check('document.querySelector("[data-action=toggle-ai-image]").getAttribute("aria-pressed")==="true"&&aiRequests.find(r=>r.ordered_prompts[0].content.includes("初始站位")).image[0].startsWith("data:image/jpeg;base64,")','reload restores the enabled preference and initial placement also attaches an image');
+  await wait('document.querySelector("[data-dmr-legend-status]").textContent.includes("附图预置失败")');
+  await check('document.querySelector("[data-dmr-legend-status]").textContent.includes("本地预置")','automatic placement labels its existing local fallback after image request failure');
+  await run(`aiReply=JSON.stringify({battleActive:false,units:[{id:'迟到结果',att:0,hp:'1/1',pos:[5,5]}]});holdAi=true;window.oldMapState=structuredClone(vars.dnd_module_state)`);
+  await click('[data-action="ai-correct"]');await wait('typeof window.releaseAi==="function"');
+  await run('context.chatId="another-chat";vars.dnd_module_state={...structuredClone(oldMapState),sendMapImage:false};emit("chat")');
+  await wait('__dndModuleRunner.getState().sendMapImage===false');
+  const switchedState=await run('JSON.stringify(vars.dnd_module_state)');
+  await run('releaseAi();holdAi=false');
+  await wait('document.querySelector("[data-dmr-legend-status]").textContent.includes("本次修正结果未应用")');
+  await check(`JSON.stringify(vars.dnd_module_state)===${JSON.stringify(switchedState)}&&!__dndModuleRunner.getBattleState().units.some(u=>u.id==="迟到结果")`,'switching chat resets its preference and discards a late correction from the previous chat');
+  await run('context.chatId="fixture";vars.dnd_module_state=oldMapState;emit("chat")');await wait('__dndModuleRunner.getState().sendMapImage===true');
+  await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
+  await check('vars.stat_data.保留==="原游戏数据"','image preference and correction never change character variables');
   if(cosData){
    await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false});
    await run(`context.chat=[];delete vars.dnd_module_state.battleOverride;__dndModuleRunner.selectModuleById('CoS')`);

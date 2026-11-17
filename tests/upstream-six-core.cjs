@@ -44,6 +44,8 @@ check(core.parseAiMapMarkers('<!-- dnd-map: {"room":"b"} -->',sceneAdv,sceneBase
 const targetScene=core.parseAiMapMarkers('<!-- dnd-map: {"map":"new","room":"c"} -->',sceneAdv,sceneBase);
 check(targetScene.currentRoomId==='c'&&!targetScene.exploredRooms.includes('b'),'explicit target room does not accidentally explore the map entry');
 const sync=context.createModuleRunnerSync(core,{SillyTavern:{getContext:()=>({chat:[{mes:legacy}]})}},()=>{});
+check(sync.normalizeState(null).sendMapImage===false&&sync.normalizeState({moduleId:'test'}).sendMapImage===false,'new and existing chats default to no map screenshots');
+check(sync.normalizeState({moduleId:'test',sendMapImage:true}).sendMapImage===true,'explicit screenshot preference survives normalization');
 check(!Object.hasOwn(sync.normalizeState(null),'battleProtocol'),'new chats have only the author map');
 check(!Object.hasOwn(sync.normalizeState({moduleId:'test',battleProtocol:'legacy'}),'battleProtocol'),'old saved mode cannot keep the retired map enabled');
 const cfg=JSON.parse(read('components.json')),latest=JSON.parse(read('latest.json'));
