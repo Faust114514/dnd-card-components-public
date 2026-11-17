@@ -13,12 +13,15 @@
   const presetName = () => ctx().mainApi === 'openai' ? api('getLoadedPresetName')() : '';
   const matching = name => name.startsWith('【DND】浮士德预设v');
   const STORE = 'dnd_setup_flow', POS = 'dnd-narrative-orb-position';
+  const HOUSE_NAME = '[房规] 玩家自定义';
+  const houseEntry = entries => entries.find(entry => entry.name === HOUSE_NAME);
+  const houseText = entry => entry ? entry.content.replace(/^<玩家自定义房规>\n([\s\S]*)\n<\/玩家自定义房规>$/, '$1') : '';
   const features = [
     {key: 'module', name: '玩模组', uid: 12, tag: '模组主持规则', prompt: 'dnd-cot-module-v01'},
     {key: 'combat', name: '战斗检查', uid: 781428, tag: '战斗准则', prompt: 'dnd-cot-combat-v01'},
     {key: 'opening', name: '开团流程', uid: 5, tag: '开局流程'},
     {key: 'dnj', name: 'DNJ 风格', group: 'personal', uid: 8, tag: 'DNJ风格规则'},
-    {key: 'partyxp', name: '经验只分玩家队伍', group: 'personal', rules: [], prompt: 'dnd-house-party-xp-v01', detail: '协力 NPC 不分经验；不增加奖励总额。'},
+    {key: 'partyxp', name: '经验只分玩家队伍', group: 'house', rules: [], prompt: 'dnd-house-party-xp-v01', detail: '协力 NPC 不分经验；不增加奖励总额。'},
     {key: 'nameStyle', name: '适当美化', group: 'personal', rules: [], prompt: 'dnd-style-names-v01', detail: '术语沿用原中英样式、配色自由；画外说明自由美化，不限次数。'},
     {key: 'sceneStyle', name: '场景小巧思', group: 'personal', rules: [], prompt: 'ab695962-b420-4731-b14c-3f6860909fd9', marker: '<DND场景小巧思>', detail: '实际阅读菜单、任务单等物件时自由美化，不限次数。'},
   ];
@@ -26,6 +29,7 @@
   const promptFor = (preset, feature) => preset.prompts.find(p => p.id === feature.prompt && (!feature.marker || p.content.includes(feature.marker)));
   let disposed = false, writing = false, generating = false, serial = 0, state = null, dragging = null, dragged = false;
   const removers = [];
+  let houseDraft = null;
   const root = doc.createElement('div');
   root.id = 'dnd-narrative-controls';
   root.innerHTML = `<style>
@@ -56,23 +60,29 @@
     #dnd-narrative-controls .dnc-note{font-size:12px;color:#a8b4ad;margin:12px 0 0}
     #dnd-narrative-controls .dnc-status{font-size:12px;color:#dfc99f;min-height:18px;margin-top:9px;overflow-wrap:anywhere}
     #dnd-narrative-controls .dnc-refresh,#dnd-narrative-controls .dnc-update{background:transparent;border:1px solid #52635a;border-radius:8px;width:100%;margin-top:10px}
+    #dnd-narrative-controls .dnc-house-input{display:block;width:100%;min-height:160px;resize:vertical;margin-top:10px;padding:10px 12px;border:1px solid #52635a;border-radius:8px;background:#131b19;color:#eee9dc;font:inherit;line-height:1.6}
+    #dnd-narrative-controls .dnc-house-input:focus-visible{outline:2px solid #d6bd86;outline-offset:2px}
+    #dnd-narrative-controls .dnc-house-actions{display:flex;gap:8px;margin-top:12px}
+    #dnd-narrative-controls .dnc-house-actions button{flex:1;border:1px solid #52635a;border-radius:8px;background:transparent}
+    #dnd-narrative-controls .dnc-house-actions .dnc-house-save{background:#d6bd86;border-color:#d6bd86;color:#202820;font-weight:600}
     @media(prefers-reduced-motion:no-preference){#dnd-narrative-controls button{transition:background .12s}}
   </style>
   <button class="dnc-orb" type="button" aria-label="冒险设置，拖动可移动" aria-expanded="false" aria-controls="dnc-panel" title="冒险设置 · 可拖动">
     <svg viewBox="0 0 32 32" fill="none" stroke="#e2c58b" stroke-width="1.4" aria-hidden="true"><path d="M16 2 29 10v13L16 30 3 23V10Z M16 2 9 20h14L16 2M3 10l6 10-6 3m26-13-6 10 6 3M9 20l7 10 7-10M3 10h26"/></svg>
   </button>
   <section class="dnc-panel" id="dnc-panel" role="dialog" aria-labelledby="dnc-title" hidden>
-    <div class="dnc-head"><div><div class="dnc-version">DND · VF.0.6.10</div><h2 id="dnc-title">冒险设置</h2></div><button class="dnc-close" type="button" aria-label="关闭面板">×</button></div>
+    <div class="dnc-head"><div><div class="dnc-version">DND · VF.0.6.11</div><h2 id="dnc-title">冒险设置</h2></div><button class="dnc-close" type="button" aria-label="关闭面板">×</button></div>
     <div class="dnc-badge"></div>
-    <div class="dnc-tabs" role="tablist" aria-label="设置分类"><button type="button" role="tab" id="dnc-tab-functional" aria-controls="dnc-functional" aria-selected="true" tabindex="0">功能</button><button type="button" role="tab" id="dnc-tab-personal" aria-controls="dnc-personal" aria-selected="false" tabindex="-1">个性化</button></div>
-    ${['functional','personal'].map(group => `<div id="dnc-${group}" role="tabpanel" aria-labelledby="dnc-tab-${group}" tabindex="0" ${group === 'personal' ? 'hidden' : ''}>${features.filter(f => (f.group || 'functional') === group).map(f => `<div class="dnc-row" data-feature="${f.key}"><div class="dnc-line"><span class="dnc-label">${f.name}</span><div class="dnc-options" role="group" aria-label="${f.name}">${(f.key === 'opening' ? [['auto','自动'],['on','开'],['off','关']] : [['on','开'],['off','关']]).map(([v,t]) => `<button type="button" data-value="${v}" aria-pressed="false" disabled>${t}</button>`).join('')}</div></div>${f.detail ? `<div class="dnc-detail">${f.detail}</div>` : ''}<div class="dnc-detail dnc-state">读取中…</div></div>`).join('')}</div>`).join('')}
-    <p class="dnc-note">联动修改当前预设；长期保留请在酒馆保存预设。世界书开关会影响共用它的聊天。</p>
+    <div class="dnc-tabs" role="tablist" aria-label="设置分类"><button type="button" role="tab" id="dnc-tab-functional" aria-controls="dnc-functional" aria-selected="true" tabindex="0">功能</button><button type="button" role="tab" id="dnc-tab-personal" aria-controls="dnc-personal" aria-selected="false" tabindex="-1">个性化</button><button type="button" role="tab" id="dnc-tab-house" aria-controls="dnc-house" aria-selected="false" tabindex="-1">房规</button></div>
+    ${['functional','personal','house'].map(group => `<div id="dnc-${group}" role="tabpanel" aria-labelledby="dnc-tab-${group}" tabindex="0" ${group !== 'functional' ? 'hidden' : ''}>${features.filter(f => (f.group || 'functional') === group).map(f => `<div class="dnc-row" data-feature="${f.key}"><div class="dnc-line"><span class="dnc-label">${f.name}</span><div class="dnc-options" role="group" aria-label="${f.name}">${(f.key === 'opening' ? [['auto','自动'],['on','开'],['off','关']] : [['on','开'],['off','关']]).map(([v,t]) => `<button type="button" data-value="${v}" aria-pressed="false" disabled>${t}</button>`).join('')}</div></div>${f.detail ? `<div class="dnc-detail">${f.detail}</div>` : ''}<div class="dnc-detail dnc-state">读取中…</div></div>`).join('')}${group === 'house' ? `<div class="dnc-row"><label class="dnc-label" for="dnc-house-input">自定义房规</label><div class="dnc-detail">保存后供 AI 使用；清空并保存可停用。</div><textarea id="dnc-house-input" class="dnc-house-input" rows="6" placeholder="输入你们约定的房规…" disabled></textarea><div class="dnc-detail dnc-house-state" role="status"></div><div class="dnc-house-actions"><button type="button" class="dnc-house-revert" disabled>撤销修改</button><button type="button" class="dnc-house-save" disabled>保存房规</button></div></div>` : ''}</div>`).join('')}
+    <p class="dnc-note">预设开关需在酒馆保存预设才能长期保留。房规保存到当前主世界书，共用这本书的聊天也会生效。</p>
     <div class="dnc-status" role="status" aria-live="polite"></div>
     <button class="dnc-refresh" type="button">刷新状态</button>
     <button class="dnc-update" type="button">组件更新</button>
   </section>`;
   doc.body.append(root);
   const orb = root.querySelector('.dnc-orb'), panel = root.querySelector('.dnc-panel'), status = root.querySelector('.dnc-status');
+  const houseInput = root.querySelector('.dnc-house-input');
   const rowFor = key => root.querySelector('[data-feature="' + key + '"]');
   const isGenerating = () => generating || !!doc.getElementById('mes_stop')?.getClientRects().length;
   const currentBook = () => api('getCharWorldbookNames')('current').primary;
@@ -129,6 +139,11 @@
         button.setAttribute('aria-pressed', String(button.dataset.value === selected));
       }
     }
+    const rule = state && houseEntry(state.entries), dirty = !!houseDraft && houseInput.value !== houseDraft.text;
+    houseInput.disabled = locked;
+    root.querySelector('.dnc-house-save').disabled = locked || (!houseInput.value.trim() && !rule);
+    root.querySelector('.dnc-house-revert').disabled = locked || !dirty;
+    root.querySelector('.dnc-house-state').textContent = dirty ? '有未保存的修改' : !state ? '读取中…' : !rule ? '尚未保存房规' : rule.enabled && rule.content.trim() ? '已保存 · 启用中' : '已保存 · 已停用';
     root.querySelector('.dnc-refresh').disabled = writing;
     placePanel();
   }
@@ -139,10 +154,52 @@
     try {
       const next = await read();
       if (disposed || token !== serial) return;
+      if (!houseDraft || houseDraft.key !== next.key || houseDraft.book !== next.book || houseInput.value === houseDraft.text) {
+        const entry = houseEntry(next.entries);
+        houseInput.value = houseText(entry);
+        houseDraft = {key: next.key, book: next.book, text: houseInput.value, content: entry?.content};
+      }
       state = next; render();
     } catch (error) {
       if (disposed || token !== serial) return;
       state = null; status.textContent = error.message; render();
+    }
+  }
+  async function saveHouseRules() {
+    if (writing || !state || !houseDraft) return;
+    const start = state, draft = houseDraft, text = houseInput.value;
+    const enabled = !!text.trim(), content = enabled ? '<玩家自定义房规>\n' + text + '\n</玩家自定义房规>' : '';
+    writing = true; status.textContent = '正在保存房规…'; render();
+    try {
+      check(start);
+      const before = await read(); check(start);
+      const entry = houseEntry(before.entries);
+      if (entry?.content !== draft.content) throw Error('房规已在别处修改。请先复制当前输入，再点“撤销修改”载入最新内容');
+      if (entry) {
+        await api('updateWorldbookWith')(start.book, entries => {
+          check(start);
+          const live = entries.find(item => item.uid === entry.uid);
+          if (!live || live.content !== draft.content) throw Error('房规已变化，请重新载入后保存');
+          live.content = content; live.enabled = enabled;
+          return entries;
+        }, {render: 'debounced'});
+      } else if (enabled) {
+        await api('createWorldbookEntries')(start.book, [{name: HOUSE_NAME, content, enabled: true,
+          strategy: {type: 'constant', keys: [], keys_secondary: {logic: 'and_any', keys: []}, scan_depth: 'same_as_global'},
+          position: {type: 'at_depth', role: 'system', depth: 0, order: 90}, probability: 100,
+          recursion: {prevent_incoming: true, prevent_outgoing: true, delay_until: null},
+          effect: {sticky: null, cooldown: null, delay: null}}], {render: 'debounced'});
+      }
+      check(start);
+      const after = await read(); check(start);
+      const saved = houseEntry(after.entries);
+      if (saved?.content !== content || saved.enabled !== enabled) throw Error('保存后读回不一致，请刷新核对');
+      houseDraft = null; state = after;
+      status.textContent = enabled ? '自定义房规已保存并启用' : '自定义房规已清空并停用';
+    } catch (error) {
+      status.textContent = '未完成：' + error.message;
+    } finally {
+      writing = false; await refresh();
     }
   }
   async function setBook(start, changes, rollback = false) {
@@ -296,6 +353,9 @@
   });
   listen(root.querySelector('.dnc-close'), 'click', () => close(true));
   listen(root.querySelector('.dnc-refresh'), 'click', () => {status.textContent = ''; void refresh();});
+  listen(houseInput, 'input', () => {status.textContent = ''; render();});
+  listen(root.querySelector('.dnc-house-save'), 'click', () => void saveHouseRules());
+  listen(root.querySelector('.dnc-house-revert'), 'click', () => {houseDraft = null; status.textContent = ''; void refresh();});
   listen(root.querySelector('.dnc-update'), 'click', () => {
     if (host.__dndPrivateUpdates) host.__dndPrivateUpdates.open();
     else status.textContent = '更新脚本未启用，请检查卡内脚本。';
