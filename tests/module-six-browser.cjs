@@ -109,10 +109,10 @@ async function shot(name){const r=await send('Page.captureScreenshot',{format:'p
   // Default-off image preference, the actual correction button, and request failures.
   await check('__dndModuleRunner.getState().sendMapImage===false&&document.querySelector("[data-action=toggle-ai-image]").getAttribute("aria-pressed")==="false"','existing chat defaults to text-only correction');
   await check('(()=>{const r=document.querySelector("[data-action=toggle-ai-image]").getBoundingClientRect();return r.left>=0&&r.right<=innerWidth})()','image toggle is reachable at 390px');
-  await run(`context.chat=[{mes:'截图校准测试正文',is_user:false}];aiReply=JSON.stringify({currentRoomId:${JSON.stringify(room)},battleActive:false,units:[{id:'校准测试队员',att:0,init:17,hp:'7/20',pos:[10,10]}]})`);
+  await run(`context.chat=[{mes:'<thinking><content>推演假正文</content></thinking><content>截图校准测试正文</content><UpdateVariable>后台字段</UpdateVariable>',is_user:false}];aiReply=JSON.stringify({currentRoomId:${JSON.stringify(room)},battleActive:false,units:[{id:'校准测试队员',att:0,init:17,hp:'7/20',pos:[10,10]}]})`);
   await click('[data-action="ai-correct"]');
   await wait('document.querySelector("[data-dmr-legend-status]").textContent.includes("AI修正完成（仅文字）")');
-  await check('!Object.hasOwn(lastAiRequest,"image")&&lastAiRequest.user_input.includes("截图校准测试正文")&&lastAiRequest.user_input.includes("coordSystem")&&lastAiRequest.user_input.includes("battleState")','off sends recent story and current positions without any image payload');
+  await check('!Object.hasOwn(lastAiRequest,"image")&&!/推演假正文|后台字段/.test(lastAiRequest.user_input)&&lastAiRequest.user_input.includes("截图校准测试正文")&&lastAiRequest.user_input.includes("coordSystem")&&lastAiRequest.user_input.includes("battleState")','off sends recent story and current positions without any image payload');
   await check('lastAiRequest.ordered_prompts.includes("user_input")&&lastAiRequest.ordered_prompts[0].content.includes("本次未附截图")','text request does not claim the model received a screenshot');
   const callsBeforeToggle=await run('aiRequests.length'),writesBeforeToggle=await run('bookWrites.length');
   await click('[data-action="toggle-ai-image"]');
@@ -295,6 +295,44 @@ async function shot(name){const r=await send('Page.captureScreenshot',{format:'p
    await check(`(()=>{const text=roomPayload.characterLore.find(e=>e.uid===781499).content;return __dndModuleRunner.getBattleState().units.every(u=>text.includes(u.id+'('+u.pos.join(',')+' HP:'))})()`,'worldbook uses the same live positions as the visible encounter');
    await shot('酒庄二楼-房间落子');
   }
+  const customSelector = '[data-action="custom-field"]';
+  await run(`context.chat = Array.from({length:12}, (_,i)=>[{is_user:true,mes:'行动-'+(i+1)+'-结尾'}, {mes:'<thinking><content>隐藏推演</content></thinking><content>公开场景-'+(i+1)+'-结尾</content><UpdateVariable>后台资料</UpdateVariable>'}]).flat();
+    window.makeFieldReply=()=>JSON.stringify({terrain:['@map | title:山顶伏击 | size:180,120 | theme:forest','@path | road | 10,60 -> 170,60 | width:10 | label:东侧入口'],positions:__dndModuleRunner.getBattleState().units.map((u,i)=>({id:u.id,pos:[10+i%12*10,20+Math.floor(i/12)*10]}))});
+    window.beforeField=__dndModuleRunner.getBattleState().units.map(u=>({id:u.id,pos:u.pos,hp:u.hp,init:u.init,next:u.next}));aiReply=makeFieldReply();`);
+  if(await run('__dndModuleRunner.getState().sendMapImage')) await click('[data-action="toggle-ai-image"]');
+  await click(customSelector);
+  await wait('!!vars.dnd_module_state.battleOverride?.customField');
+  await check('!lastAiRequest.image&&lastAiRequest.user_input.includes("行动-3-结尾")&&lastAiRequest.user_input.includes("公开场景-12-结尾")&&!lastAiRequest.user_input.includes("公开场景-2-结尾")&&!/隐藏推演|后台资料/.test(lastAiRequest.user_input)','generation sends ten complete player and DM pairs and respects text-only preference');
+  await wait('paintedImages.some(i=>i.src.startsWith("data:image/svg+xml")&&decodeURIComponent(i.src).includes("东侧入口"))');
+  await check('beforeField.every(old=>{const u=__dndModuleRunner.getBattleState().units.find(u=>u.id===old.id);return u&&u.hp.cur===old.hp.cur&&u.init===old.init&&u.next===old.next})','new encounter renders model terrain with previous HP, initiative and actor');
+  await run('window.fieldBook={characterLore:[]};emit("world",fieldBook)');
+  await wait('fieldBook.characterLore.some(e=>e.content?.includes("山顶伏击")&&!e.content.includes("合法可行走落点白名单"))');
+  await run('localStorage.setItem("fixture-chat",JSON.stringify(context.chat))');
+  await send('Page.reload');
+  await wait('window.__dndModuleRunner?.getState().battleOverride?.customField');
+  await click('[data-dnd-module-btn="1"]');
+  await wait('document.querySelector("[data-action=custom-field]").textContent==="返回模组地图"');
+  await wait('paintedImages.some(i=>i.src.startsWith("data:image/svg+xml")&&decodeURIComponent(i.src).includes("东侧入口"))');
+  await check('__dndModuleRunner.getTacticalContextForAi().safeCells.length===0','reloading local encounter uses local coordinates');
+  await run(`const u=__dndModuleRunner.getBattleState().units[0];window.changedName=u.id;window.oldHp=u.hp.cur;context.chat.push({mes:'<content>向入口移动</content><battle-delta>\\n'+u.id+'|pos:75,50|hp:-1\\n</battle-delta>'});emit('message',context.chat.length-1)`);
+  await wait('__dndModuleRunner.getBattleState().units.some(u=>u.id===changedName&&u.hp.cur===oldHp-1&&u.pos.join(",")==="75,50")');
+  await click(customSelector);
+  await wait('!vars.dnd_module_state.battleOverride?.customField');
+  await check('__dndModuleRunner.getBattleState().units.find(u=>u.id===changedName).hp.cur===oldHp-1','return to official map retains later combat changes');
+  await click('[data-action="toggle-ai-image"]');
+  await wait('paintedImages.some(i=>i.src.includes(".webp"))');
+  await run('window.fieldCount=aiRequests.length;aiReply=JSON.stringify({terrain:["@map | size:100,80","@path | road | 0,30 -> 50,30"],positions:[]});window.oldOverride=JSON.stringify(vars.dnd_module_state.battleOverride)');
+  await click(customSelector);
+  await wait('document.querySelector("[data-dmr-legend-status]").textContent.includes("自定义战场操作失败")');
+  await check('aiRequests.length===fieldCount+1&&lastAiRequest.image?.[0].startsWith("data:image/jpeg")&&JSON.stringify(vars.dnd_module_state.battleOverride)===oldOverride','enabled custom generation sends module screenshot and rejected layout leaves the old battlefield intact');
+  await run(`window.goodLayout=JSON.stringify({terrain:['@map | title:第二次战场 | size:180,120','@prop | boulder | 90,60 | label:岩石'],positions:__dndModuleRunner.getBattleState().units.map((u,i)=>({id:u.id,pos:[15+i%12*10,25+Math.floor(i/12)*10]}))});aiReply=goodLayout;failVars=true`);
+  await click(customSelector);
+  await wait('document.querySelector("[data-dmr-legend-status]").textContent.includes("fixture save failure")');
+  await check('!__dndModuleRunner.getState().battleOverride?.customField&&JSON.stringify(vars.dnd_module_state.battleOverride)===oldOverride','failed custom battlefield save keeps the original view and state');
+  await click(customSelector);await wait('!!vars.dnd_module_state.battleOverride?.customField');
+  await run(`const runner=__dndModuleRunner;const state=runner.getState();const map=runner.getAdventure().maps.find(m=>m.id===state.currentMapId);const target=map.rooms.find(r=>r.id!==state.currentRoomId&&!r.isStoryNode);runner.movePartyToRoom(target.id,map.id)`);
+  await wait('!vars.dnd_module_state.battleOverride?.customField');
+  await check('!__dndModuleRunner.getBattleMapContext()?.title?.includes("第二次战场")&&__dndModuleRunner.getBattleState().units.some(u=>u.id===changedName&&u.hp.cur===oldHp-1)','moving to another room clears custom terrain and preserves the current roster');
   await check('errors.length===0','no browser script errors');
   console.log(JSON.stringify({passed:true,count:checks.length,checks},null,2));
  }finally{try{if(ws?.readyState===1)await send('Browser.close',{},null)}catch{}ws?.close();child?.kill();server.closeAllConnections();server.close();}
