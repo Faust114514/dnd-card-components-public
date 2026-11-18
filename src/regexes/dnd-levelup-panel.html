@@ -3756,7 +3756,7 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
           ids.push(classId);
           continue;
         }
-        const subclassId=normalizeSubclass(pickU(map?.[classId]||{},["子职业","subclass"],"")).id;
+        const subclassId=normalizeSubclass(pickU(map?.[classId]||{},["子职业","subclass"],""), classId).id;
         if((classId==="fighter"&&subclassId==="eldritch_knight")||(classId==="rogue"&&subclassId==="arcane_trickster")){
           ids.push(classId);
         }
@@ -3897,19 +3897,26 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
       }
       return {norm:"",label:String(raw||"未知")};
     }
-    function normalizeSubclass(raw){
+    function normalizeSubclass(raw, classId){
       const text=String(raw||"").trim();
-      const compact=text.toLowerCase().replace(/\s+/g,"");
-      if(!compact) return {id:"",label:"",classId:""};
-      for(const [id,meta] of Object.entries(SUBCLASS_LOOKUP)){
-        const plain=String(meta.label||"").trim();
-        const noSpace=plain.toLowerCase().replace(/\s+/g,"");
-        const cn=plain.split(/\s+/)[0];
-        if(compact===id || compact.includes(id) || compact===noSpace || compact.includes(noSpace) || (cn&&text.includes(cn))){
-          return {id,label:plain,classId:meta.classId};
-        }
+      const name=text.replace(/\s*\[[^\]]+\]\s*$/, "").trim().toLowerCase();
+      if(!name)return {id:"",label:text,classId:""};
+      if(Object.hasOwn(SUBCLASS_LOOKUP,name)&&(!classId||SUBCLASS_LOOKUP[name].classId===classId)){
+        return {id:name,...SUBCLASS_LOOKUP[name]};
       }
-      return {id:"",label:text,classId:""};
+      const candidates=Object.entries(SUBCLASS_LOOKUP).filter(([,sub])=>!classId||sub.classId===classId);
+      const exact=candidates.find(([,sub])=>{
+        const label=sub.label.toLowerCase();
+        const [chinese,...english]=label.split(/\s+/);
+        return name===label||name===chinese||name===english.join(" ");
+      });
+      // Some older saves decorate the label or ID. Only search within the owning class.
+      const compact=name.replace(/\s+/g,"");
+      const match=exact||candidates.find(([id,sub])=>{
+        const chinese=sub.label.split(/\s+/)[0];
+        return compact.includes(id)||text.includes(chinese);
+      });
+      return match ? {id:match[0],...match[1]} : {id:"",label:text,classId:""};
     }
     function subclassLabel(id,classNorm=state.classNorm){
       if(!id) return "";
@@ -4418,8 +4425,8 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
       total += toInt(classLevels?.wizard,0);
       total += Math.floor(toInt(classLevels?.paladin,0)/2);
       total += Math.floor(toInt(classLevels?.ranger,0)/2);
-      const fighterSub=normalizeSubclass(pickU(classDataMap?.fighter||{},["子职业","subclass"],"")).id;
-      const rogueSub=normalizeSubclass(pickU(classDataMap?.rogue||{},["子职业","subclass"],"")).id;
+      const fighterSub=normalizeSubclass(pickU(classDataMap?.fighter||{},["子职业","subclass"],""), 'fighter').id;
+      const rogueSub=normalizeSubclass(pickU(classDataMap?.rogue||{},["子职业","subclass"],""), 'rogue').id;
       if(fighterSub==="eldritch_knight") total += Math.floor(toInt(classLevels?.fighter,0)/3);
       if(rogueSub==="arcane_trickster") total += Math.floor(toInt(classLevels?.rogue,0)/3);
       return Math.max(0,total);
@@ -4692,7 +4699,7 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
     function getClassCasterView(classId, level, classDataMap){
       if(classId==="monk"&&arcanaSub("monk",{})?.id==="mystic_arts"&&level>=3){const picks=state.charObj?.奥术书选择||{};return {sourceNames:["术士"],cantrips:picks.秘术戏法||[],prepared:picks.秘术法术||[],spellNames:[...(picks.秘术戏法||[]),...(picks.秘术法术||[])],always:[],keyAbility:"wis",ownSlots:ARCANA.monkCasting[level].slots,preparedLimit:ARCANA.monkCasting[level].prepared};}
       const data=classDataMap?.[classId]||null;
-      const subclassId=normalizeSubclass(pickU(data||{},["子职业","subclass"],"")).id;
+      const subclassId=normalizeSubclass(pickU(data||{},["子职业","subclass"],""), classId).id;
       if(classId==="wizard"){
         const wd=data||getOrCreateWizardData(state.charObj);
         return {
@@ -4819,7 +4826,7 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
       const primaryClass=getPrimaryClass(state.classLevels,state.classNorm);
       const primaryLevel=toInt(state.classLevels?.[primaryClass],0);
       const primaryData=getClassDataMap(state.charObj,state.classLevels)[primaryClass]||null;
-      const primarySub=normalizeSubclass(pickU(primaryData||{},["子职业","subclass"],"")).id;
+      const primarySub=normalizeSubclass(pickU(primaryData||{},["子职业","subclass"],""), primaryClass).id;
       setByKnownKey(state.charObj,["职业","class"],formatClassLevels(state.classLevels),"职业");
       setByKnownKey(state.charObj,["子职业","subclass"],subclassLabel(primarySub,primaryClass),"子职业");
       setByKnownKey(state.charObj,["熟练加值","proficiencyBonus"],profBonus(state.level),"熟练加值");
@@ -5153,9 +5160,9 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
         const cantrips=buildSpellOptions(getClassSpellSourceNames(classNorm,safeLevel)[0]||def.spellList,{spellLevels:[0]}).slice(0,cantripLimit).map((spell)=>spell.name);
         setByKnownKey(classData,["戏法","cantrips"],cantrips,"戏法");
       }
-      const preparedLimit=getClassPreparedLimit(classNorm,safeLevel,normalizeSubclass(pickU(classData,["子职业","subclass"],"")).id,classData);
+      const preparedLimit=getClassPreparedLimit(classNorm,safeLevel,normalizeSubclass(pickU(classData,["子职业","subclass"],""), classNorm).id,classData);
       if(preparedLimit>0){
-        const maxSpellLevel=getClassMaxSpellLevel(classNorm,safeLevel,normalizeSubclass(pickU(classData,["子职业","subclass"],"")).id);
+        const maxSpellLevel=getClassMaxSpellLevel(classNorm,safeLevel,normalizeSubclass(pickU(classData,["子职业","subclass"],""), classNorm).id);
         const spells=buildSpellOptions(getClassSpellSourceNames(classNorm,safeLevel)[0]||def.spellList,{spellLevels:Array.from({length:maxSpellLevel},(_,i)=>i+1)}).slice(0,preparedLimit).map((spell)=>spell.name);
         setByKnownKey(classData,["已备法术","preparedSpells"],spells,"已备法术");
       }
@@ -5297,7 +5304,8 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
       const wizardData=toInt(classLevels.wizard,0)>0 ? getOrCreateWizardData(charObj) : null;
       const classDataMap=getClassDataMap(charObj,classLevels);
       const subSource=classDataMap[primaryClass] || (primaryClass==="wizard" ? wizardData : fighterData);
-      const sub=normalizeSubclass(pickU(charObj,["子职业","subclass"],pickU(subSource||{},["子职业","subclass"],""))).id;
+      const sub=normalizeSubclass(pickU(subSource||{},["子职业","subclass"],""), primaryClass).id
+        || normalizeSubclass(pickU(charObj,["子职业","subclass"],""), primaryClass).id;
       const charactersMeta=allIds.map((id)=>{
         const item=ensureCanonicalCharacter(unwrap(chars[id]), id);
         const itemLevel=toInt(pickU(item,["等级","level"],1),1);
@@ -5681,7 +5689,7 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
       const scholarSkill=pickU(wd,["学者专精","scholarSkill"],"");
       req.push({id:"hp_gain",kind:"hp_gain",label:"生命值增加方式",average:hpGain(6),hitDie:6,conMod:state.conMod});
 
-      let sub=normalizeSubclass(pickU(wd,["子职业","subclass"],state.classNorm==="wizard"?pickU(state.charObj,["子职业","subclass"],""):"")).id;
+      let sub=normalizeSubclass(pickU(wd,["子职业","subclass"],state.classNorm==="wizard"?pickU(state.charObj,["子职业","subclass"],""):""), 'wizard').id;
       if(to===3&&!sub){
         req.push({id:"wizard_subclass",kind:"single",label:"选择法师子职",rebuild:true,options:WIZARD_SUBCLASSES.map((s)=>({value:s.id,label:s.label}))});
         pending.wizard_subclass ||= WIZARD_SUBCLASSES[0].id;
@@ -5773,7 +5781,7 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
       const classData=state.classDataMap?.[classId]||getOrCreateClassData(state.charObj,classId);
       req.push({id:"hp_gain",kind:"hp_gain",label:"生命值增加方式",average:hpGain(def.hitDie),hitDie:def.hitDie,conMod:state.conMod});
 
-      let subclassId=normalizeSubclass(pickU(classData,["子职业","subclass"],"")).id;
+      let subclassId=normalizeSubclass(pickU(classData,["子职业","subclass"],""), classId).id;
       const subclassReqId=`${classId}_subclass`;
       if(to===def.subclassLevel && !subclassId && (def.subclasses||[]).length){
         req.push({id:subclassReqId,kind:"single",label:`选择${def.label}子职`,rebuild:true,options:def.subclasses.map((s)=>({value:s.id,label:s.label}))});
@@ -14116,7 +14124,7 @@ const subclassWizardAlways=getWizardAlwaysPrepared;
 getWizardAlwaysPrepared=function(level,id,data){return unique([...subclassWizardAlways(level,id,data),...subclassSpellNames('wizard',level,{...data,子职业:id})]);};
 function subclassSpellIdentity(classId,data,pending={}){
   const raw=pending[classId+'_subclass']||pickU(data||{},['子职业','subclass'],'')||'';
-  return normalizeSubclass(raw).id||raw;
+  return normalizeSubclass(raw, classId).id||raw;
 }
 function subclassSpellRows(classId,level,data,pending={}){
   const id=subclassSpellIdentity(classId,data,pending);
@@ -14231,14 +14239,37 @@ function subclassSpellApply(){
   }
   syncAllSpellcastingData();
   for(const [classId,level]of Object.entries(state.classLevels||{})){
-    for(const row of subclassSpellRows(classId,Number(level),state.classDataMap?.[classId])){
-      for(const name of row.names){
-        const spell=state.charObj.施法?.法术书?.[name];if(!spell)continue;
-        spell.来源=unique([...(String(spell.来源||'').split('；').filter(Boolean)),`${getClassLabel(classId)}·${row.label}：${subclassIsCantrip(name)?'附赠戏法':'始终准备'}，不占普通名额`]).join('；');
-        if(row.condition)spell.施放条件=row.condition;
-      }
+    const rows=subclassSpellRows(classId,Number(level),state.classDataMap?.[classId]);
+    markSubclassSpells(classId,rows,state.charObj.施法.法术书);
+  }
+}
+
+function markSubclassSpells(classId,rows,book){
+  for(const row of rows){
+    for(const name of row.names){
+      const spell=book[name];
+      if(!spell)continue;
+      const grant=getClassLabel(classId)+'·'+row.label+'：'+(subclassIsCantrip(name)?'附赠戏法':'始终准备')+'，不占普通名额';
+      spell.来源=unique([...String(spell.来源||'').split('；').filter(Boolean),grant]).join('；');
+      if(row.condition)spell.施放条件=row.condition;
     }
   }
+}
+
+function restoreShadowSpells(){
+  const data=state.classDataMap.sorcerer,level=state.classLevels.sorcerer;
+  const sub=subclassSpellIdentity('sorcerer',data);
+  if(sub!=='ravenloft_sorcerer_2'||level<3)return;
+  const rows=subclassSpellRows('sorcerer',level,data);
+  const names=rows.flatMap(row=>row.names);
+  const c=state.charObj;
+  c.施法||={};
+  const book=c.施法.法术书||={};
+  const missing=names.filter(name=>!book[name]);
+  Object.assign(book,buildSpellBookFromSources(missing,missing,['术士']));
+  for(const name of names)book[name].准备中='always';
+  markSubclassSpells('sorcerer',rows,book);
+  if(state.classNorm==='sorcerer')setByKnownKey(c,['子职业','subclass'],subclassLabel(sub,'sorcerer'),'子职业');
 }
 
 const GROWTH_SKILLS=['运动','特技','巧手','隐匿','奥秘','历史','调查','自然','宗教','驯兽','洞悉','医药','察觉','求生','欺瞒','威吓','表演','游说'];
@@ -14444,6 +14475,7 @@ function growthApply(){
     const book=ensureObjectField(ensureObjectField(c,['施法'],{},'施法'),['法术书'],{},'法术书');
     for(const [name,spell]of Object.entries(buildSpellBookFromSources(names,[],req.spellSources)))if(!book[name])book[name]=spell;
   }
+  if(growthMode==='config')restoreShadowSpells();
   growthMagicApply(plan,picks);
   const previousMode=growthMode;try{growthMode='config';growthConfigPlan({});}finally{growthMode=previousMode;}
   for(const [key,values]of Object.entries(c.成长选择)){const meta=growthMeta.get(key);if(meta&&['config','note','tool','mixed'].includes(meta.kind))growthApplyValue(meta.kind,values,meta.label,key);}
@@ -15102,7 +15134,8 @@ async function savePreparation(){
       const needWM=Math.max(0,rule.wm-masteries.length);
       if(needWM>0){ req.push({id:"wm_topup",kind:"multi",label:`选择武器精通（需新增 ${needWM} 项）`,count:needWM,options:WEAPON_DATA.filter(w=>!masteries.includes(w.name)).map(w=>({value:w.name,label:w.name,note:`精通：${w.mastery}`}))}); }
 
-      let sub=choice==="fighter" ? normalizeSubclass(pickU(state.charObj,["子职业","subclass"],pickU(state.fighterData||{},["子职业","subclass"],""))).id : "";
+      let sub=choice==="fighter" ? normalizeSubclass(pickU(state.fighterData||{},["子职业","subclass"],""), "fighter").id : "";
+      if(choice==="fighter" && !sub && state.classNorm==="fighter") sub=normalizeSubclass(pickU(state.charObj,["子职业","subclass"],""), "fighter").id;
       if(to===3&&!sub){ req.push({id:"fighter_subclass",kind:"single",label:"选择战士子职",rebuild:true,options:FIGHTER_SUBCLASSES.map(s=>({value:s.id,label:s.label}))}); }
       if(!sub&&pending.fighter_subclass) sub=String(pending.fighter_subclass);
       if(sub&&SUBCLASS_FEATURES[sub]&&SUBCLASS_FEATURES[sub][to]) gained.push(...SUBCLASS_FEATURES[sub][to]);
@@ -15664,8 +15697,8 @@ function featDuplicateCheck(name) {
       const totalLevel=Math.max(1,toInt(state.level,1));
       const primaryClass=getPrimaryClass(state.classLevels, state.classNorm);
       const primaryHitDie=getSupportedHitDie(primaryClass)||getSupportedHitDie(state.classNorm);
-      const fighterSub=normalizeSubclass(pickU(state.fighterData||{},["子职业","subclass"],"")).id;
-      const wizardSub=normalizeSubclass(pickU(state.wizardData||{},["子职业","subclass"],"")).id;
+      const fighterSub=normalizeSubclass(pickU(state.fighterData||{},["子职业","subclass"],""), 'fighter').id;
+      const wizardSub=normalizeSubclass(pickU(state.wizardData||{},["子职业","subclass"],""), 'wizard').id;
       const primarySub=primaryClass==="wizard"?wizardSub:fighterSub;
       if(state.classNorm==="wizard"){
         const wd=state.wizardData||getOrCreateWizardData(state.charObj);
@@ -15851,7 +15884,7 @@ function briefRestoreDescriptions(c,before={}){
     for(const [name,value]of Object.entries(group||{}))if(!Object.hasOwn(c.特性[bucket],name)&&activeSelectionTrait(c,name))c.特性[bucket][name]=JSON.parse(JSON.stringify(value));
   }
   const subs=typeof levelGrowthSubclasses==='function'?levelGrowthSubclasses(c,levels):{};
-  const allowed=r=>!r.subclassName||(typeof normalizeSubclass==='function'&&normalizeSubclass(r.subclassName).id===subs[r.classId]&&!!subs[r.classId]);
+  const allowed=r=>!r.subclassName||(typeof normalizeSubclass==='function'&&normalizeSubclass(r.subclassName, r.classId).id===subs[r.classId]&&!!subs[r.classId]);
   for(const row of BRIEF_RULE_BANK.features){
     if(!row.classId||!allowed(row)||Number(levels[row.classId]||0)<row.level||/子职|属性值提升|传奇恩惠/.test(row.key))continue;
     c.特性.职业[row.key]??={描述:'',来源:row.className+' '+row.level+'级'};
@@ -16046,7 +16079,7 @@ const LevelGrowth = (() => {
 let levelGrowthBefore=null,levelGrowthBusy=false;
 function levelGrowthSubclasses(c,levels){
   const map=getClassDataMap(c,levels);
-  return Object.fromEntries(Object.entries(map).map(([id,d])=>[id,normalizeSubclass(pickU(d||{},['子职业','subclass'],'')).id||pickU(d||{},['子职业','subclass'],'')]));
+  return Object.fromEntries(Object.entries(map).map(([id,d])=>[id,normalizeSubclass(pickU(d||{},['子职业','subclass'],''), id).id||pickU(d||{},['子职业','subclass'],'')]));
 }
 function levelGrowthFinish(){
   if(!levelGrowthBefore)return;
@@ -16106,7 +16139,7 @@ function levelGrowthPreview(selections={}){
         };
         const notifySaved=()=>{
           if(state.isDemo)return;
-          upgradeRecord.subclassLabel=subclassLabel(normalizeSubclass(pickU(state.classDataMap?.[planClass]||{},["子职业","subclass"],"")).id,planClass);
+          upgradeRecord.subclassLabel=subclassLabel(normalizeSubclass(pickU(state.classDataMap?.[planClass]||{},["子职业","subclass"],""), planClass).id,planClass);
           window.parent.postMessage({source:'dnd-levelup-panel',type:'upgrade_saved',payload:upgradeRecord},window.parent.location.origin);
         };
         const gain=Number.isFinite(selections.hp_gain?.total)?selections.hp_gain.total:state.plan.hpGain;
@@ -16114,7 +16147,7 @@ function levelGrowthPreview(selections={}){
         // Creator saves can contain only the combined spell book; grants remain separate.
         for(const [classId, data] of Object.entries(state.classDataMap)){
           if(classId==="wizard"){setByKnownKey(data,["戏法","cantrips"],getMergedClassSpellState(classId,["法师"],data,state.classDataMap).cantrips,"戏法");continue;}
-          const sub=normalizeSubclass(pickU(data,["子职业","subclass"],"")).id;
+          const sub=normalizeSubclass(pickU(data,["子职业","subclass"],""), classId).id;
           const thirdCaster=(classId==="fighter"&&sub==="eldritch_knight")||(classId==="rogue"&&sub==="arcane_trickster");
           const sources=thirdCaster ? ["法师"] : getClassSpellSourceNames(classId,state.classLevels[classId]);
           if(!sources.length) continue;
@@ -16140,7 +16173,7 @@ function levelGrowthPreview(selections={}){
 
         if(planClass==="wizard"){
           state.wizardData=state.wizardData||getOrCreateWizardData(state.charObj);
-          let wizardSubclass=normalizeSubclass(pickU(state.wizardData,["子职业","subclass"],"")).id;
+          let wizardSubclass=normalizeSubclass(pickU(state.wizardData,["子职业","subclass"],""), 'wizard').id;
           if(selections.wizard_subclass){
             wizardSubclass=selections.wizard_subclass;
             const label=subclassLabel(wizardSubclass,"wizard");
@@ -16199,7 +16232,7 @@ function levelGrowthPreview(selections={}){
           syncGlobalCharacterState();
           state.classNorm=getPrimaryClass(state.classLevels, planClass)||planClass;
           state.hitDie=getSupportedHitDie(state.classNorm)||state.hitDie;
-          state.subclassId=normalizeSubclass(pickU(state.classDataMap?.[state.classNorm]||{},["子职业","subclass"],"")).id;
+          state.subclassId=normalizeSubclass(pickU(state.classDataMap?.[state.classNorm]||{},["子职业","subclass"],""), state.classNorm).id;
 
           if(state.isDemo){
             localMockVars.stat_data=state.statData;
@@ -16215,7 +16248,7 @@ function levelGrowthPreview(selections={}){
 
         if(planClass==="fighter"){
         state.fighterData=state.fighterData||getOrCreateFighterData(state.charObj);
-        let fighterSubclass=normalizeSubclass(pickU(state.fighterData,["子职业","subclass"],"")).id;
+        let fighterSubclass=normalizeSubclass(pickU(state.fighterData,["子职业","subclass"],""), 'fighter').id;
         if(selections.fighter_subclass){ fighterSubclass=selections.fighter_subclass; const label=subclassLabel(fighterSubclass); setByKnownKey(state.fighterData,["子职业","subclass"],label,"子职业"); }
         if(selections.init_style) pushUnique(state.fighterData,["战斗风格","fightingStyles"],[selections.init_style],"战斗风格");
         if(selections.champion_style) pushUnique(state.fighterData,["战斗风格","fightingStyles"],[selections.champion_style],"战斗风格");
@@ -16251,7 +16284,7 @@ function levelGrowthPreview(selections={}){
         syncGlobalCharacterState();
         state.classNorm=getPrimaryClass(state.classLevels, planClass)||planClass;
         state.hitDie=getSupportedHitDie(state.classNorm)||state.hitDie;
-        state.subclassId=normalizeSubclass(pickU(state.classDataMap?.[state.classNorm]||{},["子职业","subclass"],"")).id;
+        state.subclassId=normalizeSubclass(pickU(state.classDataMap?.[state.classNorm]||{},["子职业","subclass"],""), state.classNorm).id;
 
         if(state.isDemo){
           localMockVars.stat_data=state.statData;
@@ -16320,7 +16353,7 @@ function levelGrowthPreview(selections={}){
           const key=`warlock_mystic_${levelReq}`;
           if(Array.isArray(selections[key])&&selections[key].length) pushUnique(classData,["玄奥秘法","mysticArcanum"],selections[key],"玄奥秘法");
         }
-        const subclassId=normalizeSubclass(pickU(classData,["子职业","subclass"],"")).id;
+        const subclassId=normalizeSubclass(pickU(classData,["子职业","subclass"],""), planClass).id;
         if(planClass==="rogue"&&subclassId==="arcane_trickster"&&classTo>=3){
           pushUnique(classData,["戏法","cantrips"],["法师之手"],"戏法");
         }
@@ -16342,7 +16375,7 @@ function levelGrowthPreview(selections={}){
         syncGlobalCharacterState();
         state.classNorm=getPrimaryClass(state.classLevels, planClass)||planClass;
         state.hitDie=getSupportedHitDie(state.classNorm)||state.hitDie;
-        state.subclassId=normalizeSubclass(pickU(state.classDataMap?.[state.classNorm]||{},["子职业","subclass"],"")).id;
+        state.subclassId=normalizeSubclass(pickU(state.classDataMap?.[state.classNorm]||{},["子职业","subclass"],""), state.classNorm).id;
 
         if(state.isDemo){
           localMockVars.stat_data=state.statData;

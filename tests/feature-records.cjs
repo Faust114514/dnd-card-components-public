@@ -54,6 +54,26 @@ for(const [cls,order,field,key,expected]of [['牧师','奇术使','divineOrder',
  creator.context.cls=cls;creator.context.order=order;creator.context.field=field;creator.context.key=key;creator.context.expected=expected;
  check(creator.run(`(()=>{creatorFixture('矮人',cls);state[field]=order;const c=buildMvuCharacterSheet();const data=c.职业详情.classData||c.职业详情.职业数据;return data[key][field]===expected&&Object.values(c.特性.职业).some(v=>v.描述.includes('已选：'+order));})()`),cls+' creator stores chosen order and displays it');
 }
+for(const {classId,id,label} of read('Object.entries(CLASS_DEFS).flatMap(([classId,def])=>def.subclasses.map(s=>({classId,id:s.id,label:s.label})))')){
+ p.context.subCase={classId,id,label};
+ check(p.run('normalizeSubclass(subCase.label,subCase.classId).id===subCase.id&&normalizeSubclass(subCase.id,subCase.classId).id===subCase.id'),classId+' resolves its saved subclass label and ID: '+id);
+}
+p.run(`window.shadowLabel=subclassLabel('ravenloft_sorcerer_2','sorcerer');
+ window.shadowNames=['灾祸术','致伤术','黑暗术','行动无踪','哈达之欲','回避侦测'];`);
+check(p.run("normalizeSubclass('Shadow Sorcery','sorcerer').id==='ravenloft_sorcerer_2'&&normalizeSubclass('暗影武者','monk').id==='shadow'&&!normalizeSubclass('暗影武者','sorcerer').id"),'shadow sorcery and shadow monk remain distinct');
+for(const [level,count] of [[2,0],[3,4],[5,6],[6,6],[7,8],[9,10],[20,10]]){
+ p.context.shadowLevel=level;
+ check(p.run("subclassSpellNames('sorcerer',shadowLevel,{子职业:shadowLabel}).length")===count,'Shadow Spells at sorcerer level '+level);
+}
+p.run(`var oldShadow=cantripFixture('sorcerer',5,shadowLabel);oldShadow.子职业='暗影武者';
+ oldShadow.施法.法术书.黑暗术={描述:'手改黑暗术',准备中:false,标签:'保留',来源:'自选'};
+ state.statData.角色列表.测试=oldShadow;Object.assign(state,extractCharacter(state.statData));
+ restoreShadowSpells();restoreShadowSpells();`);
+check(p.run("state.subclassId==='ravenloft_sorcerer_2'&&oldShadow.子职业===shadowLabel&&shadowNames.every(n=>oldShadow.施法.法术书[n]?.准备中==='always')"),'contradictory legacy summary is corrected and all six grants restored');
+check(p.run("oldShadow.施法.法术书.黑暗术.描述==='手改黑暗术'&&oldShadow.施法.法术书.黑暗术.标签==='保留'&&oldShadow.施法.法术书.黑暗术.来源==='自选；术士·幽影术法：始终准备，不占普通名额'"),'repeat recovery preserves a custom spell and its sources');
+p.run(`var mixed=cantripFixture('monk',8,'shadow');state.classLevels.sorcerer=3;
+ state.classDataMap=getClassDataMap(mixed,state.classLevels);state.classDataMap.sorcerer.子职业=shadowLabel;restoreShadowSpells();`);
+check(p.run("mixed.子职业==='shadow'&&shadowNames.slice(0,4).every(n=>mixed.施法.法术书[n]?.准备中==='always')&&!mixed.施法.法术书.哈达之欲"),'multiclass recovery uses sorcerer levels and retains the primary monk subclass');
 const catalogue=read(`CLASS_ID_ORDER.map(id=>({id,subs:(id==='wizard'?WIZARD_SUBCLASSES:id==='fighter'?FIGHTER_SUBCLASSES:CLASS_DEFS[id]?.subclasses||[]).map(s=>s.id)}))`);
 let combinations=0;
 for(const {id,subs}of catalogue)for(const sub of ['',...subs])for(let level=sub?3:1;level<=20;level++){
