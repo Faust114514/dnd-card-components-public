@@ -21,6 +21,7 @@
     {key: 'combat', name: '战斗检查', uid: 781428, tag: '战斗准则', prompt: 'dnd-cot-combat-v01'},
     {key: 'opening', name: '开团流程', uid: 5, tag: '开局流程'},
     {key: 'dnj', name: 'DNJ 风格', group: 'personal', uid: 8, tag: 'DNJ风格规则'},
+    {key: 'advancement', name: '升级方式', group: 'house', uid: 781427, tag: 'XP规则', detail: '仅当前聊天；切换保留等级和累计经验。'},
     {key: 'partyxp', name: '经验只分玩家队伍', group: 'house', rules: [], prompt: 'dnd-house-party-xp-v01', detail: '协力 NPC 不分经验；不增加奖励总额。'},
     {key: 'nameStyle', name: '适当美化', group: 'personal', rules: [], prompt: 'dnd-style-names-v01', detail: '术语沿用原中英样式、配色自由；画外说明自由美化，不限次数。'},
     {key: 'sceneStyle', name: '场景小巧思', group: 'personal', rules: [], prompt: 'ab695962-b420-4731-b14c-3f6860909fd9', marker: '<DND场景小巧思>', detail: '实际阅读菜单、任务单等物件时自由美化，不限次数。'},
@@ -71,10 +72,10 @@
     <svg viewBox="0 0 32 32" fill="none" stroke="#e2c58b" stroke-width="1.4" aria-hidden="true"><path d="M16 2 29 10v13L16 30 3 23V10Z M16 2 9 20h14L16 2M3 10l6 10-6 3m26-13-6 10 6 3M9 20l7 10 7-10M3 10h26"/></svg>
   </button>
   <section class="dnc-panel" id="dnc-panel" role="dialog" aria-labelledby="dnc-title" hidden>
-    <div class="dnc-head"><div><div class="dnc-version">DND · VF.0.6.16</div><h2 id="dnc-title">冒险设置</h2></div><button class="dnc-close" type="button" aria-label="关闭面板">×</button></div>
+    <div class="dnc-head"><div><div class="dnc-version">DND · VF.0.6.17</div><h2 id="dnc-title">冒险设置</h2></div><button class="dnc-close" type="button" aria-label="关闭面板">×</button></div>
     <div class="dnc-badge"></div>
     <div class="dnc-tabs" role="tablist" aria-label="设置分类"><button type="button" role="tab" id="dnc-tab-functional" aria-controls="dnc-functional" aria-selected="true" tabindex="0">功能</button><button type="button" role="tab" id="dnc-tab-personal" aria-controls="dnc-personal" aria-selected="false" tabindex="-1">个性化</button><button type="button" role="tab" id="dnc-tab-house" aria-controls="dnc-house" aria-selected="false" tabindex="-1">房规</button></div>
-    ${['functional','personal','house'].map(group => `<div id="dnc-${group}" role="tabpanel" aria-labelledby="dnc-tab-${group}" tabindex="0" ${group !== 'functional' ? 'hidden' : ''}>${features.filter(f => (f.group || 'functional') === group).map(f => `<div class="dnc-row" data-feature="${f.key}"><div class="dnc-line"><span class="dnc-label">${f.name}</span><div class="dnc-options" role="group" aria-label="${f.name}">${(f.key === 'opening' ? [['auto','自动'],['on','开'],['off','关']] : [['on','开'],['off','关']]).map(([v,t]) => `<button type="button" data-value="${v}" aria-pressed="false" disabled>${t}</button>`).join('')}</div></div>${f.detail ? `<div class="dnc-detail">${f.detail}</div>` : ''}<div class="dnc-detail dnc-state">读取中…</div></div>`).join('')}${group === 'house' ? `<div class="dnc-row"><label class="dnc-label" for="dnc-house-input">自定义房规</label><div class="dnc-detail">保存后供 AI 使用；清空并保存可停用。</div><textarea id="dnc-house-input" class="dnc-house-input" rows="6" placeholder="输入你们约定的房规…" disabled></textarea><div class="dnc-detail dnc-house-state" role="status"></div><div class="dnc-house-actions"><button type="button" class="dnc-house-revert" disabled>撤销修改</button><button type="button" class="dnc-house-save" disabled>保存房规</button></div></div>` : ''}</div>`).join('')}
+    ${['functional','personal','house'].map(group => `<div id="dnc-${group}" role="tabpanel" aria-labelledby="dnc-tab-${group}" tabindex="0" ${group !== 'functional' ? 'hidden' : ''}>${features.filter(f => (f.group || 'functional') === group).map(f => `<div class="dnc-row" data-feature="${f.key}"><div class="dnc-line"><span class="dnc-label">${f.name}</span><div class="dnc-options" role="group" aria-label="${f.name}">${(f.key === 'advancement' ? [['XP','XP'],['里程碑','里程碑']] : f.key === 'opening' ? [['auto','自动'],['on','开'],['off','关']] : [['on','开'],['off','关']]).map(([v,t]) => `<button type="button" data-value="${v}" aria-pressed="false" disabled>${t}</button>`).join('')}</div></div>${f.detail ? `<div class="dnc-detail">${f.detail}</div>` : ''}<div class="dnc-detail dnc-state">读取中…</div></div>`).join('')}${group === 'house' ? `<div class="dnc-row"><label class="dnc-label" for="dnc-house-input">自定义房规</label><div class="dnc-detail">保存后供 AI 使用；清空并保存可停用。</div><textarea id="dnc-house-input" class="dnc-house-input" rows="6" placeholder="输入你们约定的房规…" disabled></textarea><div class="dnc-detail dnc-house-state" role="status"></div><div class="dnc-house-actions"><button type="button" class="dnc-house-revert" disabled>撤销修改</button><button type="button" class="dnc-house-save" disabled>保存房规</button></div></div>` : ''}</div>`).join('')}
     <p class="dnc-note">预设开关需在酒馆保存预设才能长期保留。房规保存到当前主世界书，共用这本书的聊天也会生效。</p>
     <div class="dnc-status" role="status" aria-live="polite"></div>
     <button class="dnc-refresh" type="button">刷新状态</button>
@@ -107,10 +108,17 @@
     for (const f of features) {
       const row = rowFor(f.key), entries = (f.rules || [f]).map(rule => state && entryFor(state.entries, rule)), entry = entries[0], prompt = state?.preset && f.prompt ? promptFor(state.preset, f) : null;
       let detail = '', selected = null, unavailable = entries.some(e => !e), warning = false;
-      if (f.rules?.length === 0) {
+      if (f.key === 'advancement') {
+        unavailable = !entry?.enabled || !entry.content.includes('{{getvar::dnd_advancement_mode}}');
+        selected = state?.vars.dnd_advancement_mode === '里程碑' ? '里程碑' : 'XP';
+        detail = unavailable ? '请先更新并启用主世界书的 XP规则' : selected === '里程碑' ? '完成约定节点后提示升级，不结算经验。' : '累计经验达到门槛后提示升级。';
+      } else if (f.rules?.length === 0) {
         unavailable = !prompt;
         selected = prompt ? (prompt.enabled ? 'on' : 'off') : null;
         detail = !state?.preset ? '需使用配套浮士德预设' : !prompt ? '请导入 vf.0.4.15 配套预设或合并对应条目' : '预设 ' + (prompt.enabled ? '开' : '关');
+        if (f.key === 'partyxp' && state?.vars.dnd_advancement_mode === '里程碑') {
+          unavailable = true; detail = '里程碑模式不分经验，保留原房规选择。';
+        }
       } else if (unavailable) detail = '未找到对应标签条目';
       else if (f.key === 'opening') {
         selected = state.vars[STORE]?.mode || 'off';
@@ -233,6 +241,14 @@
       before = await read(); check(start);
       const rules = f.rules || [f], entries = rules.map(rule => entryFor(before.entries, rule));
       if (entries.some(e => !e)) throw Error('没有找到对应世界书条目');
+      if (f.key === 'advancement') {
+        if (!entries[0].enabled || !entries[0].content.includes('{{getvar::dnd_advancement_mode}}')) throw Error('需更新并启用 XP规则');
+        await api('updateVariablesWith')(vars => {check(start); return {...vars, dnd_advancement_mode: value};}, {type: 'chat'});
+        check(start);
+        host.dispatchEvent(new host.CustomEvent('dnd-advancement-mode', {detail: value}));
+        status.textContent = '本聊天已选择' + value + '升级';
+        return;
+      }
       if (!rules.length && !before.preset) throw Error('需使用配套浮士德预设');
       if (f.key === 'opening') {
         if (typeof host.__dndDmPersonas?.refreshOpeningFlow !== 'function' || host.__dndDmPersonas.openingFlowBook !== start.book) throw Error('开团脚本缺失或世界书不匹配');

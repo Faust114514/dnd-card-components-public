@@ -136,7 +136,7 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
 }
 
 function planDndWorldbook(book, patches, kept = [], additions = []) {
-  const allowed = new Set([18, 643316, 781421, 12, 207976, 6, 781420, 2, 781426]);
+  const allowed = new Set([18, 643316, 781421, 12, 207976, 6, 781420, 2, 781426, 1, 10, 781427]);
   const plan = patches.map(patch => {
     if (!allowed.delete(patch.uid) || typeof patch.previous !== 'string' || typeof patch.content !== 'string' || !patch.content.trim()) throw Error('世界书更新条目无效');
     const entry = book.entries[patch.uid];
@@ -273,6 +273,11 @@ function dndVersionIsNewer(next, current) {
     const name = api('getCharWorldbookNames')('current').primary;
     if (!name) throw Error('当前卡尚未绑定主世界书');
     const patches = JSON.parse(await github(candidate.worldbook_path, candidate.version)); guard(start);
+    if (candidate.worldbook_advancement_path) {
+      if (candidate.worldbook_advancement_path !== 'src/worldbook/升级模式.json') throw Error('升级规则路径无效');
+      const progression = JSON.parse(await github(candidate.worldbook_advancement_path, candidate.version)); guard(start);
+      patches.push(...progression);
+    }
     let additions = [];
     if (candidate.worldbook_additions_path) {
       if (candidate.worldbook_additions_path !== 'src/worldbook/长途旅行规则.json') throw Error('新增世界书路径无效');

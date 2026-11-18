@@ -2388,6 +2388,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
 
                     <details class="text-xs text-gray-400"><summary>先攻计算明细</summary><div id="initiative-breakdown" class="whitespace-pre-wrap mt-1"></div></details>
                     <div id="experience-container"></div>
+                    <div id="milestone-progress" hidden>里程碑升级 · 达成约定节点后升级</div>
                     <div class="space-y-3 mt-auto">
                         <div id="hitdice-container"></div>
                         <div id="deathsaves-container" class="bg-gray-800 p-2 rounded-md"></div>
@@ -2914,6 +2915,14 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
             let characterData = {}; 
             let allCharacters = {}; 
             let activeCharacterName = null;
+            function showAdvancementMode(mode) {
+                const milestone = mode === '里程碑';
+                document.getElementById('experience-container').hidden = milestone;
+                document.getElementById('milestone-progress').hidden = !milestone;
+            }
+            const onAdvancement = event => showAdvancementMode(event.detail);
+            window.top.addEventListener('dnd-advancement-mode', onAdvancement);
+            window.addEventListener('pagehide', () => window.top.removeEventListener('dnd-advancement-mode', onAdvancement), {once:true});
             let characterOrder = [];
             let portraitDrag = null;
             let suppressPortraitClick = false;
@@ -4384,6 +4393,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     try {
                         const chatVars = await window.getVariables({ type: 'message' }) || {};
                         const preferences = await window.getVariables({ type: 'chat' }) || {};
+                        showAdvancementMode(preferences.dnd_advancement_mode);
                         characterOrder = Array.isArray(preferences.dnd_portrait_order) ? preferences.dnd_portrait_order : [];
                         const stat_data = unwrapVariableValue(MvuLite.readRoot(chatVars)) || {};
                         const rawCharacters = stripExtensibleArtifacts(unwrapVariableValue(stat_data.角色列表) || {});
@@ -6957,7 +6967,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
 
             function toggleEditMode() {
                 const experienceInput = document.getElementById('edit-experience');
-                if (isEditing && experienceInput && !experienceInput.reportValidity()) return;
+                if (isEditing && !document.getElementById('experience-container').hidden && experienceInput && !experienceInput.reportValidity()) return;
                 isEditing = !isEditing;
                 if (!isEditing) { saveEdits(); }
                 isEditingSpellSlots = false;
@@ -6994,7 +7004,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                 if (classInput) characterData.class = classInput.value;
                 characterData.level = getNumber('edit-level', characterData.level || 1);
                 const experienceInput = getInput('edit-experience');
-                if (experienceInput && experienceInput.checkValidity() && experienceInput.value !== '' && experienceInput.value !== String(characterData.experience ?? '')) {
+                if (!document.getElementById('experience-container').hidden && experienceInput && experienceInput.checkValidity() && experienceInput.value !== '' && experienceInput.value !== String(characterData.experience ?? '')) {
                     characterData.experience = experienceInput.valueAsNumber;
                 }
                 const walkSpeedInput = getNumber('edit-speed-walk', getNumber('edit-speed', characterData.speed || 30));

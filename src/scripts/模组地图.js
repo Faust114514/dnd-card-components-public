@@ -2,11 +2,13 @@
 function createModuleRunnerCore(options = {}) {
   const BASE_URL = options.baseUrl || 'https://5e.kiwee.top';
 
+  const ADVANCEMENT_TITLE_RE = /^(?:角色(?:等级|升级|成长|进阶|提升)|经验值?奖励|(?:升级)?里程碑|Character (?:Advancement|Levels?)|Level Advancement|Milestones?|Experience (?:Points|Awards))$/i;
+  const isAdvancement = node => [node.name, node.ENG_name].some(name => ADVANCEMENT_TITLE_RE.test(String(name || '').trim()));
   const META_TITLE_RE = /^(?:运作冒险|比例和方格|罗盘玫瑰|扮演与激励|使用魔法物品|冒险模组测试员|制作组|地图|角色等级|经验值奖励|Running the Adventure|Scale and Grid|Compass Rose|Roleplaying and Inspiration|Maps|Character Advancement)$/i;
   const META_TEXT_RE = /本书内容为地下城主而设|与本书配套的另一本小册子|本冒险中出现的地图仅供地下城主查看|在这本书的页边空白处|就像奇幻小说或电影一样，冒险发生在一个更广阔的世界中|在国度的大道与河流上，旅行着吟游诗人|本系列中的每个角色都有两个个性特点|当玩家扮演负面个性特点或屈服于牵挂|查阅附录\s*B\s*中的.*资料卡。由于.*正在躲藏，你需要知道|使用规则书中的先攻规则来决定谁第一/;
 
   function isBoilerplateTitle(title) {
-    return META_TITLE_RE.test(String(title || '').trim());
+    return META_TITLE_RE.test(String(title || '').trim()) || ADVANCEMENT_TITLE_RE.test(String(title || '').trim());
   }
 
   function isBoilerplateParagraph(text) {
@@ -299,17 +301,22 @@ function createModuleRunnerCore(options = {}) {
     const sections = rawJson?.adventureData?.[0]?.data || rawJson?.data || [];
     const nodeById = new Map();
 
-    function indexTree(node, path = []) {
+    const advancement = sections.map(() => []);
+    function indexTree(node, path, notes) {
       if (!node || typeof node !== 'object') return;
       const curPath = node.name ? [...path, node.name] : path;
+      if (isAdvancement(node)) {
+        const body = renderEntriesToText({...node, name: ''});
+        if (body) notes.push(curPath.join(' / ') + '：' + body);
+      }
       if (node.id) {
         nodeById.set(node.id, { id: node.id, name: node.name || '', ENG_name: node.ENG_name || '', path: curPath, node });
       }
       if (Array.isArray(node.entries)) {
-        node.entries.forEach(c => indexTree(c, curPath));
+        node.entries.forEach(c => indexTree(c, curPath, notes));
       }
     }
-    sections.forEach(sec => indexTree(sec, []));
+    sections.forEach((sec, i) => indexTree(sec, [], advancement[i]));
 
     // Extract global campaign foundation from Introduction (Sec 0) if it is an intro section
     const campaignBaseParts = [];
@@ -351,6 +358,7 @@ function createModuleRunnerCore(options = {}) {
         name: sec.name || `第 ${secIdx + 1} 章`,
         ENG_name: sec.ENG_name || '',
         isIntro: secIdx === 0 && isFirstSecIntro,
+        advancement: advancement[secIdx].join('\n'),
         summary: chapIntro.slice(0, 4).join('\n'),
       });
 
@@ -796,6 +804,9 @@ function createModuleRunnerCore(options = {}) {
     if (chapter && !chapter.isIntro && chapter.summary) {
       baseBlocks.push(`【当前章节（${chapter.name}）提要】\n${chapter.summary}`);
     }
+    const intro = compiledAdv.chapters.find(c => c.isIntro);
+    const advancement = [intro !== chapter && intro?.advancement, chapter?.advancement].filter(Boolean);
+    if (advancement.length) baseBlocks.push('【DM升级参考：按当前升级模式使用；推荐等级不是已达成节点，不向玩家预告】\n' + advancement.join('\n'));
     if (map?.generalNotes) {
       baseBlocks.push(`【当前场景（${map.title}）通用特征与NPC】\n${map.generalNotes}`);
     }

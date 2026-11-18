@@ -20,6 +20,10 @@ async function runScenarios(){
  })()`);
  await navigate('/status');await wait("document.getElementById('char-name').textContent==='译名测试'");
  await click('#collapse-toggle-btn');
+ await run("window.dispatchEvent(new CustomEvent('dnd-advancement-mode',{detail:'里程碑'}))");
+ check(await run("document.getElementById('experience-container').hidden && !document.getElementById('milestone-progress').hidden"),'milestone hides the XP threshold and shows advancement rule on the open sheet');
+ await run("window.dispatchEvent(new CustomEvent('dnd-advancement-mode',{detail:'XP'}))");
+ check(await run("!document.getElementById('experience-container').hidden && document.getElementById('char-experience').textContent==='14,937'"),'XP restores the saved total on the open sheet');
  await run(`window.restoreOldNames=()=>{
   for(const type of ['chat','message']){
    const v=getVariables({type});

@@ -15,6 +15,11 @@ const books={'自定义书名':[{uid:12,name:'玩模组打开',enabled:false,con
 const api=name=>({getCharWorldbookNames:()=>({primary:bound}),getWorldbookNames:()=>Object.keys(books),getWorldbook:async name=>structuredClone(books[name]),updateWorldbookWith:async(name,fn)=>{books[name]=await fn(structuredClone(books[name]));writes.push(name);return books[name];}}[name]);
 const sync=c.createModuleRunnerSync(core,{},api);
 (async()=>{
+ const raw={data:[{name:'引言',entries:[{name:'角色等级',entries:['推荐等级不是升级条件']}]},{name:'第一章',entries:[{name:'结局',entries:[{name:'角色成长',ENG_name:'Character Advancement',entries:['归还印章后升至三级']}]},{id:'hall',name:'大厅',entries:['石门。']}]},{name:'第二章',entries:[{name:'里程碑',entries:['未来章节秘密']}] }]};
+ const compiled=core.compileAdventureData('fixture',{name:'回归模组'},raw);
+ const active={...compiled,maps:[{...adv.maps[0],chapterIndex:1}]};
+ const notes=core.buildModuleWorldbookPrompt(active,state,{});
+ check(notes.includes('推荐等级不是升级条件')&&notes.includes('归还印章后升至三级')&&!notes.includes('未来章节秘密'),'advancement passes introductory and current chapter notes, not later chapters');
  const prompt=core.buildModuleWorldbookPrompt(adv,state,{});
  check(prompt.includes('入口资料')&&prompt.includes('大厅秘密')&&prompt.includes('dnd-map'),'current and lookahead room data and progression protocol included');
  check(core.buildModuleWorldbookPrompt(adv,{...state,enabled:false},{})==='','disabled module injects no room data');

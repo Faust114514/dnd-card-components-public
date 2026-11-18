@@ -38,6 +38,7 @@ assert latest['worldbook_path'] == 'src/worldbook/updates.json'
 patches = json.loads((ROOT / latest['worldbook_path']).read_bytes())
 assert [p['uid'] for p in patches] == [18, 643316, 781421, 12, 207976, 6, 781420, 2, 781426]
 assert all(isinstance(p['previous'], str) and isinstance(p['content'], str) and p['content'].strip() for p in patches)
+assert [p['uid'] for p in json.loads((ROOT / latest['worldbook_advancement_path']).read_bytes())] == [781427, 1, 10]
 assert latest['worldbook_additions_path'] == 'src/worldbook/长途旅行规则.json'
 additions = json.loads((ROOT / latest['worldbook_additions_path']).read_bytes())['entries']
 assert list(additions) == ['781430']

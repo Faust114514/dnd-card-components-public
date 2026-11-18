@@ -9,6 +9,7 @@ window.errors=[];window.writes=[];window.presetWrites=0;window.variableWrites=0;
 addEventListener('error',e=>errors.push(e.message));addEventListener('unhandledrejection',e=>errors.push(String(e.reason)));
 window.book='测试主书';window.presetName='【DND】浮士德预设v1.5';
 window.books=JSON.parse(localStorage.getItem('books')||'null')||{'测试主书':[
+ {uid:781427,content:'<XP规则>{{getvar::dnd_advancement_mode}}</XP规则>',enabled:true},
  {uid:12,content:'<模组主持规则>合成</模组主持规则>',enabled:false},
  {uid:781428,content:'<战斗准则>合成</战斗准则>',enabled:false},
  {uid:8,content:'<DNJ风格规则>合成</DNJ风格规则>',enabled:true},
@@ -140,6 +141,14 @@ async function saved(){await wait(`${status}.includes('自定义房规已')&&!do
   await click('.dnc-orb');await click('#dnc-tab-house');
   await check(`${field}.value===${JSON.stringify('长休需要安全的营地。\n死亡豁免由玩家自行掷骰。')}&&document.querySelectorAll('#dnd-narrative-controls').length===1`,'reload restores saved text with single bubble');
   await check('errors.length===0&&variableWrites===0','no browser errors or character data writes');
+  const modeButton = '[data-feature=advancement] ';
+  await check('document.querySelector("[data-value=XP]").getAttribute("aria-pressed")==="true"','unset chat starts in XP mode');
+  await run('window.modeEvents=[];addEventListener("dnd-advancement-mode",e=>modeEvents.push(e.detail))');
+  const oldData = await run('JSON.stringify(vars.stat_data)');
+  await click(modeButton+'[data-value=里程碑]');await wait('vars.dnd_advancement_mode==="里程碑" && document.querySelector("[data-feature=partyxp] button").disabled');
+  await check('modeEvents.at(-1)==="里程碑" && variableWrites===1 && JSON.stringify(vars.stat_data)==='+JSON.stringify(oldData),'milestone notifies sheet, freezes XP distribution and preserves character data');
+  await click(modeButton+'[data-value=XP]');await wait('vars.dnd_advancement_mode==="XP" && !document.querySelector("[data-feature=partyxp] button").disabled');
+  await check('modeEvents.at(-1)==="XP" && variableWrites===2 && JSON.stringify(vars.stat_data)==='+JSON.stringify(oldData),'switching back keeps XP and level unchanged');
   const result={passed:true,count:checks.length,checks};fs.writeFileSync(path.join(out,'checks.json'),JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result,null,2));
  }finally{try{if(ws?.readyState===1)await send('Browser.close',{},null)}catch{}ws?.close();child?.kill();server.closeAllConnections();server.close();}
 })().catch(e=>{console.error(e);process.exitCode=1});

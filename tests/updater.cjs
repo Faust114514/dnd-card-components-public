@@ -96,7 +96,9 @@ assert.throws(()=>merge(imported,latest,sources,'not-in-current-card'));checks.p
 const duplicateSelf=structuredClone(imported);duplicateSelf.data.extensions.tavern_helper.scripts.push(structuredClone(self));assert.throws(()=>merge(duplicateSelf,latest,sources,runningId));checks.push('duplicate runtime updater ID still rejected');
 const patches=JSON.parse(fs.readFileSync(path.join(root,latest.worldbook_path)));
 const additions=Object.values(JSON.parse(fs.readFileSync(path.join(root,latest.worldbook_additions_path))).entries);
-const book={entries:Object.fromEntries(patches.map(p=>[p.uid,{uid:p.uid,content:p.previous,disable:true,extra:{keep:true}}]))};
+const advancement=JSON.parse(fs.readFileSync(path.join(root,latest.worldbook_advancement_path)));
+const book={entries:Object.fromEntries([...patches,...advancement].map(p=>[p.uid,{uid:p.uid,content:p.previous,disable:true,extra:{keep:true}}]))};
+check(context.planDndWorldbook(book,advancement).every(p=>p.action==='replace'),'old advancement rules can update without replacing worldbook settings');
 const plan=context.planDndWorldbook(book,patches);
 check(plan.every(p=>p.action===(p.uid===781426?'current':'replace')),'shipped rules update; presence-only default changes need no replacement');
 book.entries[18].content='personal edit';
@@ -201,6 +203,7 @@ if(bootstrap)assert.ok(withWorldbook,'bootstrap test requires --worldbook');
 fixtureManifest.added_regexes=latest.added_regexes.filter(r=>r.id==='dnd-clean-old-battle-map');
 if(!withWorldbook){delete fixtureManifest.worldbook_path;delete fixtureManifest.worldbook_additions_path;}
 const fixtureSources=Object.fromEntries(selected.map(c=>[c.path,sources[c.path]]));
+if(withWorldbook)fixtureSources[latest.worldbook_advancement_path]=JSON.stringify(advancement);
 if(withWorldbook)fixtureSources[latest.worldbook_path]=JSON.stringify(patches);
 if(withWorldbook)fixtureSources[latest.worldbook_additions_path]=JSON.stringify({entries:{[travel.uid]:travel}});
 const fixture=structuredClone(original);fixture.data.extensions.tavern_helper.scripts=fixture.data.extensions.tavern_helper.scripts.filter(s=>selected.some(c=>c.id===s.id)||s.id==='user-added');
@@ -326,7 +329,7 @@ addEventListener('DOMContentLoaded',async()=>{
   assert(archiveRules.find(rule=>rule.id===${jsJSON(archiveIds[0])}).maxDepth===0&&archiveRules.find(rule=>rule.id===${jsJSON(archiveIds[1])}).minDepth===1,'archive display and prompt depths persist as latest-only');
   assert(fixtureCard.data.extensions.dnd_component_updates.rules_version==='vf.0.4.5','same-version installation records the archive depth migration');
   if(${sameVersionRepair}){
-    const files=new Set(calls.filter(call=>call.url.startsWith('https://')&&!call.url.endsWith('/latest.json')&&!decodeURIComponent(call.url).endsWith('/'+remoteManifest.worldbook_path)&&!decodeURIComponent(call.url).endsWith('/'+remoteManifest.worldbook_additions_path)).map(call=>call.url));
+    const files=new Set(calls.filter(call=>call.url.startsWith('https://')&&!call.url.endsWith('/latest.json')&&!decodeURIComponent(call.url).endsWith('/'+remoteManifest.worldbook_path)&&!decodeURIComponent(call.url).endsWith('/'+remoteManifest.worldbook_advancement_path)&&!decodeURIComponent(call.url).endsWith('/'+remoteManifest.worldbook_additions_path)).map(call=>call.url));
     assert(files.size===1&&[...files].every(file=>file.includes('/src/regexes/')),'same-version repair downloads the display template only');
   }
   await check();assert(q('.dpu-install').disabled&&q('.dpu-status').textContent.includes('最新'),'next check reports current after saving the patterns');
