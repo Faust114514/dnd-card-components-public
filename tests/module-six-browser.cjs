@@ -278,6 +278,23 @@ async function shot(name){const r=await send('Page.captureScreenshot',{format:'p
    const zoomPoint=await run(`(()=>{const r=document.querySelector('.dmr-canvas').getBoundingClientRect();const s=Math.min(r.width/1950,r.height/2475)*.94;return{x:r.x+(r.width-1950*s)/2+1790*s,y:r.y+(r.height-2475*s)/2+1500*s}})()`);
    await send('Input.dispatchMouseEvent',{type:'mouseWheel',...zoomPoint,deltaX:0,deltaY:-1100});await sleep(200);await shot('村庄修正-队伍近景');
   }
+  if(cosData && fs.existsSync(path.join(cosData,'runtime-data','111-028.webp'))){
+   await run("__dndModuleRunner.movePartyToRoom('5bb','6c0')");
+   await wait('paintedImages.some(i=>i.src.includes("111-028.webp"))');
+   const winery = ['@start','楼下敌人|att:2|pos:110,105|room:59b','斥候|pos:110,85|room:5bb',
+    '卫士|room:5bb|pos:105,85','法师|pos:115,85|room:5bb|next','信使|pos:120,85|room:5bb',
+    '术士|pos:115,85|room:5bb','隔壁敌人|att:2|pos:95,80|room:5be'];
+   const block='<battle-delta>\n'+winery.join('\n')+'\n</battle-delta>\n<!-- dnd-map: {"map":"6c0","room":"5bb"} -->';
+   await run(`context.chat.push({mes:${JSON.stringify(block)}});emit('message',context.chat.length-1)`);
+   await wait('__dndModuleRunner.getBattleState().units.some(u=>u.id==="楼下敌人")');
+   const roomSnapshot=await run('({room:__dndModuleRunner.getState().currentRoomId,units:__dndModuleRunner.getBattleState().units.map(u=>[u.id,u.att,u.pos])})');
+   assert.equal(roomSnapshot.room,'5bb',JSON.stringify(roomSnapshot));
+   await check(`(()=>{const us=__dndModuleRunner.getBattleState().units;const party=us.filter(u=>u.att!==2);return party.length===5&&new Set(party.map(u=>u.pos.join(','))).size===5&&party.every(u=>u.pos[0]>=105&&u.pos[0]<=120&&u.pos[1]>=30&&u.pos[1]<=50)&&us.find(u=>u.id==='楼下敌人').pos.join(',')==='110,105'&&us.find(u=>u.id==='隔壁敌人').pos[0]<=100})()`,'official multi-floor room placements '+JSON.stringify(roomSnapshot));
+   await run("window.roomPayload={characterLore:[]};emit('world',roomPayload)");
+   await wait('roomPayload.characterLore.some(e=>e.content?.includes("斥候("))');
+   await check(`(()=>{const text=roomPayload.characterLore.find(e=>e.uid===781499).content;return __dndModuleRunner.getBattleState().units.every(u=>text.includes(u.id+'('+u.pos.join(',')+' HP:'))})()`,'worldbook uses the same live positions as the visible encounter');
+   await shot('酒庄二楼-房间落子');
+  }
   await check('errors.length===0','no browser script errors');
   console.log(JSON.stringify({passed:true,count:checks.length,checks},null,2));
  }finally{try{if(ws?.readyState===1)await send('Browser.close',{},null)}catch{}ws?.close();child?.kill();server.closeAllConnections();server.close();}

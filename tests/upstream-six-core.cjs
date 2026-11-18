@@ -43,6 +43,32 @@ check(scene.currentMapId==='new'&&scene.currentRoomId==='b','explicit scene dest
 check(core.parseAiMapMarkers('<!-- dnd-map: {"room":"b"} -->',sceneAdv,sceneBase).currentMapId==='new','room-only cross-map navigation still resolves');
 const targetScene=core.parseAiMapMarkers('<!-- dnd-map: {"map":"new","room":"c"} -->',sceneAdv,sceneBase);
 check(targetScene.currentRoomId==='c'&&!targetScene.exploredRooms.includes('b'),'explicit target room does not accidentally explore the map entry');
+// Two separated rooms on one image, with a non-zero grid origin.
+const roomRect = (id, x) => ({
+  id, cx: x + 30, cy: 40, bbox: { minX: x, minY: 10, maxX: x + 120, maxY: 80 },
+  polygons: [[[x,10], [x+120,10], [x+120,80], [x,80]]],
+});
+const left = roomRect('left', 10), right = roomRect('right', 150);
+const map = { imageUrl:'fixture.webp', width:300, height:120, grid:{size:10, distance:5, offsetX:2, offsetY:2}, rooms:[left,right], walls:[] };
+const roomCtx = { officialMap:map, rooms:map.rooms, pxPerFt:2, offsetX:2, offsetY:2, widthPx:300, heightPx:120, curRoomId:'left' };
+const delta = rows => '<battle-delta>\n' + rows.join('\n') + '\n</battle-delta>';
+const setup = delta(['@start','A|room:left','B|pos:55,10|room:left|hp:10/10|next','C|room:left|pos:85,15','D|pos:85,15|room:right','E|pos:55,10|room:left']);
+const encounter = core.compileBattleTimeline([setup],roomCtx);
+const pos = (s,id) => s.units.find(u=>u.id===id).pos.join(',');
+check(pos(encounter,'B')==='55,10' && pos(encounter,'D')==='85,15','both field orders retain valid cells including a distant room edge');
+check(new Set(encounter.units.map(u=>u.pos.join(','))).size===5,'valid explicit requests reserve their cells before misplaced or room-only allies');
+const insideLeft = u=>core.pointInPolygon(2+(u.pos[0]+2.5)*2,2+(u.pos[1]+2.5)*2,left.polygons[0]);
+check(encounter.units.filter(u=>u.id!=='D').every(insideLeft),'wrong-floor and duplicate positions are assigned inside their own polygon');
+const hpOnly = core.compileBattleTimeline([setup,delta(['B|hp:-2'])],roomCtx);
+check(pos(hpOnly,'B')===pos(encounter,'B') && hpOnly.units.find(u=>u.id==='B').hp.cur===8,'HP-only update keeps position and applies once');
+const crowded = core.compileBattleTimeline([setup,delta(['C|pos:55,10|room:left'])],roomCtx);
+check(pos(crowded,'B')==='55,10' && pos(crowded,'C')!=='55,10','a moving unit cannot displace a stationary occupant');
+const byPos = core.compileBattleTimeline([delta(['@start','A|pos:55,10','B|pos:55,10'])],roomCtx);
+check(pos(byPos,'A')==='55,10' && pos(byPos,'B')!=='55,10','older position-only collisions are separated in the containing room');
+const correctedRooms = core.parseAiCorrectionResult(JSON.stringify({units:[{id:'A',roomId:'left',pos:[85,15]},{id:'B',roomId:'right',pos:[85,15]}]}),map,{walls:[]});
+check(insideLeft(correctedRooms.units[0]) && pos(correctedRooms,'B')==='85,15','AI calibration and initial AI placement obey the same room constraints');
+const foreign = core.compileBattleTimeline([delta(['@start','A|room:left|pos:85,15'])],{...roomCtx, officialMap:null, isOverworld:true});
+check(pos(foreign,'A')==='85,15','outdoor encounter coordinates stay independent of the official room grid');
 const sync=context.createModuleRunnerSync(core,{SillyTavern:{getContext:()=>({chat:[{mes:legacy}]})}},()=>{});
 check(sync.normalizeState(null).sendMapImage===false&&sync.normalizeState({moduleId:'test'}).sendMapImage===false,'new and existing chats default to no map screenshots');
 check(sync.normalizeState({moduleId:'test',sendMapImage:true}).sendMapImage===true,'explicit screenshot preference survives normalization');

@@ -935,7 +935,7 @@ ${battleMapHint}
 
     if (map && map.mapKind !== 'overworld' && !curRoom?.isStoryNode) {
       const seeded = state.aiSeededMaps?.[map.id];
-      const liveUnits = Array.isArray(state.liveBattleUnits) && state.liveBattleUnits.length
+      const liveUnits = Array.isArray(state.liveBattleUnits)
         ? state.liveBattleUnits
         : (seeded?.units || []);
       const unitRoster = liveUnits.length
@@ -951,13 +951,13 @@ ${battleMapHint}
         }
       }
       const safeWhitelistBlock = safeLines.length
-        ? `\n- **合法可行走落点白名单（严禁自编白名单外的坐标）**：\n${safeLines.join('\n')}\n  ⚠️ **防卡墙与同区刷怪铁律**：生成小怪或移动单位时，**必须从上述对应房间的白名单中挑选空闲坐标**（或直接写 \`room:房间号\`）；**严禁靠“玩家坐标 ±15ft”瞎猜坐标**，否则极易卡进岩壁或刷到隔壁房间！与玩家同处一场遭遇的敌人，必须从玩家当前所在房间的白名单中选点，多只怪物请依次错开选格。`
+        ? `\n- **合法可行走落点白名单（严禁自编白名单外的坐标）**：\n${safeLines.join('\n')}\n  ⚠️ **防卡墙与同区刷怪铁律**：生成小怪或移动单位时，**必须从上述对应房间的白名单中挑选空闲坐标**（只有房间信息时写 \`room:房间号\`，由地图分配空格）；**严禁靠“玩家坐标 ±15ft”瞎猜坐标**，否则极易卡进岩壁或刷到隔壁房间！按各单位实际房间选空格；隔门、楼上和楼下的敌人用各自房间。`
         : '';
       const tacticalSit = buildTacticalSituationText(map, state, liveUnits, null);
       const tacticalSitBlock = tacticalSit ? `\n- **战术空间与视线简报（距离与墙体遮挡）**：\n${tacticalSit}` : '';
       sections.push(`#### 【六、高优先级强制协议：小地图棋子移动、敌人死亡与战斗结算】
 ⚠️ **只要处于战术小地图中，以下规则优先级高于普通叙事，绝对不可遗漏！**
-1. **角色/敌人移动必更**：只要任意角色或敌人在本轮发生了位置移动（含战斗走位、冲锋、探索跨房），**必须**在回复末尾输出 \`<battle-delta>\` 更新其 \`pos:x,y\` 或 \`room:房间号\`。
+1. **角色/敌人移动必更**：只要任意角色或敌人在本轮发生了位置移动（含战斗走位、冲锋、探索跨房），**必须**在回复末尾输出 \`<battle-delta>\` 写明每个移动单位自己的 \`room:房间号 | pos:x,y\`，坐标以整张底图的尺数表示。上下楼时按各单位实际到达的房间分别选格；位置不详时只写房间号。
 2. **敌人受伤/死亡必更**：只要敌人 HP 归零或被击杀，**必须**立即在 \`<battle-delta>\` 中写 \`敌人名 | remove\`（或 \`hp:0/7\`）将其退场；**禁止**只在正文或 \`<UpdateVariable>\` 里写“击杀/战斗结束”而漏掉 \`<battle-delta>\`！
 3. **当前行动角色切换指令（控制地图可拖动权限与先攻栏 \`NOW\` 高亮）**：
    - 战斗中切换行动权时，必须在正文或 \`<battle-delta>\` 中输出标准化单行指令：\`下一个行动的角色是: 角色名\`（如：\`下一个行动的角色是: 蒂法\`），或在 \`<battle-delta>\` 中标注 \`蒂法 | next\` / \`@next: 蒂法\`。系统将据此把当前可移动权限与先攻栏 \`NOW\` 切换到该角色。
@@ -1733,6 +1733,22 @@ ${battleMapHint}
       }
       return best;
     };
+    // Module room polygons use image pixels. Test the center of each 5-foot cell.
+    if (map.mapKind !== 'overworld' && room.bbox && room.polygons?.length) {
+      const { minX, minY, maxX, maxY } = room.bbox;
+      const cells = [];
+      for (let row = Math.max(0, Math.floor((minY - oy) / cellPx)); oy + (row + 0.5) * cellPx <= Math.min(maxY, mh); row++) {
+        const py = oy + (row + 0.5) * cellPx;
+        for (let col = Math.max(0, Math.floor((minX - ox) / cellPx)); ox + (col + 0.5) * cellPx <= Math.min(maxX, mw); col++) {
+          const px = ox + (col + 0.5) * cellPx;
+          if (room.polygons.some(poly => pointInPolygon(px, py, poly)) && minWallDist(px, py) >= cellPx * 0.18) {
+            cells.push({ xFt: col * 5, yFt: row * 5, dist: Math.hypot(px - room.cx, py - room.cy) });
+          }
+        }
+      }
+      cells.sort((a, b) => a.dist - b.dist);
+      return cells.slice(0, limit).map(({ xFt, yFt }) => ({ xFt, yFt }));
+    }
     const isBlocked = (x1, y1, x2, y2) =>
       walls.some(w => segmentsIntersectParam(x1, y1, x2, y2, w.x1, w.y1, w.x2, w.y2));
 
@@ -2417,6 +2433,55 @@ ${battleMapHint}
     };
   }
 
+  function roomAtBattlePosition(map, pos) {
+    const { pxPerFt, offsetX, offsetY } = resolveMapScale(map);
+    const px = offsetX + (pos[0] + 2.5) * pxPerFt;
+    const py = offsetY + (pos[1] + 2.5) * pxPerFt;
+    return map.rooms.find(r => r.polygons?.some(poly => pointInPolygon(px, py, poly)));
+  }
+
+  // Reserve valid requests first so a fallback never takes another unit's intended cell.
+  function placeOfficialRoomUnits(map, units, roomsByUnit) {
+    if (!map || !roomsByUnit.size) return;
+    const occupied = new Set();
+    const pending = [];
+    const cellsByRoom = new Map();
+    for (const unit of units) {
+      if (!roomsByUnit.has(unit)) occupied.add(unit.pos.join(','));
+    }
+    const requested = units.filter(u => roomsByUnit.has(u));
+    requested.sort((a, b) => Number(roomsByUnit.get(b).explicit) - Number(roomsByUnit.get(a).explicit));
+    for (const unit of requested) {
+      const { room, explicit } = roomsByUnit.get(unit);
+      if (!cellsByRoom.has(room.id)) cellsByRoom.set(room.id, getSafeWalkableCellsForRoom(room, map, Infinity));
+      const cells = cellsByRoom.get(room.id);
+      const key = unit.pos.join(',');
+      if (explicit && cells.some(c => c.xFt === unit.pos[0] && c.yFt === unit.pos[1]) && !occupied.has(key)) {
+        occupied.add(key);
+      } else if (cells.length) {
+        pending.push({ unit, cells });
+      } else {
+        // Tiny regions sometimes contain no full grid cell. Use their own marker.
+        const { pxPerFt, offsetX, offsetY } = resolveMapScale(map);
+        unit.pos = [Math.floor((room.cx - offsetX) / (5 * pxPerFt)) * 5, Math.floor((room.cy - offsetY) / (5 * pxPerFt)) * 5];
+        occupied.add(unit.pos.join(','));
+      }
+    }
+    for (const { unit, cells } of pending) {
+      let nearest = null;
+      let distance = Infinity;
+      for (const c of cells) {
+        if (occupied.has([c.xFt, c.yFt].join(','))) continue;
+        const d = Math.hypot(c.xFt - unit.pos[0], c.yFt - unit.pos[1]);
+        if (d < distance) { nearest = c; distance = d; }
+      }
+      // A full room may share a cell, but must not push people through the wall.
+      const cell = nearest || cells[0];
+      unit.pos = [cell.xFt, cell.yFt];
+      occupied.add(unit.pos.join(','));
+    }
+  }
+
   function compileBattleTimeline(messages = [], mapCtx = null, initialState = null) {
     let active = initialState?.active || false;
     let ended = initialState?.ended || false;
@@ -2429,22 +2494,24 @@ ${battleMapHint}
     const snap5 = (v) => Math.round((Number(v) || 0) / gridFt) * gridFt;
     const resolveFaction = (att) => (att === 2 ? 'hostile' : att === 1 ? 'neutral' : 'friendly');
 
-    const resolveRoomFt = (roomRef) => {
+    const resolveRoom = (roomRef) => {
       const rooms = mapCtx?.rooms || [];
       if (!rooms.length) return null;
       const needle = String(roomRef || '').trim().toLowerCase();
-      const hit = rooms.find(r =>
-        String(r.id).toLowerCase() === needle
-        || String(r.name || '').toLowerCase().includes(needle)
-      );
-      if (!hit || hit.cx == null || hit.cy == null) return null;
+      if (!needle) return null;
+      return rooms.find(r => String(r.id).toLowerCase() === needle)
+        || rooms.find(r => String(r.name || '').toLowerCase().includes(needle));
+    };
+    const roomAnchor = (hit) => {
       const pxPerFt = mapCtx.pxPerFt || 14.4;
       const ox = mapCtx.offsetX || 0;
       const oy = mapCtx.offsetY || 0;
       return [snap5((hit.cx - ox) / pxPerFt - 2.5), snap5((hit.cy - oy) / pxPerFt - 2.5)];
     };
 
-    const parseUnitFields = (parts, existing) => {
+    const parseUnitFields = (parts, existing, roomsByUnit) => {
+      let room;
+      let hasPos = false;
       const u = existing
         ? { ...existing, hp: { ...existing.hp }, pos: [...existing.pos], status: [...existing.status], _posExplicit: existing._posExplicit ?? true }
         : { id: '', att: 0, faction: 'friendly', init: 0, hp: { cur: 10, max: 10 }, pos: [0, 0], status: [], next: false, _posExplicit: false };
@@ -2478,10 +2545,9 @@ ${battleMapHint}
           }
         } else if (field === 'pos' || field === 'move') {
           const nums = val.split(/[,\s，]+/).map(Number).filter(Number.isFinite);
-          if (nums.length >= 2) { u.pos = [snap5(nums[0]), snap5(nums[1])]; u._posExplicit = true; }
+          if (nums.length >= 2) { u.pos = [snap5(nums[0]), snap5(nums[1])]; u._posExplicit = true; hasPos = true; }
         } else if (field === 'room') {
-          const rPos = resolveRoomFt(val);
-          if (rPos) { u.pos = rPos; u._posExplicit = true; }
+          room = resolveRoom(val);
         } else if (field === 'status') {
           const tokens = val.split(/[\s,;|、]+/).map(s => s.trim()).filter(Boolean);
           for (const tk of tokens) {
@@ -2499,6 +2565,18 @@ ${battleMapHint}
             }
           }
         }
+      }
+      if (mapCtx?.officialMap && !room) {
+        if (hasPos) room = roomAtBattlePosition(mapCtx.officialMap, u.pos);
+        else if (!existing) room = resolveRoom(mapCtx.curRoomId);
+      }
+      if (room && !room.isStoryNode && room.cx != null && room.cy != null) {
+        if (!hasPos && (!existing || !mapCtx?.officialMap)) u.pos = roomAnchor(room);
+        u._posExplicit = true;
+        roomsByUnit.set(u, { room, explicit: hasPos || !!existing });
+        if (mapCtx?.officialMap) u.roomId = room.id;
+      } else if (mapCtx?.officialMap && hasPos) {
+        delete u.roomId;
       }
       return u;
     };
@@ -2525,6 +2603,7 @@ ${battleMapHint}
         let hasNextInBlock = false;
         let blockEnded = false;
         const parsedUpdates = [];
+        const roomsByUnit = new Map();
 
         for (const line of lines) {
           if (/^@start(?:\s|$)/i.test(line)) { unitMap.clear(); active=true; ended=false; blockEnded=false; round=1; deltaCount++; continue; }
@@ -2593,7 +2672,7 @@ ${battleMapHint}
           }
           const existing = unitMap.get(id) || null;
           if (!existing && parts.slice(1).every(p=>/^(next|remove|dead|out|退场)$/i.test(p))) continue;
-          const nextUnit = parseUnitFields(parts.slice(1), existing);
+          const nextUnit = parseUnitFields(parts.slice(1), existing, roomsByUnit);
           nextUnit.id = id;
           if (nextUnit.next) hasNextInBlock = true;
           parsedUpdates.push(nextUnit);
@@ -2607,6 +2686,7 @@ ${battleMapHint}
           if (u._remove) unitMap.delete(u.id);
           else unitMap.set(u.id, u);
         }
+        placeOfficialRoomUnits(mapCtx?.officialMap, [...unitMap.values()], roomsByUnit);
         if (deltaCount > 0) lastDeltaCount = deltaCount;
       }
 
@@ -2676,6 +2756,7 @@ ${battleMapHint}
           if (maxRawY > mapHFt - 5) ratioY = (mapHFt - 10) / maxRawY;
         }
         for (const u of units) {
+          if (mapCtx.officialMap && u.pos[0] <= mapWFt - 5 && u.pos[1] <= mapHFt - 5) continue;
           u.pos = [
             Math.max(0, Math.min(snap5(mapWFt - 5), snap5(u.pos[0] * ratioX))),
             Math.max(0, Math.min(snap5(mapHFt - 5), snap5(u.pos[1] * ratioY))),
@@ -2812,6 +2893,8 @@ ${battleMapHint}
 
     let units = null;
     if (Array.isArray(data.units)) {
+      const officialMap = map?.imageUrl && map.mapKind !== 'overworld' && !surface?.isSvg ? { ...map, walls: surface?.walls ?? map.walls } : null;
+      const roomsByUnit = new Map();
       const snap5 = (v) => Math.round((Number(v) || 0) / 5) * 5;
       units = data.units
         .filter(u => u && u.id)
@@ -2832,8 +2915,11 @@ ${battleMapHint}
           const pos = Array.isArray(u.pos) && u.pos.length >= 2
             ? [snap5(u.pos[0]), snap5(u.pos[1])]
             : [0, 0];
-          return {
-            id: String(u.id).trim(),
+          const id = String(u.id).trim();
+          const specified = map?.rooms?.find(r => r.id === u.roomId && r.cx != null && r.cy != null);
+          const unit = {
+            id,
+            ...(specified ? { roomId: specified.id } : {}),
             att,
             faction,
             init: Number(u.init ?? existingUnits.find(old => old.id === String(u.id).trim())?.init) || 0,
@@ -2842,7 +2928,13 @@ ${battleMapHint}
             status: Array.isArray(u.status) ? u.status.map(String) : [],
             next: !!u.next,
           };
+          if (officialMap) {
+            const room = specified || roomAtBattlePosition(officialMap, pos);
+            if (room) roomsByUnit.set(unit, { room, explicit: Array.isArray(u.pos) && u.pos.length >= 2 });
+          }
+          return unit;
         });
+      placeOfficialRoomUnits(officialMap, units, roomsByUnit);
     }
 
     return {
@@ -2928,6 +3020,14 @@ ${battleMapHint}
           mIdx++;
         }
       }
+    }
+    if (map.imageUrl && map.mapKind !== 'overworld' && !surface?.isSvg) {
+      const roomsByUnit = new Map();
+      for (const u of units) {
+        const room = map.rooms.find(r => r.id === u.roomId);
+        if (room) roomsByUnit.set(u, { room, explicit: true });
+      }
+      placeOfficialRoomUnits({ ...map, walls: surface?.walls ?? map.walls }, units, roomsByUnit);
     }
     return units;
   }
@@ -3603,6 +3703,12 @@ function mountDndModuleRunner() {
     return JSON.stringify([c.characterId ?? null, c.groupId ?? null, c.getCurrentChatId?.() || c.chatId || '']);
   }
 
+  let battleChatKey;
+  function withCurrentBattle(state) {
+    if (battleChatKey !== identity() || state.moduleId !== currentState.moduleId || state.currentMapId !== currentState.currentMapId) return state;
+    return { ...state, liveBattleUnits: battleState.units };
+  }
+
   async function readChatState() {
     try {
       const vars = await api('getVariables')({ type: 'chat' });
@@ -3660,7 +3766,9 @@ function mountDndModuleRunner() {
       if (curRoom) await sync.ensureRoomMonsters(currentAdv, curRoom, map);
     }
     if (syncBook) {
-      await sync.syncNativeWorldbook(normalized, currentAdv, check);
+      check();
+      syncBattleFromChat();
+      await sync.syncNativeWorldbook(withCurrentBattle(normalized), currentAdv, check);
     }
     updateToolbarButton();
     renderModal();
@@ -6632,6 +6740,7 @@ function mountDndModuleRunner() {
     const surface = getActiveSurface(map);
     const mapCtx = {
       rooms: map?.rooms || [],
+      officialMap: map?.imageUrl && map.mapKind !== 'overworld' && surface && !surface.isSvg ? { ...map, walls: surface.walls } : null,
       pxPerFt: surface?.pxPerFt || 15,
       legacyPxPerFt: (map?.grid?.size || map?.gridSize || 72) / 5,
       widthPx: surface?.width || map?.width || 0,
@@ -6685,6 +6794,7 @@ function mountDndModuleRunner() {
         };
       }
     }
+    battleChatKey = identity();
     if (mapCtx.isOverworld && battleState.svgRawBlock && battleState.svgRawBlock !== previousTerrain) {
       currentState.svgViewMode = true;
     }
@@ -6829,10 +6939,9 @@ function mountDndModuleRunner() {
       const raw = await callCurrentTavernAI(sys, usr, dmImg);
       const parsed = core.parseAiCorrectionResult(raw, map, surface);
       if (parsed.units?.length) {
-        const rawList = (JSON.parse((raw.match(/```(?:json)?\s*([\s\S]*?)```/i) || raw.match(/(\{[\s\S]*\})/))?.[1] || '{}').units) || [];
-        seededUnits = parsed.units.map((u, idx) => ({
+        seededUnits = parsed.units.map(u => ({
           ...u,
-          roomId: String(rawList[idx]?.roomId || currentState.currentRoomId || ''),
+          roomId: u.roomId || currentState.currentRoomId || '',
           _seeded: true,
         }));
         usedAi = true;
@@ -7231,7 +7340,7 @@ function mountDndModuleRunner() {
   "partyPosFt": [xFt, yFt],
   "battleActive": true,
   "units": [
-    { "id": "单位名", "att": 0, "init": 18, "hp": "12/12", "pos": [xFt, yFt], "status": [], "next": false }
+    { "id": "单位名", "att": 0, "init": 18, "hp": "12/12", "pos": [xFt, yFt], "status": [], "next": false${surface.isSvg ? '' : ', "roomId": "该单位实际所在房间id"'} }
   ],
   "reason": "简短说明修正依据"
 }
@@ -7322,11 +7431,12 @@ function mountDndModuleRunner() {
       const room = map?.rooms?.find(r => r.id === currentState.currentRoomId);
       if (room) await sync.ensureRoomMonsters(currentAdv, room, map);
     }
-    await sync.syncNativeWorldbook(currentState, currentAdv, () => {
+    await refreshPartyCharacters();
+    if (disposed || identity() !== key) return;
+    syncBattleFromChat();
+    await sync.syncNativeWorldbook(withCurrentBattle(currentState), currentAdv, () => {
       if (disposed || identity() !== key) throw Error('chat changed');
     });
-    await refreshPartyCharacters();
-    syncBattleFromChat();
     updateToolbarButton();
     renderModal();
   }
@@ -7346,8 +7456,9 @@ function mountDndModuleRunner() {
         if (modalEl && !modalEl.hidden && next.currentRoomId) {
           focusRoomOnCanvas(next.currentRoomId);
         }
-        break;
       }
+      // The latest reply owns this turn even when its destination is already current.
+      break;
     }
   }
 
@@ -7388,7 +7499,8 @@ function mountDndModuleRunner() {
       const room = map?.rooms?.find(r => r.id === st.currentRoomId);
       if (room) await sync.ensureRoomMonsters(adv, room, map);
     }
-    sync.applyWorldInfoPayload(payload, st, adv);
+    if (disposed || identity() !== key) return;
+    sync.applyWorldInfoPayload(payload, withCurrentBattle(st), adv);
   });
 
   function handleNativeClick(ev) {
