@@ -16175,7 +16175,16 @@ function levelGrowthPreview(selections={}){
           c.特性.专长[key]={描述:boonDescription(feat),来源:feat.sourceBook==='arcana'?'奥术书':feat.sourceBook?bookName(feat.sourceBook):'玩家手册 2024'};
           for(const ability of ABILITIES){
             const increase=pick.alloc[ability.id];
-            if(increase)c.属性[ability.cn]=Math.min(30,live.abilityScores[ability.id]+increase);
+            if(!increase)continue;
+            const before=live.abilityScores[ability.id],after=Math.min(30,before+increase);
+            c.属性[ability.cn]=after;
+            const delta=abilityMod(after)-abilityMod(before),casting=c.施法;
+            if(delta && casting?.关键属性===ability.cn){
+              // Carry the modifier change into the saved base values, including any manual bonuses.
+              const baseAttack=profBonus(live.level)+abilityMod(before);
+              casting.法术攻击调整值=Number(casting.法术攻击调整值 ?? baseAttack)+delta;
+              casting.法术豁免DC=Number(casting.法术豁免DC ?? (8+baseAttack))+delta;
+            }
           }
           const gain=LevelGrowth.hpDelta(live.charObj,c,live.classLevels,live.classLevels,0);
           if(gain){c.生命值.最大+=gain;if(c.生命值.当前>0)c.生命值.当前+=gain;}

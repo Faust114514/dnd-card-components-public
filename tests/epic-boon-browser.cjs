@@ -9,7 +9,14 @@ async function runScenarios(){
     c.属性.力量=29;c.属性.体质=17;c.资源={保留测试:{当前值:0,最大值:3}};c.玩家备注='保留';
     c.特性.专长={'真实视觉之恩惠':{描述:'我的原文'}};c.背景='自定义背景';
     const low=buildDemoCharacter('fighter',19),solo=buildDemoCharacter('wizard',20);
-    const root=MvuLite.compactRoot({当前角色ID:'传奇',角色列表:{传奇:c,普通:low,法师:solo}});
+    solo.属性.智力=27;solo.施法.法术攻击调整值=14;solo.施法.法术豁免DC=22;
+    solo.施法.法术位['1环']={当前:1,最大:4};
+    const sorcerer=buildTemplateCharacter('术士');
+    sorcerer.职业='术士 20';sorcerer.等级=20;sorcerer.熟练加值=6;
+    sorcerer.属性.魅力=27;sorcerer.施法.关键属性='魅力';
+    sorcerer.施法.法术攻击调整值=16;sorcerer.施法.法术豁免DC=25;
+    sorcerer.施法.法术位['1环']={当前:0,最大:4};
+    const root=MvuLite.compactRoot({当前角色ID:'传奇',角色列表:{传奇:c,普通:low,法师:solo,术士:sorcerer}});
     for(const type of ['chat','message'])localStorage.setItem('tool-proficiency-check'+type,JSON.stringify({stat_data:root}));
     window.saved=(id='传奇',type='message')=>getVariables({type}).stat_data.角色列表[id];
     window.statusText=()=>document.getElementById('status-msg').textContent;
@@ -40,11 +47,17 @@ async function runScenarios(){
       const spell=spellSelectorState[field].availableSpells.find(s=>!schoolSpells.includes(getSpellKey(s)));
       schoolSpells.push(getSpellKey(spell));toggleSpellSelection(field,getSpellKey(spell),1);
     }
-    adjustAbilityAllocation('epic_feat','wis',1);`);
+    adjustAbilityAllocation('epic_feat','int',1);`);
   await click('#btn-submit');check(await run("saved('法师').奥术书选择?.宗师学派?.includes('防护')&&schoolSpells.every(n=>saved('法师').施法.法术书[n]?.准备中==='always')"),'repeatable school boon saves its school and both granted spells: '+await run("statusText()"));
+  check(await run(`['chat','message'].every(type=>{const c=saved('法师',type);return c.属性.智力===28&&c.施法.法术攻击调整值===15&&c.施法.法术豁免DC===23&&c.施法.法术位['1环'].当前===1})`),'Intelligence 27 to 28 updates both saved spell values and preserves spent slots');
   await boon('学派宗师');check(await run("!Array.from(document.querySelector('#au_epic_feat_school').options).some(o=>o.value==='防护')"),'repeatable boon offers only unused schools');
   await click('#hexblade-config-btn');check(await run("growthMode==='config'&&!state.plan.boonOnly"),'level 20 character configuration remains accessible');
   await click('#hexblade-config-btn');check(await run("state.plan.boonOnly&&!state.pending.epic_feat.feat"),'return from configuration starts a fresh boon draft');
+  await set('character-select','术士');
+  for(const [prefix,ability,score] of [['真实视觉','cha',28],['神行无拘','cha',29],['超凡强韧','str',29]]){
+    await boon(prefix);await run("adjustAbilityAllocation('epic_feat',"+JSON.stringify(ability)+",1)");await click('#btn-submit');
+    check(await run(`['chat','message'].every(type=>{const c=saved('术士',type);return !!c.特性.专长['${prefix}之恩惠']&&c.属性.魅力===${score}&&c.施法.法术攻击调整值===17&&c.施法.法术豁免DC===26&&c.施法.法术位['1环'].当前===0})`),'preserve independent custom attack and DC bonuses and exhausted slots after '+prefix);
+  }
   check(await run('fixtureErrors.length===0&&fixtureSends===0'),'no script errors or automatic AI sends');
 }
 const prefix=harness.slice(0,harness.indexOf('async function runScenarios()'))
