@@ -1880,6 +1880,9 @@ function enrichSpellVariables(variables) {
     .confirm-preview-title { font-size: 13px; font-weight: 700; color: #ffe0a6; }
     .confirm-preview-line { font-size: 12px; color: #d8dee9; }
     .confirm-preview-line strong { color: #fff3d6; }
+    .boon-only .planning-card:has(#target-level-select),
+    .boon-only .planning-card:has(#next-class-select) > :not(#hexblade-config-btn),
+    .boon-only .preview-grid, .boon-only .panel:has(#feature-list) { display:none; }
     .feature-list { margin: 0; padding-left: 18px; color: #d9dce3; font-size: 13px; }
     .feature-list li { margin: 4px 0; }
     .req-list { display: grid; gap: 8px; }
@@ -5417,7 +5420,11 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
       return [...GENERAL_FEATS, ...EPIC_FEATS].find(f=>f.name===name) || null;
     }
     function getFeatAbilityBonus(name){
-      return getFeatMeta(name)?.abilityBonus || null;
+      const meta=getFeatMeta(name);
+      if(meta?.abilityBonus)return meta.abilityBonus;
+      if(!state.plan?.boonOnly||!EPIC_FEATS.includes(meta))return null;
+      const allowed=name.includes('无敌攻势')?['str','dex']:name.includes('法术溯回')?['int','wis','cha']:ABILITIES.map(a=>a.id);
+      return {points:1,allowed,maxScore:30};
     }
     function getReqState(reqId){
       if(!state.pending[reqId] || typeof state.pending[reqId] !== "object" || Array.isArray(state.pending[reqId])) state.pending[reqId]={};
@@ -5435,7 +5442,7 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
       if(reqId==="epic_feat"){
         const feat=document.getElementById(`${reqId}_feat_sel`)?.value || getReqState(reqId).feat || "";
         const bonus=getFeatAbilityBonus(feat);
-        if(!bonus) return null;
+        if(!bonus||(state.plan?.boonOnly&&bonus.allowed.every(id=>state.abilityScores[id]>=bonus.maxScore))) return null;
         return { reqId, points:bonus.points||1, allowed:[...(bonus.allowed||[])], maxPerAbility:bonus.maxPerAbility||bonus.points||1, maxScore:bonus.maxScore||20, label:`${feat} 的属性加值`, featName:feat };
       }
       return null;
@@ -8105,7 +8112,7 @@ function arcanaPrecheck(name,totalLevel){
 function arcanaPlan(plan,pending){
   if(!plan)return plan;
   const classId=plan.classNorm,level=plan.classTo;
-  const sub=arcanaSub(classId,pending);
+  const sub=plan.boonOnly?null:arcanaSub(classId,pending);
   if(!arcanaEnabled)return plan;
   const add=(id,label,values,count=1)=>plan.req.push({id,kind:count===1?'single':'multi',label,count,rebuild:true,options:values.map(v=>typeof v==='string'?{value:v,label:v}:v)});
   const spell=(id,label,count,sources,levels,extra={})=>{if(count>0)plan.req.push({id,kind:'spell_picker',label,count,spellClass:sources[0],spellSources:sources,spellLevels:levels,...extra});};
@@ -14533,7 +14540,13 @@ function growthRenderMode(){
     };
   }
   const submit=document.getElementById('btn-submit');if(submit){submit.hidden=false;submit.textContent=growthMode==='config'?'保存配置':'确认升级';}
-  for(const id of ['next-class-select','target-level-select']){const el=document.getElementById(id);if(el)el.disabled=growthMode==='config';}
+  for(const id of ['next-class-select','target-level-select']){const el=document.getElementById(id);if(el)el.disabled=growthMode==='config'||!!state.plan?.boonOnly;}
+  const boon=!!state.plan?.boonOnly;
+  document.body.classList.toggle('boon-only',boon);
+  if(boon){
+    submit.textContent='确认领取传奇恩惠';
+    document.getElementById('route-summary').textContent='总等级 '+state.level+' · 传奇恩惠';
+  }
   if(growthMode==='config'){const route=document.getElementById('route-summary');if(route)route.textContent='保存配置／补选 · 当前总等级 '+state.level+' · 不提升等级';const preview=document.getElementById('confirm-preview');if(preview)preview.innerHTML='<div class="confirm-preview-title">保存配置／补选</div><div class="confirm-preview-line">不升级、不恢复生命值或法术位。休息配置仅在满足特性规定的时机时更换。</div>';}
 }
 
@@ -15110,7 +15123,22 @@ async function savePreparation(){
   finally{growthSaving=false;document.getElementById('btn-submit').disabled=false;}
 }
 
-    function buildPlan(pending={}){ if(preparationMode)return preparationPlan(); if(growthMode==="config")return growthConfigPlan(pending); subclassPending=pending; try { return growthPlan(subclassSpellPlan(bookPlan(arcanaPlan(buildBasePlan(pending),pending),pending),pending),pending); } finally { subclassPending=null; } }
+    function buildBoonPlan(pending){
+      const level=state.classLevels[state.classNorm]||0;
+      const plan={boonOnly:true,classNorm:state.classNorm,classFrom:level,classTo:level,totalTo:state.level,
+        hpGain:0,gained:[],req:[{id:'epic_feat',kind:'feat_pick',label:'选择一项传奇恩惠',options:EPIC_FEATS}]};
+      const feat=EPIC_FEATS.find(f=>f.name===pending.epic_feat?.feat);
+      if(!feat)return plan;
+      growthFeatChoices(plan,pending,feat.name,'epic_feat');
+      if(ebCN(feat.name)==='西伯瑞斯之恩惠'){
+        ebUpgradeChoices(plan,pending,ebFeatChoices('西伯瑞斯之恩惠'));
+        const spells=EB.spells.filter(s=>s.level<=8&&s.classList.includes('术士')||EB.siberysSpells.includes(s.name));
+        growthRule(plan,pending,'eb_siberys','西伯瑞斯之恩惠：法术','config',spells.map(s=>s.name));
+      }
+      return arcanaPlan(plan,pending);
+    }
+
+    function buildPlan(pending={}){ if(preparationMode)return preparationPlan(); if(growthMode==="config")return growthConfigPlan(pending); if(state.level>=DEMO_MAX_LEVEL)return buildBoonPlan(pending); subclassPending=pending; try { return growthPlan(subclassSpellPlan(bookPlan(arcanaPlan(buildBasePlan(pending),pending),pending),pending),pending); } finally { subclassPending=null; } }
     function buildBasePlan(pending={}){
       if(state.level>=DEMO_MAX_LEVEL) return null;
       if(state.targetLevel && state.level>=state.targetLevel) return null;
@@ -15285,7 +15313,7 @@ function featDuplicateCheck(name) {
     function renderReq(req){
       req=guardChoiceRequest(req);
       if(req.kind==="single"){
-        const opts=req.options.map((o)=>{
+        const opts=(state.plan.boonOnly&&req.rebuild?'<option value="">请选择</option>':'')+req.options.map((o)=>{
           const reason=o.reason?`（${o.reason}）`:"";
           return `<option value="${esc(o.value)}" ${(state.pending[req.id]===o.value)?"selected":""} ${o.disabled?"disabled":""}>${esc(o.label)}${esc(reason)}</option>`;
         }).join("");
@@ -15322,12 +15350,12 @@ function featDuplicateCheck(name) {
       if(req.kind==="feat_pick"){
         const cur=state.pending[req.id]||{};
         const targetSub=getProjectedSubclassId();
-        const opts=req.options.map((f)=>{
+        const opts=(state.plan.boonOnly?'<option value="">请选择传奇恩惠</option>':'')+req.options.map((f)=>{
           const check=featPrecheck(f.name,state.plan?.totalTo||state.level,targetSub);
           const suffix=check.ok?"":`（${check.reason}）`;
           return `<option value="${esc(f.name)}" data-search-name="${esc(f.name)}" ${cur.feat===f.name?"selected":""} ${check.ok?"":"disabled"}>${esc(f.name)}${f.prerequisite&&f.prerequisite!=="无"?`（先决条件：${esc(f.prerequisite)}）`:""}${esc(suffix)}</option>`;
         }).join("");
-        return `<div class="req-card"><label>${esc(req.label)}</label><select id="${req.id}_feat_sel" data-dnd-name-search>${opts}</select>${renderAbilityAllocationPanel(req.id)}<div class="hint">若所选通用专长带属性值提升，会在下方显示分配面板。</div></div>`;
+        return `<div class="req-card"><label>${esc(req.label)}</label><select id="${req.id}_feat_sel" data-dnd-name-search>${opts}</select>${renderAbilityAllocationPanel(req.id)}<div class="hint">${state.plan.boonOnly?"确认后将这项恩惠记入角色档案。":"若所选通用专长带属性值提升，会在下方显示分配面板。"}</div></div>`;
       }
       return "";
     }
@@ -15474,6 +15502,11 @@ function featDuplicateCheck(name) {
         return;
       }
       const selections=collect(false).selections||{};
+      if(state.plan.boonOnly){
+        const feat=EPIC_FEATS.find(f=>f.name===selections.epic_feat?.feat);
+        holder.textContent=feat?boonDescription(feat):'选好恩惠后，可在这里查看它的效果。';
+        return;
+      }
       const classLabel=getClassLabel(state.plan.classNorm);
       const previewLines=[
         `<div class="confirm-preview-title">确认当前这一步会写入什么</div>`,
@@ -16113,10 +16146,78 @@ function levelGrowthPreview(selections={}){
   return LevelGrowth.hpDelta(state.charObj,c,state.classLevels,levels,base,subs,nextSubs);
 }
 
+    function boonDescription(feat){
+      return feat.description||briefRuleText(BRIEF_RULE_BANK.features.find(row=>row.key===ebCN(feat.name))?.description);
+    }
+    async function saveBoon(){
+      if(growthSaving)return;
+      const {ok,selections,errors}=collect(true);
+      const pick=selections.epic_feat, feat=EPIC_FEATS.find(f=>f.name===pick.feat);
+      if(!ok||!feat){setStatus(errors[0]||'请选择传奇恩惠',true);return;}
+      const id=state.activeId,plan=state.plan,btn=document.getElementById('btn-submit');
+      growthSaving=true;btn.disabled=true;
+      try{
+        const root=state.isDemo?state.statData:MvuLite.expandRoot(MvuLite.readRoot(await readMessageVariables()));
+        if(state.plan!==plan||!root.角色列表[id])throw Error('角色已切换，请重新选择恩惠。');
+        const live=extractCharacter(cloneJson(root),id);
+        if(live.level!==state.level||JSON.stringify(live.classLevels)!==JSON.stringify(state.classLevels)||
+           JSON.stringify(live.abilityScores)!==JSON.stringify(state.abilityScores))
+          throw Error('角色成长资料已变化，请重新打开升级面板。');
+        const c=cloneJson(root.角色列表[id]),previous=state.charObj;
+        const name=ebCN(feat.name),school=selections.au_epic_feat_school;
+        const key=school?name+'（'+school+'）':name;
+        try{
+          state.charObj=c;
+          const allowed=featPrecheck(feat.name,live.level,live.subclassId);
+          if(!allowed.ok)throw Error(allowed.reason);
+          if(school&&c.奥术书选择?.宗师学派?.includes(school))throw Error('已拥有这个学派的恩惠。');
+          c.特性||={};c.特性.专长||={};
+          c.特性.专长[key]={描述:boonDescription(feat),来源:feat.sourceBook==='arcana'?'奥术书':feat.sourceBook?bookName(feat.sourceBook):'玩家手册 2024'};
+          for(const ability of ABILITIES){
+            const increase=pick.alloc[ability.id];
+            if(increase)c.属性[ability.cn]=Math.min(30,live.abilityScores[ability.id]+increase);
+          }
+          const gain=LevelGrowth.hpDelta(live.charObj,c,live.classLevels,live.classLevels,0);
+          if(gain){c.生命值.最大+=gain;if(c.生命值.当前>0)c.生命值.当前+=gain;}
+          if(name==='神行无拘之恩惠')c.速度.步行+=30;
+          const record=(key,kind,label,values)=>{
+            growthApplyValue(kind,values,label,key);(c.成长选择||={})[key]=values;
+          };
+          for(const auto of plan.growthAuto||[])record(auto.key,auto.kind,auto.label,auto.values);
+          for(const req of plan.req.filter(r=>r.growth))record(req.growth.key,req.growth.kind,req.label,growthList(selections[req.id]));
+          let spells=[],ability=abilityIdFromAllocation(pick.alloc);
+          if(name==='夜宴狂欢之恩惠')spells=['奥图迷舞'];
+          if(name==='西伯瑞斯之恩惠'){
+            spells=c.成长选择.eb_siberys;
+            ability=ebAbility(c.成长选择.eb_feat_西伯瑞斯之恩惠_ability[0]);
+          }
+          if(school){
+            spells=[...selections.au_epic_feat_rote,...selections.au_epic_feat_signature];
+            c.奥术书选择||={};c.奥术书选择.宗师学派=[...(c.奥术书选择.宗师学派||[]),school];
+            c.特性.专长[key].描述+='\n强记施法：'+selections.au_epic_feat_rote.join('、')+'；招牌奥术：'+selections.au_epic_feat_signature.join('、');
+          }
+          if(spells.length){
+            addGrantedSpellEntry(c,key,{spells,prepared:spells,sourceNames:EXTRA_SPELL_SOURCE_NAMES,keyAbility:ability});
+            const entries=buildSpellBookFromSources(spells,spells,EXTRA_SPELL_SOURCE_NAMES);
+            c.施法||={};c.施法.法术书||={};
+            for(const spell of spells){
+              c.施法.法术书[spell]||=entries[spell]||{来源:key};
+              c.施法.法术书[spell].准备中='always';
+            }
+          }
+        }finally{state.charObj=previous;}
+        if(state.isDemo)localMockVars.stat_data.角色列表[id]=c;
+        else await writeVariables({stat_data:{角色列表:{[id]:c}}});
+        state.statData.角色列表[id]=c;rebuildFromState();renderUI();setStatus('已领取：'+key);
+      }catch(error){setStatus('保存失败：'+error.message,true);}
+      finally{growthSaving=false;btn.disabled=false;}
+    }
+
     async function applyUpgrade(){
       if(levelGrowthBusy)return;
       if(preparationMode)return savePreparation();
       if(growthMode==="config")return growthSaveConfig();
+      if(state.plan?.boonOnly)return saveBoon();
       if(!state.plan||!state.charObj||!SUPPORTED_CLASS_OPTIONS.some((meta)=>meta.id===state.plan.classNorm)) return;
       const {ok,selections,errors}=collect(true);
       arcanaSubmitting=ok?selections:null;
