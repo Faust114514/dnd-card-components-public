@@ -38,6 +38,19 @@ async function runScenarios(){
  check(await run("sheet.data.inventory.weapons[0].type==='穿刺'&&sheet.data.inventory.weapons[0].proficient&&sheet.data.inventory.weapons[0].tags==='灵巧'&&sheet.data.inventory.equipment[0].baseAc===18&&sheet.data.inventory.equipment[1].armorType==='shield'&&getVariables().stat_data.角色列表['合并测试']._有效AC===20"),'AI equipment preserves damage, proficiency, properties and armor/shield AC');
  await click('#collapse-toggle-btn');await shot('状态栏-参数化标签');
  await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:false});await shot('状态栏-390');
+ for(const file of ['角色头像库','统一API设置','盲骰仲裁','BG3检定台']){
+   await run(fs.readFileSync(path.join(root,'src/scripts',file+'.js'),'utf8'));
+ }
+ check(await run('!!__dndAssetVault.lookupSpell("Guidance")&&__dndAssetVault===__dndPortraitVault'),'offline compendium finds Guidance and shares the existing portrait vault');
+ check(await run('__dndBlindArbiter.isEnabled()===false'),'blind arbitration is opt-in');
+ await run('__dndApiHub.openSettings("creator")');
+ check(await run('document.querySelector("#dnd-api-hub-modal")?.getAttribute("data-open")==="true"'),'unified API settings open for character creation');
+ await run('document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape"}))');
+ await run('__dndBg3Check.open({actor:"测试员",skill:"察觉",dc:14,adv:"优势",desc:"观察门后"})');
+ await wait('!!document.querySelector("[data-bg3-roll]")');
+ await run('document.querySelector("[data-bg3-roll]").click();document.querySelector("[data-bg3-stage]").click()');
+ await wait('document.querySelector("[data-bg3-fill]")?.hidden===false');
+ check(await run('document.querySelector("[data-bg3-verdict]").textContent.trim().length>0&&fixtureSends===0'),'BG3 check rolls and shows a verdict before any user send');
  check(await run('fixtureErrors.length===0&&fixtureSends===0'),'no page errors or automatic messages');
  console.log(JSON.stringify({passed:true,checks:checks.length,untested:['Real Tavern persistence','Real model output']}));
 }

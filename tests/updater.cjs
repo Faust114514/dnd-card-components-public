@@ -1,7 +1,7 @@
 // Offline core tests and a real Edge DOM with synthetic Tavern/GitHub APIs.
 // The production reload call alone is replaced with a counter in the browser fixture.
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
-const http=require('node:http'),os=require('node:os'),{execFile}=require('node:child_process'),{promisify}=require('node:util');
+const http=require('node:http'),os=require('node:os'),{spawn}=require('node:child_process');
 const root=path.resolve(__dirname,'..');
 const source=fs.readFileSync(path.join(root,'src/scripts/私有组件更新.js'),'utf8');
 const pure=source.split('// Runtime entry.')[0],context={structuredClone,Set,Error};vm.createContext(context);vm.runInContext(pure,context);
@@ -195,9 +195,11 @@ if(baselinePath){
 
 const selected=latest.components.filter(c=>['c3c9ad44-9e9b-4c6e-ae93-f2b098a20125','480d6777-f90d-4eba-a811-64cb2f1ffb00','736c0e4e-67b4-4113-a021-b3890714ba28','01c632e5-1071-4a08-aebd-6a0e5424ea99','36bab6c1-2a4d-44de-b9a7-256c8a68c50d',...archiveIds].includes(c.id));
 const fixtureManifest={...latest,components:selected,empty_regexes:latest.empty_regexes.filter(c=>archiveIds.includes(c.id))};
+const v18Bootstrap=process.argv.includes('--v18-bootstrap');
+if(!v18Bootstrap){delete fixtureManifest.v18_components;delete fixtureManifest.worldbook_v18_path;}
 const withWorldbook=process.argv.includes('--worldbook');
 const retireBootstrap=process.argv.includes('--retire-map-bootstrap');
-const bootstrap=process.argv.includes('--bootstrap')||retireBootstrap;
+const bootstrap=process.argv.includes('--bootstrap')||retireBootstrap||v18Bootstrap;
 if(bootstrap)assert.ok(withWorldbook,'bootstrap test requires --worldbook');
 // Include the map cleanup needed by the current pattern migration.
 fixtureManifest.added_regexes=latest.added_regexes.filter(r=>r.id==='dnd-clean-old-battle-map');
@@ -206,6 +208,12 @@ const fixtureSources=Object.fromEntries(selected.map(c=>[c.path,sources[c.path]]
 if(withWorldbook)fixtureSources[latest.worldbook_advancement_path]=JSON.stringify(advancement);
 if(withWorldbook)fixtureSources[latest.worldbook_path]=JSON.stringify(patches);
 if(withWorldbook)fixtureSources[latest.worldbook_additions_path]=JSON.stringify({entries:{[travel.uid]:travel}});
+if(v18Bootstrap){
+ const bundle=JSON.parse(fs.readFileSync(path.join(root,latest.worldbook_v18_path),'utf8'));
+ fixtureSources[latest.worldbook_v18_path]=JSON.stringify(bundle);
+ for(const patch of bundle.patches)book.entries[patch.uid]={uid:patch.uid,content:patch.previous,disable:false};
+ for(const item of latest.v18_components)if(!item.empty)fixtureSources[item.path]=fs.readFileSync(path.join(root,item.path),'utf8');
+}
 const fixture=structuredClone(original);fixture.data.extensions.tavern_helper.scripts=fixture.data.extensions.tavern_helper.scripts.filter(s=>selected.some(c=>c.id===s.id)||s.id==='user-added');
 fixture.data.extensions.tavern_helper.scripts[0].content='old DM';fixture.data.extensions.regex_scripts=fixture.data.extensions.regex_scripts.filter(r=>selected.some(c=>c.id===r.id)||archiveIds.includes(r.id)||r.id==='dnd-clean-old-battle-map');
 // Receipt-loss verification revisits the earlier display/prompt migration too.
@@ -299,6 +307,22 @@ addEventListener('DOMContentLoaded',async()=>{
    }
   }
   await check();await install();assert(saves===1&&reloads===1,'all sources saved in one native merge then verified before reload / '+q('.dpu-status').textContent);
+  if(${v18Bootstrap}){
+   assert(!fixtureBook.entries[781504]&&!fixtureCard.data.extensions.tavern_helper.scripts.some(s=>s.name==='D&D BG3检定台'),'actual vf.0.6.19 first pass installs the new updater');
+   window.useUpdatedRuntime=true;
+   const previous=window.__dndPrivateUpdates;document.querySelector('iframe').src='/helper';
+   await wait(()=>window.__dndPrivateUpdates!==previous,'updated helper mounted');window.__dndPrivateUpdates.open();
+   await check();await install();
+   assert(saves===2&&reloads===2,'second pass installs missing content at the same version / '+q('.dpu-status').textContent);
+   for(const extra of remoteManifest.v18_components){
+    const group=extra.kind==='script'?fixtureCard.data.extensions.tavern_helper.scripts:fixtureCard.data.extensions.regex_scripts;
+    const matches=group.filter(i=>i.id===extra.id);
+    assert(matches.length===1&&matches[0][extra.kind==='script'?'content':'replaceString']===(extra.empty?'':remoteSources[extra.path]),'installed '+extra.name);
+   }
+   assert([781503,781504,781506].every(id=>fixtureBook.entries[id]?.constant)&&fixtureBook.entries[18].content==='personal edit','all three v1.8 rules added; personal choice preserved');
+   await check();assert(q('.dpu-install').disabled,'third check reports current');
+   document.getElementById('fixture-result').textContent=JSON.stringify({passed:true,checks});return;
+  }
   if(${bootstrap}){
    if(${retireBootstrap})assert(!!fixtureBook.entries[781429],'actual 0.6.5 updater installs sources before retiring the old rule');
    else assert(!fixtureBook.entries[781430],'actual vf.0.4.16 updater ignores the new manifest field and installs new code successfully');
@@ -401,16 +425,28 @@ addEventListener('DOMContentLoaded',async()=>{
  }catch(e){document.getElementById('fixture-result').textContent=JSON.stringify({passed:false,error:e.stack,checks,errors});}
 });`;
 const runtime=source.replace('host.location.reload();','host.__fixtureReload();');assert.notEqual(runtime,source);
-const oldRuntime=bootstrap?require('node:child_process').execFileSync('git',['show',(retireBootstrap?'vf.0.6.5':'vf.0.4.16')+':src/scripts/私有组件更新.js'],{cwd:root,encoding:'utf8',windowsHide:true}).replace('host.location.reload();','host.__fixtureReload();'):'';
+const oldRuntime=bootstrap?require('node:child_process').execFileSync('git',['show',(v18Bootstrap?'vf.0.6.19':retireBootstrap?'vf.0.6.5':'vf.0.4.16')+':src/scripts/私有组件更新.js'],{cwd:root,encoding:'utf8',windowsHide:true}).replace('host.location.reload();','host.__fixtureReload();'):'';
 const html=`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Public updater isolated check</title><style>body{background:#111a18}</style><pre id="fixture-result" hidden>pending</pre><script>${setup.replaceAll('</script','<\/script')}${test}</script><iframe id="TH-script--character--${runningId}" src="/helper" hidden></iframe>`;
 const helper=`<!doctype html><script>window.TavernHelper=parent.TavernHelper;window.getScriptId=()=>window.frameElement.id.replace(/TH-script--.+--/,'');${(bootstrap?'if(parent.useUpdatedRuntime){'+runtime+'}else{'+oldRuntime+'}':runtime).replaceAll('</script','<\/script')}</script>`;
+let child,ws,session,seq=0;const pending=new Map();
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function send(method,params={},sid=session){const id=++seq;return new Promise((resolve,reject)=>{pending.set(id,{resolve,reject});ws.send(JSON.stringify({id,method,params,...(sid?{sessionId:sid}:{})}));});}
+async function run(expression){const r=await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw Error(r.exceptionDetails.exception?.description||r.exceptionDetails.text);return r.result.value;}
+async function wait(expression){for(let i=0;i<200;i++){if(await run(expression))return;await sleep(60)}throw Error('timeout: '+expression+' / '+await run('JSON.stringify(errors)'));}
 (async()=>{
  const server=http.createServer((req,res)=>{res.setHeader('Content-Type','text/html; charset=utf-8');res.end(req.url==='/helper'?helper:html);});await new Promise(r=>server.listen(0,'127.0.0.1',r));
  try{
   const profile=fs.mkdtempSync(path.join(os.tmpdir(),'dnd-private-update-'));
-  const {stdout}=await promisify(execFile)('C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',['--headless=new','--disable-gpu','--no-first-run','--disable-extensions','--user-data-dir='+profile,'--dump-dom','--window-size=1000,900','--virtual-time-budget=15000','http://127.0.0.1:'+server.address().port],{windowsHide:true,timeout:60000,maxBuffer:5e6});
-  const match=stdout.match(/<pre id="fixture-result" hidden="">([\s\S]*?)<\/pre>/);if(!match)throw Error('Browser result missing');
-  const browser=JSON.parse(match[1].replaceAll('&quot;','"').replaceAll('&gt;','>').replaceAll('&lt;','<').replaceAll('&amp;','&'));if(!browser.passed)throw Error(JSON.stringify(browser));
+ child=spawn('C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',['--headless=new','--disable-gpu','--no-first-run','--disable-extensions','--remote-debugging-port=0','--user-data-dir='+profile,'about:blank'],{windowsHide:true,stdio:'ignore'});
+
+  let port;for(let i=0;i<100;i++){try{port=fs.readFileSync(path.join(profile,'DevToolsActivePort'),'utf8').split('\n')[0];break}catch{}await sleep(100)}
+  if(!port)throw Error('browser did not start');
+  const v=await fetch('http://127.0.0.1:'+port+'/json/version').then(r=>r.json());ws=new WebSocket(v.webSocketDebuggerUrl);await new Promise((r,j)=>{ws.onopen=r;ws.onerror=j});
+  ws.onmessage=e=>{const m=JSON.parse(e.data);if(pending.has(m.id)){const p=pending.get(m.id);pending.delete(m.id);m.error?p.reject(Error(m.error.message)):p.resolve(m.result)}};
+  const t=await send('Target.createTarget',{url:'about:blank'},null);session=(await send('Target.attachToTarget',{targetId:t.targetId,flatten:true},null)).sessionId;
+  await send('Page.navigate',{url:'http://127.0.0.1:'+server.address().port});
+  await wait("document.getElementById('fixture-result')?.textContent.startsWith('{')");
+  const browser=await run("JSON.parse(document.getElementById('fixture-result').textContent)");if(!browser.passed)throw Error(JSON.stringify(browser));
   console.log(JSON.stringify({passed:true,core:checks,browser:browser.checks,untested:['Real Tavern persistence and actual page reload/script startup']},null,2));
- }finally{server.close();}
+ }finally{try{if(ws?.readyState===1)await send('Browser.close',{},null);}catch{}ws?.close();child?.kill();server.closeAllConnections();server.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

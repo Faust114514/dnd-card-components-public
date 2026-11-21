@@ -12,6 +12,7 @@ assert latest['version'] == config['version']
 expected = []
 expected_empty = []
 expected_added = []
+expected_v18 = []
 ids = set()
 for group, kind in [('scripts', 'script'), ('regexes', 'regex')]:
     for item in config[group]:
@@ -25,12 +26,17 @@ for group, kind in [('scripts', 'script'), ('regexes', 'regex')]:
             assert text.strip(), path
             result = subprocess.run(['node', '--input-type=module', '--check'], input=text, text=True, encoding='utf-8', capture_output=True)
             assert result.returncode == 0, path + ': ' + result.stderr
+        if item['id'].startswith(('a1b2c3d4-7072-4772-8002-', 'a1b2c3d4-7072-4772-8003-', 'a1b2c3d4-7072-4772-8004-', 'b63c4ec0-2024-4d20-b630-')):
+            expected_v18.append({'kind':kind, 'id':item['id'], 'name':item.get('name',item.get('scriptName')), 'path':path,
+                                 'template':{k:v for k,v in item.items() if k!='source'}, **({} if text else {'empty':True})})
+            continue
         if item['id'] in ['dnd-clean-old-battlecheck', 'dnd-clean-old-battle-map', 'dnd-clean-old-map-marker']:
             assert kind == 'regex' and text == ''
             expected_added.append({k: v for k, v in item.items() if k != 'source'} | {'replaceString': text})
             continue
         dest = expected_empty if kind == 'regex' and text == '' else expected
         dest.append({'kind': kind, 'id': item['id'], 'name': item.get('name', item.get('scriptName')), 'path': path})
+assert latest['v18_components'] == expected_v18 and len(expected_v18) == 5
 assert latest['components'] == expected
 assert latest['empty_regexes'] == expected_empty
 assert latest['added_regexes'] == expected_added

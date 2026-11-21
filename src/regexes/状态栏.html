@@ -188,6 +188,123 @@ const normalizeAcMode = (value, fallback = 'auto') => {
 
 const getModifier = (score) => Math.floor((parseInt(score, 10) - 10) / 2);
 
+function parseNamedBonus(raw) {
+    if (raw === null || raw === undefined || raw === '' || raw === 0 || raw === '0') {
+        return { total: 0, parts: [] };
+    }
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+        return raw === 0 ? { total: 0, parts: [] } : { total: raw, parts: [`额外（${raw >= 0 ? '+' + raw : raw}）`] };
+    }
+    const str = String(raw).trim();
+    if (!str || str === '0') return { total: 0, parts: [] };
+    if (/^[+-]?\d+$/.test(str)) {
+        const v = Number(str) || 0;
+        return v === 0 ? { total: 0, parts: [] } : { total: v, parts: [`额外（${v >= 0 ? '+' + v : v}）`] };
+    }
+    const tokens = str.split(/[,，、;；]+/).map(s => s.trim()).filter(Boolean);
+    let total = 0;
+    const parts = [];
+    for (const tok of tokens) {
+        const m = tok.match(/^(.+?)\s*([+-]\d+)$/) || tok.match(/^(.+?)[（(]\s*([+-]?\d+)\s*[）)]$/) || tok.match(/^([+-]\d+)\s*(.+)$/);
+        if (m) {
+            const numFirst = /^[+-]\d+$/.test(m[1]);
+            const label = (numFirst ? m[2] : m[1]).trim() || '额外';
+            const val = Number(numFirst ? m[1] : m[2]) || 0;
+            if (val !== 0) {
+                total += val;
+                parts.push(`${label}（${val >= 0 ? '+' + val : val}）`);
+            }
+        } else if (/^[+-]?\d+$/.test(tok)) {
+            const val = Number(tok) || 0;
+            if (val !== 0) {
+                total += val;
+                parts.push(`额外（${val >= 0 ? '+' + val : val}）`);
+            }
+        }
+    }
+    return { total, parts };
+}
+
+function evalSafeAcArithmetic(expr) {
+    const tokens = String(expr || '').match(/\d+(?:\.\d+)?|min|max|[()+\-*,]/gi);
+    if (!tokens || !tokens.length) return NaN;
+    let pos = 0;
+    const peek = () => tokens[pos];
+    const consume = () => tokens[pos++];
+    function parseExpr() {
+        let v = parseTerm();
+        while (peek() === '+' || peek() === '-') {
+            const op = consume();
+            const r = parseTerm();
+            v = op === '+' ? v + r : v - r;
+        }
+        return v;
+    }
+    function parseTerm() {
+        let v = parseUnary();
+        while (peek() === '*') {
+            consume();
+            v *= parseUnary();
+        }
+        return v;
+    }
+    function parseUnary() {
+        if (peek() === '+') { consume(); return parseUnary(); }
+        if (peek() === '-') { consume(); return -parseUnary(); }
+        return parsePrimary();
+    }
+    function parsePrimary() {
+        const t = peek();
+        if (!t) return NaN;
+        if (t.toLowerCase() === 'min' || t.toLowerCase() === 'max') {
+            const fn = consume().toLowerCase();
+            if (consume() !== '(') return NaN;
+            const args = [parseExpr()];
+            while (peek() === ',') { consume(); args.push(parseExpr()); }
+            if (consume() !== ')') return NaN;
+            return fn === 'min' ? Math.min(...args) : Math.max(...args);
+        }
+        if (t === '(') {
+            consume();
+            const v = parseExpr();
+            if (consume() !== ')') return NaN;
+            return v;
+        }
+        consume();
+        return Number(t);
+    }
+    const res = parseExpr();
+    return (pos === tokens.length && Number.isFinite(res)) ? Math.round(res) : NaN;
+}
+
+function evaluateChineseAcFormula(formulaRaw, ctxVars) {
+    let f = String(formulaRaw || '').trim();
+    if (!f) return null;
+    f = f.replace(/（/g, '(').replace(/）/g, ')').replace(/，/g, ',').replace(/＋/g, '+').replace(/－/g, '-').replace(/×/g, '*');
+    f = f.replace(/(力量|敏捷|体质|智力|感知|魅力)(?:调整值)?\s*\(\s*(?:上限|最大|最多)\s*(\d+)\s*\)/g, (_, ab, cap) => {
+        const map = { '力量': ctxVars.str, '敏捷': ctxVars.dex, '体质': ctxVars.con, '智力': ctxVars.int, '感知': ctxVars.wis, '魅力': ctxVars.cha };
+        return String(Math.min(map[ab] ?? 0, Number(cap)));
+    });
+    const repl = [
+        [/力量调整值|力量|\bstr\b/gi, ctxVars.str],
+        [/敏捷调整值|敏捷|\bdex\b/gi, ctxVars.dex],
+        [/体质调整值|体质|\bcon\b/gi, ctxVars.con],
+        [/智力调整值|智力|\bint\b/gi, ctxVars.int],
+        [/感知调整值|感知|\bwis\b/gi, ctxVars.wis],
+        [/魅力调整值|魅力|\bcha\b/gi, ctxVars.cha],
+        [/熟练加值|熟练|\bpb\b|\bprof\b/gi, ctxVars.prof],
+        [/等级|\blevel\b/gi, ctxVars.level],
+        [/护甲基础|护甲|\barmor\b/gi, ctxVars.armorBase],
+        [/盾牌加值|盾牌|\bshield\b/gi, ctxVars.shieldBonus],
+    ];
+    for (const [re, val] of repl) {
+        f = f.replace(re, '(' + String(val) + ')');
+    }
+    const val = evalSafeAcArithmetic(f);
+    if (!Number.isFinite(val)) return null;
+    return { value: val, description: `自定义公式：${formulaRaw.trim()} = ${val}`, usingArmor: ctxVars.hasArmor };
+}
+
 function normalizeEffects(rawEffects = []) {
     return normalizeDndEffects(rawEffects);
 }
@@ -359,7 +476,12 @@ function fromSchema(raw) {
     proficiencyBonus:normalizeNumber(raw.熟练加值,2),
     maxHp:normalizeNumber(raw.生命值?.最大,1),currentHp:normalizeNumber(raw.生命值?.当前,0),
     speed:normalizeNumber(raw.速度?.步行,0),
-    acMode:raw.护甲模式 || 'auto',overrides:{ac:raw.基础AC覆盖,initiative:Number.isFinite(initiativeOverride)?initiativeOverride:null},
+    acMode:raw.护甲模式 || 'auto',acFormula:normalizeString(raw.护甲公式 ?? raw.acFormula ?? '',''),
+    extraBonuses:{
+      ac:normalizeString((object(raw.额外加值)?raw.额外加值:{}).AC ?? (object(raw.额外加值)?raw.额外加值:{}).ac ?? '',''),
+      initiative:normalizeString((object(raw.额外加值)?raw.额外加值:{}).先攻 ?? (object(raw.额外加值)?raw.额外加值:{}).initiative ?? '','')
+    },
+    overrides:{ac:raw.基础AC覆盖,initiative:Number.isFinite(initiativeOverride)?initiativeOverride:null},
     initiativeBonus:normalizeNumber(initiativeExtra,0),
     useUnarmoredDefense:raw.无甲防御!==false,temporaryEffects:normalizeEffects(raw.临时效果)
   };
@@ -591,6 +713,19 @@ function calculateACDetails(mode = (characterData.acMode || 'auto')) {
         return { value: best.value, description: best.description, usingArmor: false };
     }
 
+    if (mode === 'auto' && characterData.acFormula && String(characterData.acFormula).trim()) {
+        const strMod = getModifier(applyNumericEffects(characterData.stats.str, ['stat.str']));
+        const intMod = getModifier(applyNumericEffects(characterData.stats.int, ['stat.int']));
+        const chaMod = getModifier(applyNumericEffects(characterData.stats.cha, ['stat.cha']));
+        const evaluated = evaluateChineseAcFormula(characterData.acFormula, {
+            str: strMod, dex: dexMod, con: conMod, int: intMod, wis: wisMod, cha: chaMod,
+            prof: normalizeNumber(characterData.proficiencyBonus, Math.floor(((Number(characterData.level) || 1) - 1) / 4) + 2),
+            level: Number(characterData.level) || 1,
+            armorBase: armorBase ?? 10, shieldBonus, hasArmor: Boolean(baseArmor)
+        });
+        if (evaluated) return evaluated;
+    }
+
     if (baseArmor) {
         return {
             value: armorAc + shieldBonus + defenseBonus,
@@ -607,6 +742,29 @@ function calculateACDetails(mode = (characterData.acMode || 'auto')) {
     }
 
     const autoOptions = buildUnarmoredOptions();
+    const chaModAuto = getModifier(applyNumericEffects(characterData.stats.cha, ['stat.cha']));
+    const chaPartAuto = formatAbilityPart('魅力', chaModAuto);
+    if (hasFeature('龙族韧性') || hasFeature('Draconic Resilience')) {
+        autoOptions.push({
+            value: 10 + dexMod + chaModAuto + shieldBonus,
+            description: buildSpecialArmorDescription('龙族韧性', ['10', dexPart, chaPartAuto, shieldPart(true)]),
+            allowShield: true
+        });
+    }
+    if (!shield && (hasFeature('优雅无甲') || ((characterData.class || '').includes('诗人') && hasFeature('舞蹈学院')))) {
+        autoOptions.push({
+            value: 10 + dexMod + chaModAuto,
+            description: buildSpecialArmorDescription('舞蹈学院无甲', ['10', dexPart, chaPartAuto]),
+            allowShield: false
+        });
+    }
+    if (/龟人|Tortle/i.test(characterData.race || '') || hasFeature('天生护甲：龟壳')) {
+        autoOptions.push({
+            value: 17 + shieldBonus,
+            description: buildSpecialArmorDescription('龟人自然护甲', ['17', shieldPart(true)]),
+            allowShield: true
+        });
+    }
     const bestAuto = autoOptions.reduce((acc, cur) => cur.value > acc.value ? cur : acc, autoOptions[0]);
     return { value: bestAuto.value, description: bestAuto.description, usingArmor: false };
 }
@@ -929,12 +1087,14 @@ function calculateInitiativeDetails() {
     parts.splice(0,parts.length,`手动基础先攻 ${signed(base)}`);
   }
   const trace=[];
-  const total=applyNumericEffects(base,['initiative.bonus'],{},trace);
+  const ebInit=parseNamedBonus(characterData.extraBonuses?.initiative);
+  const total=applyNumericEffects(base,['initiative.bonus'],{},trace)+ebInit.total;
   for(const step of trace){
     const name=step.entry.source.sourceType==='temporary'?step.entry.effect.name:step.entry.source.sourceName;
     const operation={add:signed(step.value),multiply:`×${step.value}`,override:`设为${step.value}`,upgrade:`至少${step.value}`,downgrade:`至多${step.value}`}[step.mode];
     parts.push(`${name} ${operation}`);
   }
+  for(const p of ebInit.parts) parts.push(p);
   return {base,total,description:parts.join('；')+` → 先攻 ${signed(total)}`+(notes.length?'\n'+[...new Set(notes)].join('\n'):'')};
 }
 
@@ -945,8 +1105,10 @@ function calculateInitiativeDetails() {
   const base=mode==='custom'?{value:characterData.overrides.ac,description:`手动基础AC：${characterData.overrides.ac}`} : calculateACDetails(mode);
   if (detailsOnly) return base;
   const trace=[];
-  const total=Math.floor(applyNumericEffects(base.value,['ac.bonus'],{},trace));
-  return {base:base.value,total,description:armorEffectDescription(base.description,trace)};
+  const ebAc=parseNamedBonus(characterData.extraBonuses?.ac);
+  const total=Math.floor(applyNumericEffects(base.value,['ac.bonus'],{},trace))+ebAc.total;
+  const desc=armorEffectDescription(base.description,trace)+(ebAc.parts.length?' + '+ebAc.parts.join(' + '):'');
+  return {base:base.value,total,description:desc};
 }
 
 function syncCharacter(raw) {
@@ -972,7 +1134,7 @@ function syncRoot(root) {
   for (const c of Object.values(root?.角色列表 || {})) if (c && typeof c==='object' && !Array.isArray(c)) syncCharacter(c);
   return root;
 }
-return {fromSchema,syncCharacter,syncRoot,initiative:character=>evaluate(character,false,undefined,true),calculate:character=>evaluate(character),details:(character,mode)=>evaluate(character,true,mode)};
+return {fromSchema,syncCharacter,syncRoot,parseNamedBonus,evaluateChineseAcFormula,initiative:character=>evaluate(character,false,undefined,true),calculate:character=>evaluate(character),details:(character,mode)=>evaluate(character,true,mode)};
 })();
 
 const MvuLite = (() => {
@@ -1237,6 +1399,7 @@ const MvuLite = (() => {
     const records=new Map();
     const key=name=>String(name).replace(/[\sA-Za-z]/g,'').trim();
     const add=(name,source='')=>{if(!name)return;const k=key(name);if(!k)return;const old=records.get(k);if(!old)records.set(k,{name,source});else if(!old.source&&source)old.source=source;};
+    for(const wm of list(c.熟练配置?.武器精通)) add(wm, '');
     for(const [name,value] of entries(c.特性?.职业)) {
       const match=name.match(/^武器精通\s*[:：]\s*(.+)$/);
       if(match)add(match[1],value?.来源||'');
@@ -1690,6 +1853,8 @@ function enrichSpellVariables(variables) {
     if (current.资源) out.资源=recordMerge(original.资源,current.资源);
     if (current.施法?.法术书) out.施法.法术书=recordMerge(original.施法?.法术书,current.施法.法术书);
     if (current.临时效果 !== undefined) out.临时效果=clone(current.临时效果);
+    if (current.护甲公式 !== undefined) { if (current.护甲公式) out.护甲公式=current.护甲公式; else delete out.护甲公式; }
+    if (current.额外加值 !== undefined) { const eb=prune(clone(current.额外加值)); if (object(eb) && Object.keys(eb).length) out.额外加值=eb; else delete out.额外加值; }
     if (original.职业详情?.classLevels) { out.职业详情=clone(original.职业详情); }
     // Keep the wizard upgrade selection in sync with actual status-bar checkboxes.
     if (current.施法?.法术书 && wizardPreparedLimit(out) !== null) {
@@ -1754,7 +1919,7 @@ function enrichSpellVariables(variables) {
 </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>D&D 5e 角色卡 (v4.2-路径简化版)</title>
+    <title>D&D 2024 角色卡 (VF.0.6.20)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.1/css/all.min.css" rel="stylesheet">
     <style>
@@ -2298,7 +2463,8 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
   const key='dnd-status-theme';
   const root=document.documentElement;
   function apply(theme){
-    root.dataset.statusTheme=theme==='night'?'night':'day';
+    root.dataset.statusTheme=theme==='day'?'day':'night';
+    if (document.body) document.body.classList.toggle('fvtt-dark', root.dataset.statusTheme==='night');
     const button=document.getElementById('status-theme-toggle');
     if(button){
       const night=root.dataset.statusTheme==='night';
@@ -2308,7 +2474,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
       button.title=night?'当前夜间模式，切换为日间':'当前日间模式，切换为夜间';
     }
   }
-  let saved='day';try{saved=localStorage.getItem(key)||'day';}catch{}
+  let saved='night';try{saved=localStorage.getItem(key)||'night';}catch{}
   apply(saved);
   function mount(){
     apply(root.dataset.statusTheme);
@@ -2322,8 +2488,536 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
 
 </script>
 <style id="armor-breakdown-tooltip">#ac-display.has-tooltip::after{white-space:normal;width:max-content;max-width:min(300px,calc(100vw - 32px));line-height:1.6;text-align:left;overflow-wrap:anywhere}</style>
+<style id="dnd-fvtt-overhaul-css">
+/* ===== FVTT D&D 2024 High-Contrast Obsidian + Crimson Theme ===== */
+body.fvtt-dark {
+  --ink-main: #f3ede2 !important;
+  --ink-soft: #d5cfc3 !important;
+  --ink-muted: #a6aec0 !important;
+  --parchment-bg: #181b23 !important;
+  --parchment-soft: #13161e !important;
+  --parchment-deep: #0f1118 !important;
+  --parchment-card: #1d212c !important;
+  --bg-surface: #181a21;
+  --bg-elevated: #222530;
+  background: #0e1015 !important;
+  color: #f3ede2 !important;
+}
+body.fvtt-dark #main-container,
+body.fvtt-dark .main-container {
+  background: linear-gradient(180deg, #161820 0%, #11131a 100%) !important;
+  border-color: rgba(212,175,106,0.32) !important;
+  color: #f3ede2 !important;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.78) !important;
+}
+body.fvtt-dark .left-sidebar,
+body.fvtt-dark .tab-content-wrapper {
+  background: linear-gradient(180deg, #191c25 0%, #141720 100%) !important;
+  border: 1px solid rgba(212,175,106,0.24) !important;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04) !important;
+  color: #f3ede2 !important;
+}
+body.fvtt-dark .tabs-nav {
+  background: linear-gradient(180deg, #171a22 0%, #12141b 100%) !important;
+  border: 1px solid rgba(212,175,106,0.26) !important;
+  box-shadow: 0 8px 22px rgba(0,0,0,0.42) !important;
+}
+body.fvtt-dark .status-summary,
+body.fvtt-dark .collapse-panel,
+body.fvtt-dark .list-item-grid,
+body.fvtt-dark .portrait-preview-modal > div,
+body.fvtt-dark #portrait-crop-modal > div {
+  background: #1d202b !important;
+  border-color: rgba(212,175,106,0.22) !important;
+  color: #f3ede2 !important;
+}
+body.fvtt-dark .left-sidebar .text-xs,
+body.fvtt-dark .left-sidebar .text-sm,
+body.fvtt-dark .left-sidebar span,
+body.fvtt-dark .left-sidebar label,
+body.fvtt-dark .left-sidebar p {
+  color: #e8e2d5;
+}
+body.fvtt-dark .stat-card-lg > div:first-child,
+body.fvtt-dark .stat-card-lg .text-xs,
+body.fvtt-dark .stat-card-lg .font-semibold {
+  color: #e6cb8e !important;
+}
+body.fvtt-dark .roll-mode-btn,
+body.fvtt-dark [data-roll-mode],
+body.fvtt-dark .mode-switch-group button {
+  background: #222634 !important;
+  color: #e8dcc6 !important;
+  border: 1px solid rgba(212,175,106,0.32) !important;
+}
+body.fvtt-dark .roll-mode-btn.active,
+body.fvtt-dark [data-roll-mode].active {
+  background: linear-gradient(135deg, #872031, #5c1320) !important;
+  color: #fff6e5 !important;
+  border-color: #e5be78 !important;
+}
+.fvtt-legacy-hidden { display: none !important; }
+body.fvtt-dark #main-header {
+  background: linear-gradient(90deg, #681523 0%, #2d141d 55%, #191b23 100%) !important;
+  border-bottom: 1px solid rgba(212,175,106,0.35) !important;
+  color: #fff4e3 !important;
+}
+body.fvtt-dark #main-header-actions { flex-wrap: wrap; min-width: 0; max-width: 100%; }
+body.fvtt-dark #main-header *,
+body.fvtt-dark #char-name,
+body.fvtt-dark #char-class-level {
+  color: #fff4e3 !important;
+}
+body.fvtt-dark .header-icon-btn {
+  background: rgba(255,255,255,0.08) !important;
+  border-color: rgba(212,175,106,0.35) !important;
+  color: #f4e4c4 !important;
+}
+body.fvtt-dark .header-icon-btn:hover {
+  background: rgba(212,175,106,0.22) !important;
+  color: #ffffff !important;
+}
+body.fvtt-dark .section-header,
+body.fvtt-dark .fvtt-section-hdr {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  padding: 6px 12px !important;
+  margin: 10px 0 6px !important;
+  border-radius: 6px 6px 2px 2px !important;
+  background: linear-gradient(90deg, #761828 0%, #55111c 72%, #3a0d16 100%) !important;
+  border: 1px solid rgba(224,108,125,0.28) !important;
+  border-bottom: 1px solid rgba(212,175,106,0.42) !important;
+  color: #fff5e8 !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+}
+body.fvtt-dark .character-switcher,
+body.fvtt-dark #character-switcher {
+  background: #15171e !important;
+  border-color: rgba(255,255,255,0.09) !important;
+}
+body.fvtt-dark .character-switcher button,
+body.fvtt-dark #character-switcher button,
+body.fvtt-dark .switcher-item {
+  background: #20232e !important;
+  color: #eee8dc !important;
+  border-color: rgba(212,175,106,0.25) !important;
+}
+body.fvtt-dark .character-switcher button.active,
+body.fvtt-dark #character-switcher button.active,
+body.fvtt-dark .switcher-item.active {
+  background: linear-gradient(135deg, #741827, #4a101b) !important;
+  color: #fff4df !important;
+  border-color: #d4af6a !important;
+}
+body.fvtt-dark .stat-card-lg,
+body.fvtt-dark .stat-box,
+body.fvtt-dark .skill-item,
+body.fvtt-dark .saving-throw-item,
+body.fvtt-dark .item-row-wrapper,
+body.fvtt-dark .item-main-row,
+body.fvtt-dark .feature-card,
+body.fvtt-dark .card,
+body.fvtt-dark .status-summary-box,
+body.fvtt-dark .bg-gray-900\/70,
+body.fvtt-dark .bg-gray-800,
+body.fvtt-dark .bg-white,
+body.fvtt-dark .bg-amber-50,
+body.fvtt-dark .bg-stone-100 {
+  background: #1f222c !important;
+  border-color: rgba(255,255,255,0.10) !important;
+  color: #f3ede2 !important;
+}
+body.fvtt-dark .item-main-row:hover,
+body.fvtt-dark .skill-item:hover,
+body.fvtt-dark .stat-card-lg:hover {
+  background: #292d3a !important;
+  border-color: rgba(212,175,106,0.38) !important;
+}
+body.fvtt-dark .mode-toggle,
+body.fvtt-dark .roll-btn-mini,
+body.fvtt-dark .quick-adjust-btn,
+body.fvtt-dark .equip-toggle,
+body.fvtt-dark .modal-preset-btn,
+body.fvtt-dark .add-item-btn,
+body.fvtt-dark .info-btn {
+  background: #262a36 !important;
+  border: 1px solid rgba(212,175,106,0.36) !important;
+  color: #f6e7c8 !important;
+}
+body.fvtt-dark .mode-toggle:hover,
+body.fvtt-dark .roll-btn-mini:hover,
+body.fvtt-dark .quick-adjust-btn:hover,
+body.fvtt-dark .equip-toggle:hover,
+body.fvtt-dark .add-item-btn:hover {
+  background: #353b4c !important;
+  color: #ffffff !important;
+}
+body.fvtt-dark .mode-toggle.active,
+body.fvtt-dark .equip-toggle.equipped,
+body.fvtt-dark .equip-toggle.active {
+  background: linear-gradient(135deg, #872031, #5c1320) !important;
+  border-color: #e5be78 !important;
+  color: #fff6e5 !important;
+}
+body.fvtt-dark .tab-btn,
+body.fvtt-dark .nav-tab,
+body.fvtt-dark .tab-button {
+  background: transparent !important;
+  color: #b5bcc9 !important;
+  border-bottom-color: transparent !important;
+}
+body.fvtt-dark .tab-btn.active,
+body.fvtt-dark .nav-tab.active,
+body.fvtt-dark .tab-button.active {
+  color: #ffe4a8 !important;
+  border-bottom-color: #d9465b !important;
+  background: rgba(118,24,40,0.34) !important;
+}
+body.fvtt-dark #ac-display {
+  color: #ffe8b3 !important;
+  background: radial-gradient(circle at 35% 30%, #2f2622, #1b171b 70%, #121015 100%) !important;
+  border-color: rgba(212,175,106,0.78) !important;
+}
+body.fvtt-dark #initiative-display,
+body.fvtt-dark #speed-display,
+body.fvtt-dark #proficiency-display,
+body.fvtt-dark .left-sidebar .bg-gray-700 {
+  background: #222634 !important;
+  border: 1px solid rgba(212,175,106,0.28) !important;
+  color: #f6f0e4 !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05) !important;
+}
+body.fvtt-dark .stat-custom-input {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px dashed rgba(212,175,106,0.45) !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  padding: 0 2px !important;
+  color: #f6f0e4 !important;
+  text-align: center !important;
+  box-shadow: none !important;
+}
+body.fvtt-dark .edit-input,
+body.fvtt-dark .detail-input,
+body.fvtt-dark input:not([type="checkbox"]):not([type="radio"]):not(.stat-custom-input),
+body.fvtt-dark select,
+body.fvtt-dark textarea {
+  background: #101218 !important;
+  color: #f6f0e4 !important;
+  border-color: rgba(212,175,106,0.38) !important;
+}
+body.fvtt-dark .detail-value {
+  background: #151821 !important;
+  color: #f3ede2 !important;
+  border-color: rgba(255,255,255,0.10) !important;
+}
+body.fvtt-dark #main-container .text-white,
+body.fvtt-dark #main-container .text-gray-100,
+body.fvtt-dark #main-container .text-gray-200,
+body.fvtt-dark #main-container .text-gray-300,
+body.fvtt-dark #main-container .text-gray-900,
+body.fvtt-dark #main-container .text-gray-800,
+body.fvtt-dark #main-container .text-gray-700,
+body.fvtt-dark #main-container .text-stone-800,
+body.fvtt-dark #main-container .text-stone-700,
+body.fvtt-dark #main-container .text-amber-900,
+body.fvtt-dark #main-container .text-amber-800,
+body.fvtt-dark #main-container .status-summary-text,
+body.fvtt-dark #main-container .collapse-header {
+  color: #f3ede2 !important;
+}
+body.fvtt-dark #main-container .text-gray-600,
+body.fvtt-dark #main-container .text-gray-500,
+body.fvtt-dark #main-container .text-gray-400,
+body.fvtt-dark #main-container .detail-label,
+body.fvtt-dark #main-container .status-summary-label,
+body.fvtt-dark #main-container .item-separator,
+body.fvtt-dark #main-container .roll-log-item .roll-detail {
+  color: #b8c0ce !important;
+}
+body.fvtt-dark #main-container .stat-card-lg > div:first-child,
+body.fvtt-dark #main-container .stat-card-lg .text-xs,
+body.fvtt-dark #main-container .stat-card-lg .text-sm {
+  color: #e8cc8e !important;
+}
+body.fvtt-dark #main-container .stat-card-lg .text-2xl,
+body.fvtt-dark #main-container .stat-card-lg .text-xl,
+body.fvtt-dark #main-container .stat-card-lg .font-bold {
+  color: #ffffff !important;
+}
+
+/* ===== Complete FVTT CHARACTER TRAITS Table ===== */
+.fvtt-traits-box {
+  margin-top: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.10);
+  background: #171920; overflow: hidden;
+}
+body:not(.fvtt-dark) .fvtt-traits-box {
+  background: rgba(250,242,226,0.86); border-color: rgba(152,118,79,0.38);
+}
+.fvtt-traits-title {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 7px 12px; font-size: 12px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: #f7e4bc;
+  background: linear-gradient(90deg, #741827 0%, #3d111a 100%);
+  border-bottom: 1px solid rgba(212,175,106,0.42);
+}
+.fvtt-trait-row {
+  display: grid; grid-template-columns: 92px 1fr 28px; align-items: center;
+  gap: 8px; padding: 7px 12px; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 12.5px;
+}
+.fvtt-trait-row:last-child { border-bottom: none; }
+.fvtt-trait-row.is-empty { opacity: 0.45; }
+.fvtt-trait-label { color: #b4bac7; font-weight: 600; font-size: 12px; display: flex; align-items: center; gap: 6px; }
+body:not(.fvtt-dark) .fvtt-trait-label { color: #5e472d; }
+.fvtt-trait-val { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.fvtt-trait-gear {
+  background: transparent; border: none; color: #9ba3b2; cursor: pointer;
+  font-size: 13px; padding: 2px; display: inline-flex; align-items: center; justify-content: center;
+}
+.fvtt-trait-gear:hover { color: #ffe3a6; }
+.fvtt-pill {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px;
+  border-radius: 5px; font-size: 12px; background: #252834;
+  border: 1px solid rgba(255,255,255,0.14); color: #f2ece0;
+}
+body:not(.fvtt-dark) .fvtt-pill {
+  background: rgba(145,110,68,0.14); border-color: rgba(145,110,68,0.38); color: #3a2a19;
+}
+.fvtt-pill.resist { background: rgba(34,116,68,0.44); border-color: rgba(92,206,136,0.52); color: #d2fbe0; }
+.fvtt-pill.immune { background: rgba(44,96,158,0.42); border-color: rgba(108,168,238,0.5); color: #d6ebff; }
+.fvtt-pill.vuln { background: rgba(156,42,42,0.42); border-color: rgba(235,105,105,0.52); color: #ffd6d6; }
+.fvtt-pill.mastery { background: rgba(132,28,44,0.36); border-color: rgba(226,98,116,0.56); color: #ffeaee; cursor: help; }
+.fvtt-mastery-star {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 17px; height: 17px; border-radius: 50%;
+  background: radial-gradient(circle, #e04a60, #921c2e); color: #fff6e5;
+  font-size: 10px; font-weight: 900; box-shadow: 0 0 6px rgba(224,74,96,0.55); flex-shrink: 0;
+}
+.fvtt-entity-chip { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; color: #f5efe3; }
+body:not(.fvtt-dark) .fvtt-entity-chip { color: #2b1f14; }
+.fvtt-subclass-sub { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; font-size: 12px; color: #d7cfb9; }
+.fvtt-edit-mini-btn {
+  padding: 3px 9px; border-radius: 5px; font-size: 11.5px;
+  background: rgba(212,175,106,0.18); border: 1px solid rgba(212,175,106,0.48); color: #ffe6ae; cursor: pointer;
+}
+.fvtt-edit-mini-btn:hover { background: rgba(212,175,106,0.34); color: #fff; }
+
+/* Weapon Matrix & Trait Picker Modals */
+#fvtt-weapon-matrix-modal {
+  position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
+  width: min(700px, calc(100vw - 24px)); max-height: min(600px, 88vh);
+  margin: 0; padding: 0; border-radius: 12px; border: 1px solid rgba(212,175,106,0.48);
+  background: #161820; color: #f3ede2; box-shadow: 0 24px 80px rgba(0,0,0,0.88);
+  overflow: hidden; display: flex; flex-direction: column;
+}
+#fvtt-weapon-matrix-modal:not([open]) { display: none !important; }
+#fvtt-weapon-matrix-modal::backdrop { background: rgba(5,7,10,0.75); backdrop-filter: blur(4px); }
+.fvtt-wm-hd {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 11px 16px; background: linear-gradient(90deg, #741827, #2b141c);
+  border-bottom: 1px solid rgba(212,175,106,0.38); font-weight: 700; color: #ffe8b5;
+}
+.fvtt-wm-body { flex: 1 1 auto; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; }
+.fvtt-wm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 600px) { .fvtt-wm-grid { grid-template-columns: 1fr; } }
+.fvtt-wm-col { border: 1px solid rgba(255,255,255,0.09); border-radius: 8px; background: #1d2029; overflow: hidden; }
+.fvtt-wm-col-hdr {
+  display: grid; grid-template-columns: 1fr 44px 44px; align-items: center;
+  padding: 7px 10px; background: linear-gradient(90deg, #621421, #3a1019); font-size: 12px; font-weight: 700; color: #faead0;
+}
+.fvtt-wm-row {
+  display: grid; grid-template-columns: 1fr 44px 44px; align-items: center;
+  padding: 5px 10px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 12px; color: #f0eae0;
+}
+.fvtt-wm-row:hover { background: rgba(255,255,255,0.045); }
+.fvtt-wm-name { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.fvtt-wm-chk { display: flex; justify-content: center; }
+.fvtt-wm-chk input { width: 16px; height: 16px; accent-color: #d4af6a; cursor: pointer; }
+.fvtt-wm-custom-box { border: 1px solid rgba(212,175,106,0.28); border-radius: 8px; background: #1c1f28; padding: 10px 12px; }
+.fvtt-wm-ft {
+  display: flex; justify-content: flex-end; gap: 8px; padding: 10px 16px;
+  border-top: 1px solid rgba(255,255,255,0.09); background: #12141a;
+}
+.fvtt-row-icon-wrap { display: inline-flex; align-items: center; gap: 8px; vertical-align: middle; }
+
+/* ===== FVTT 2024 Spell Tab Table UI ===== */
+.fvtt-spell-section {
+  margin-bottom: 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.09);
+  background: #171a22; overflow: hidden;
+}
+body:not(.fvtt-dark) .fvtt-spell-section {
+  background: rgba(250,242,226,0.92); border-color: rgba(152,118,79,0.38);
+}
+.fvtt-spell-hdr {
+  display: grid; grid-template-columns: minmax(0, 1fr) 56px 64px 62px 76px;
+  align-items: center; gap: 6px; padding: 7px 12px;
+  background: linear-gradient(90deg, #741827 0%, #52111d 68%, #340d15 100%);
+  border-bottom: 1px solid rgba(212,175,106,0.36); color: #fff3e2; font-size: 12px; font-weight: 700;
+}
+.fvtt-spell-hdr-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.fvtt-spell-hdr-col { text-align: center; color: rgba(255,240,218,0.82); font-size: 11.5px; font-weight: 600; }
+.fvtt-slot-ctrl { display: inline-flex; align-items: center; gap: 5px; margin-left: 6px; font-size: 12px; font-weight: 700; color: #ffe8ba; }
+.fvtt-slot-btn {
+  width: 18px; height: 18px; border-radius: 50%; border: 1px solid rgba(255,232,186,0.55);
+  background: rgba(255,255,255,0.12); color: #fff5e3; font-size: 12px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;
+}
+.fvtt-slot-btn:hover { background: rgba(212,175,106,0.36); color: #fff; }
+.fvtt-spell-row-wrap { border-bottom: 1px solid rgba(255,255,255,0.06); }
+.fvtt-spell-row-wrap:last-child { border-bottom: none; }
+.fvtt-spell-row {
+  display: grid !important; grid-template-columns: minmax(0, 1fr) 56px 64px 62px 76px !important;
+  align-items: center !important; gap: 6px !important; padding: 7px 12px !important;
+  cursor: pointer; transition: background 0.14s ease;
+}
+.fvtt-spell-row:hover { background: rgba(212,175,106,0.08) !important; }
+.fvtt-spell-row.unprepared { opacity: 0.58; }
+.fvtt-spell-row.unprepared .fvtt-ico { filter: grayscale(0.85); }
+.fvtt-spell-row.unprepared .fvtt-spell-title-zh { font-style: italic; color: #b8bfcc; }
+.fvtt-spell-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.fvtt-spell-text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.fvtt-spell-title { display: flex; align-items: baseline; gap: 6px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fvtt-spell-title-zh { font-size: 13.5px; font-weight: 700; color: #f6f0e4; }
+body:not(.fvtt-dark) .fvtt-spell-title-zh { color: #2b1f14; }
+.fvtt-spell-title-en { font-size: 11.5px; color: #9ba3b4; font-weight: 400; overflow: hidden; text-overflow: ellipsis; }
+.fvtt-spell-sub { font-size: 11px; color: #8f98a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fvtt-spell-cell { text-align: center; font-size: 12px; color: #e2dcd0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body:not(.fvtt-dark) .fvtt-spell-cell { color: #4a3723; }
+.fvtt-spell-roll-save { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.1; }
+.fvtt-spell-roll-save small { font-size: 9.5px; letter-spacing: 0.04em; color: #d4af6a; font-weight: 700; }
+.fvtt-spell-roll-save b { font-size: 13px; color: #f7f1e5; }
+body:not(.fvtt-dark) .fvtt-spell-roll-save b { color: #2b1f14; }
+.fvtt-spell-roll-atk { font-size: 13px; font-weight: 800; color: #ffe3a3; }
+body:not(.fvtt-dark) .fvtt-spell-roll-atk { color: #741827; }
+.fvtt-spell-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.fvtt-spell-actions input[type="checkbox"] { width: 16px; height: 16px; accent-color: #d4af6a; cursor: pointer; flex-shrink: 0; }
+.fvtt-spell-actions input[type="checkbox"]:disabled { cursor: not-allowed; opacity: 0.65; }
+.fvtt-spell-icon-btn {
+  width: 26px; height: 26px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04); color: #9aa3b4; display: inline-flex; align-items: center;
+  justify-content: center; cursor: pointer; font-size: 12px; transition: all 0.14s ease;
+}
+.fvtt-spell-icon-btn:hover { background: rgba(212,175,106,0.22); color: #fff; border-color: rgba(212,175,106,0.5); }
+.fvtt-spell-detail {
+  display: none; padding: 10px 14px 12px; background: #12151d;
+  border-top: 1px solid rgba(255,255,255,0.06); font-size: 12.5px; color: #dcd6c9; line-height: 1.6; white-space: pre-line;
+}
+body:not(.fvtt-dark) .fvtt-spell-detail { background: rgba(244,233,212,0.95); color: #3a2a19; }
+.fvtt-spell-row-wrap.expanded .fvtt-spell-detail { display: block; }
+.fvtt-spell-detail-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 6px; font-size: 11.5px; color: #b7bfce; }
+body:not(.fvtt-dark) .fvtt-spell-detail-meta { color: #5e472d; }
+.fvtt-spell-detail-meta span b { color: #e8cc8e; font-weight: 600; }
+body:not(.fvtt-dark) .fvtt-spell-detail-meta span b { color: #741827; }
+@media (max-width: 640px) {
+  .fvtt-spell-hdr, .fvtt-spell-row {
+    grid-template-columns: minmax(0, 1fr) 40px 48px 46px 64px !important;
+    padding: 6px 8px !important; gap: 4px !important;
+  }
+  .fvtt-spell-title-en { display: none; }
+}
+.fvtt-en-sub { font-size: 11px; color: #8f98a8; font-weight: 400; margin-left: 5px; }
+.fvtt-badge-homebrew {
+  display: inline-flex; align-items: center; padding: 1px 6px; margin-left: 6px;
+  border-radius: 4px; font-size: 10px; font-weight: 700; line-height: 1.4;
+  background: rgba(139, 92, 246, 0.22); border: 1px solid rgba(167, 139, 250, 0.52); color: #ddd6fe; flex-shrink: 0;
+}
+
+/* Clean additive Extra Bonuses panel in wrench edit mode */
+.fvtt-extra-bonus-bar {
+  margin: 10px 0 14px; padding: 10px 12px; border-radius: 8px;
+  border: 1px solid rgba(212,175,106,0.34); background: rgba(28, 32, 44, 0.92);
+}
+.fvtt-extra-bonus-title { font-size: 11.5px; font-weight: 700; color: #e8cc8e; margin-bottom: 8px; }
+.fvtt-extra-bonus-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 640px) { .fvtt-extra-bonus-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.fvtt-extra-bonus-cell { display: flex; flex-direction: column; gap: 3px; }
+.fvtt-extra-bonus-cell label { font-size: 10.5px; color: #aab2c2; }
+.fvtt-extra-bonus-cell input {
+  width: 100%; padding: 4px 6px; border-radius: 6px; border: 1px solid rgba(212,175,106,0.32);
+  background: #101218; color: #f6f0e4; font-size: 12px; text-align: center;
+}
+.fvtt-custom-toggle {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 700; cursor: pointer; border: 1px solid rgba(212,175,106,0.38);
+  background: rgba(255,255,255,0.06); color: #cfd5e2;
+}
+.fvtt-custom-toggle.is-custom { background: rgba(217, 119, 6, 0.28); border-color: rgba(245, 158, 11, 0.72); color: #fde68a; }
+
+/* ===== FVTT PHB 2024 + DMG 2024 Compendium Browser Modal ===== */
+#fvtt-compendium-picker-modal {
+  position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+  width: min(820px, calc(100vw - 24px)); height: min(720px, 88vh); max-height: min(760px, 90vh);
+  margin: 0; padding: 0; border-radius: 12px; border: 1px solid rgba(212,175,106,0.52);
+  background: #141720; color: #f3ede2; box-shadow: 0 28px 90px rgba(0,0,0,0.92);
+  overflow: hidden; display: flex; flex-direction: column;
+}
+#fvtt-compendium-picker-modal:not([open]) { display: none !important; }
+#fvtt-compendium-picker-modal::backdrop { background: rgba(5,7,10,0.78); backdrop-filter: blur(4px); }
+.fvtt-cp-hd {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 11px 16px; background: linear-gradient(90deg, #741827 0%, #38121b 65%, #1c1924 100%);
+  border-bottom: 1px solid rgba(212,175,106,0.42);
+}
+.fvtt-cp-title { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 800; color: #ffebbf; }
+.fvtt-cp-count { font-size: 11.5px; font-weight: 600; color: #e8cc8e; background: rgba(0,0,0,0.32); padding: 2px 8px; border-radius: 999px; border: 1px solid rgba(212,175,106,0.32); }
+.fvtt-cp-toolbar { flex: 0 0 auto; padding: 10px 16px 9px; background: #191d28; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; gap: 8px; }
+.fvtt-cp-search { width: 100%; padding: 7px 12px; border-radius: 7px; border: 1px solid rgba(212,175,106,0.38); background: #0e1017; color: #f6f0e4; font-size: 13px; outline: none; }
+.fvtt-cp-pills { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.fvtt-cp-pill { padding: 3px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600; border: 1px solid rgba(255,255,255,0.14); background: #222634; color: #c5ccd9; cursor: pointer; }
+.fvtt-cp-pill.active { background: linear-gradient(135deg, #8a1d30, #5c1320); border-color: #e5be78; color: #fff6e5; }
+.fvtt-cp-list { flex: 1 1 0%; min-height: 0; overflow-y: auto; padding: 8px 14px 12px; display: block; }
+.fvtt-cp-sec-hdr {
+  margin: 8px 0 6px; padding: 6px 10px; border-radius: 6px; font-size: 11.5px; font-weight: 800;
+  color: #f5deb0; background: linear-gradient(90deg, rgba(116,24,39,0.72), rgba(26,30,42,0.72));
+  border-left: 3px solid #e5be78; display: flex; justify-content: space-between; align-items: center;
+}
+.fvtt-cp-sec-hdr.dmg { background: linear-gradient(90deg, rgba(88,36,120,0.68), rgba(26,30,42,0.72)); border-left-color: #c084fc; color: #f3e8ff; }
+.fvtt-cp-sec-hdr.other { background: rgba(255,255,255,0.05); border-left-color: #64748b; color: #b8c0ce; }
+.fvtt-cp-row { margin-bottom: 6px; border-radius: 7px; border: 1px solid rgba(255,255,255,0.08); background: #1a1e29; overflow: hidden; }
+.fvtt-cp-row:hover { border-color: rgba(212,175,106,0.42); }
+.fvtt-cp-row-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 11px; cursor: pointer; }
+.fvtt-cp-row-main { display: flex; align-items: center; gap: 9px; min-width: 0; flex: 1 1 auto; }
+.fvtt-cp-row-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.fvtt-cp-row-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; font-size: 13px; font-weight: 700; color: #f7f1e5; }
+.fvtt-cp-row-en { font-size: 11px; font-weight: 400; color: #939cad; }
+.fvtt-cp-row-meta { display: flex; flex-wrap: wrap; gap: 5px; font-size: 11px; color: #b4bccb; }
+.fvtt-cp-tag { padding: 1px 6px; border-radius: 4px; font-size: 10.5px; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.10); color: #d6dce8; }
+.fvtt-cp-tag.rar-uncommon { background: rgba(34,197,94,0.18); border-color: rgba(74,222,128,0.45); color: #bbf7d0; }
+.fvtt-cp-tag.rar-rare { background: rgba(59,130,246,0.20); border-color: rgba(96,165,250,0.50); color: #bfdbfe; }
+.fvtt-cp-tag.rar-veryrare { background: rgba(168,85,247,0.22); border-color: rgba(192,132,252,0.52); color: #e9d5ff; }
+.fvtt-cp-tag.rar-legendary { background: rgba(245,158,11,0.24); border-color: rgba(251,191,36,0.58); color: #fde68a; }
+.fvtt-cp-tag.rar-artifact { background: rgba(239,68,68,0.24); border-color: rgba(248,113,113,0.58); color: #fecaca; }
+.fvtt-cp-add-btn { padding: 4px 11px; border-radius: 6px; border: 1px solid rgba(212,175,106,0.52); background: linear-gradient(135deg, #872031, #5c1320); color: #fff6e5; font-size: 11.5px; font-weight: 700; cursor: pointer; flex-shrink: 0; }
+.fvtt-cp-add-btn.added { background: rgba(31,110,60,0.35); border-color: rgba(107,212,139,0.55); color: #bbf7d0; }
+.fvtt-cp-desc { display: none; padding: 9px 13px 11px; background: #10131b; border-top: 1px solid rgba(255,255,255,0.06); font-size: 12px; color: #dad3c6; line-height: 1.6; white-space: pre-line; }
+.fvtt-cp-row.expanded .fvtt-cp-desc { display: block; }
+.fvtt-cp-ft { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 16px; background: #171a24; border-top: 1px solid rgba(255,255,255,0.08); }
+
+/* ===== Left Sidebar Temporary Effects Quick-Bar ===== */
+.fvtt-temp-box { margin-top: 10px; border-radius: 8px; border: 1px solid rgba(212,175,106,0.32); background: #171a23; overflow: hidden; }
+body:not(.fvtt-dark) .fvtt-temp-box { background: rgba(250,242,226,0.9); border-color: rgba(152,118,79,0.38); }
+.fvtt-temp-hd { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 10px; background: linear-gradient(90deg, rgba(116,24,39,0.85), rgba(30,24,36,0.9)); border-bottom: 1px solid rgba(212,175,106,0.28); font-size: 11.5px; font-weight: 700; color: #f7e4bc; }
+.fvtt-temp-add-btn { padding: 2px 7px; border-radius: 5px; border: 1px solid rgba(212,175,106,0.52); background: rgba(212,175,106,0.16); color: #ffe8b5; font-size: 11px; font-weight: 700; cursor: pointer; }
+.fvtt-temp-pills { padding: 7px 8px; display: flex; flex-wrap: wrap; gap: 5px; }
+.fvtt-temp-empty { width: 100%; font-size: 11px; color: #7e8798; text-align: center; padding: 2px 0; }
+.fvtt-temp-pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; border-radius: 6px; font-size: 11px; background: rgba(132,28,44,0.34); border: 1px solid rgba(226,98,116,0.52); color: #fff0f2; cursor: pointer; max-width: 100%; }
+body:not(.fvtt-dark) .fvtt-temp-pill { color: #3a1920; background: rgba(132,28,44,0.14); }
+.fvtt-temp-pill.is-disabled { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.14); color: #8c94a4; text-decoration: line-through; opacity: 0.65; }
+.fvtt-temp-pill-tags { font-size: 10px; color: #f3d595; font-weight: 600; }
+body:not(.fvtt-dark) .fvtt-temp-pill-tags { color: #741827; }
+.fvtt-temp-pill-del { background: none; border: none; color: #f4a4ae; font-size: 12px; line-height: 1; cursor: pointer; padding: 0 2px; }
+.fvtt-temp-drawer { padding: 8px; border-top: 1px solid rgba(255,255,255,0.08); background: #11141c; display: flex; flex-direction: column; gap: 6px; }
+.fvtt-temp-presets { display: flex; flex-wrap: wrap; gap: 4px; }
+.fvtt-temp-preset-btn { padding: 2px 6px; border-radius: 5px; border: 1px solid rgba(212,175,106,0.34); background: #202432; color: #ece4d5; font-size: 10.5px; cursor: pointer; }
+.fvtt-temp-custom-row { display: flex; gap: 4px; flex-wrap: wrap; }
+.fvtt-temp-custom-row input { flex: 1 1 84px; min-width: 0; padding: 3px 6px; border-radius: 5px; border: 1px solid rgba(212,175,106,0.32); background: #0d0f15; color: #f3ede2; font-size: 11px; }
+</style>
 </head>
-<body>
+<body class="fvtt-dark">
     <div id="main-grid-container" class="main-grid-container is-collapsed">
         <aside id="character-switcher" class="character-switcher"></aside>
         <div id="main-container" class="main-container is-collapsed">
@@ -3516,6 +4210,16 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                 if (typeof acModeRaw === 'string' && acModeRaw.trim()) {
                     base.acMode = normalizeAcMode(acModeRaw, base.acMode);
                 }
+                base.acFormula = normalizeString(schemaChar.护甲公式 ?? schemaChar.acFormula ?? '', '');
+                const __ebRaw = (schemaChar.额外加值 && typeof schemaChar.额外加值 === 'object') ? schemaChar.额外加值 : {};
+                const __normEb = (v) => (v === undefined || v === null || v === 0 || v === '0') ? '' : String(v).trim();
+                base.extraBonuses = {
+                    ac: __normEb(__ebRaw.AC ?? __ebRaw.ac),
+                    initiative: __normEb(__ebRaw.先攻 ?? __ebRaw.initiative),
+                    spellAttack: __normEb(__ebRaw.法术攻击 ?? __ebRaw.spellAttack),
+                    spellDc: __normEb(__ebRaw.法术DC ?? __ebRaw.spellDc),
+                    saveAll: __normEb(__ebRaw.全豁免 ?? __ebRaw.saveAll),
+                };
                 const unarmoredRaw = schemaChar.无甲防御 ?? schemaChar.使用无甲防御 ?? schemaChar.useUnarmoredDefense;
                 if (typeof unarmoredRaw === 'boolean') {
                     base.useUnarmoredDefense = unarmoredRaw;
@@ -3595,6 +4299,12 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     ...normalizeStringArray(legacyWeaponArmorRaw)
                 ];
                 base.proficiencies.weaponAndArmor = Array.from(new Set(combinedWeaponArmor)).filter(Boolean);
+                const armorKnownSet = new Set(['轻甲', '中甲', '重甲', '盾牌']);
+                base.armorProficiencies = armorProfs.length ? [...new Set(armorProfs)] : base.proficiencies.weaponAndArmor.filter(x => armorKnownSet.has(x));
+                base.weaponProficiencies = weaponProfs.length ? [...new Set(weaponProfs)] : base.proficiencies.weaponAndArmor.filter(x => !armorKnownSet.has(x));
+                base.toolProficiencies = [];
+                const rawWmList = Array.isArray(schemaChar.武器精通) ? schemaChar.武器精通 : (Array.isArray(proficiencyConfig.武器精通) ? proficiencyConfig.武器精通 : []);
+                base.weaponMasteries = [...new Set(rawWmList.map(x => String(x || '').trim()).filter(Boolean))];
                 const toolConfig = proficiencyConfig.工具 ?? {};
                 const toolList = [];
                 if (Array.isArray(toolConfig) || typeof toolConfig === 'string') {
@@ -3608,6 +4318,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     });
                 }
                 base.proficiencies.tools = Array.from(new Set(toolList)).filter(Boolean);
+                base.toolProficiencies = [...base.proficiencies.tools];
                 const languageRaw = schemaChar.语言
                     ?? schemaChar.语言能力
                     ?? schemaChar.习得语言
@@ -3819,6 +4530,14 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     等级: normalizeNumber(char.level, 1),
                     熟练加值: normalizeNumber(char.proficiencyBonus, 2),
                     护甲模式: normalizeString(char.acMode, 'auto'),
+                    护甲公式: normalizeString(char.acFormula, ''),
+                    额外加值: {
+                        AC: normalizeString(char.extraBonuses?.ac, ''),
+                        先攻: normalizeString(char.extraBonuses?.initiative, ''),
+                        法术攻击: normalizeString(char.extraBonuses?.spellAttack, ''),
+                        法术DC: normalizeString(char.extraBonuses?.spellDc, ''),
+                        全豁免: normalizeString(char.extraBonuses?.saveAll, ''),
+                    },
                     基础AC覆盖: char.acMode === 'custom' ? char.overrides.ac : null,
                     无甲防御: char.useUnarmoredDefense !== false,
                     数值覆盖: {
@@ -3862,6 +4581,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                         魅力: normalizeNumber(char.stats?.cha, 10)
                     },
                     熟练配置: {
+                        武器精通: getCharacterWeaponMasteryList(char),
                         技能: {},
                         豁免: {
                             力量: false,
@@ -5011,14 +5731,16 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                 const statScore = characterData.stats?.[stat] ?? 10;
                 const base = getModifier(statScore) + proficiencyBonusToAdd;
                 const effectTargets = ['skill.all', ...equivalentSkills.map(name => `skill.${name}`)];
-                return applyNumericEffects(base, effectTargets, { skillName: normalizedSkill || skillName, skillStat: stat });
+                const featSkBonus = typeof getFvttFeatureSkillBonus === 'function' ? getFvttFeatureSkillBonus(normalizedSkill || skillName, characterData, level, effectTargets) : 0;
+                return applyNumericEffects(base + featSkBonus, effectTargets, { skillName: normalizedSkill || skillName, skillStat: stat });
             }
 
             function getSavingThrowBonus(stat) {
                 const score = isEditing ? characterData.stats[stat] : getEffectiveStat(stat);
                 const isProficient = (characterData.proficiencies?.savingThrows || []).includes(stat);
                 const base = getModifier(score) + (isProficient ? getEffectiveProficiencyBonus() : 0);
-                return applyNumericEffects(base, ['save.all', `save.${stat}`], { saveStat: stat });
+                const featSvBonus = typeof getFvttExtraSaveBonus === 'function' ? getFvttExtraSaveBonus(stat, characterData) : 0;
+                return applyNumericEffects(base + featSvBonus, ['save.all', `save.${stat}`], { saveStat: stat });
             }
 
             function getEffectiveMaxHp() {
@@ -5572,12 +6294,1611 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                 });
             }
 
+            /* __fvttUiOverhaulStart */
+const DND2024_SIMPLE_WEAPONS = [
+  { name: '短棒', en: 'Club', mastery: 'Slow 减速' },
+  { name: '匕首', en: 'Dagger', mastery: 'Nick 轻巧' },
+  { name: '巨棒', en: 'Greatclub', mastery: 'Push 推击' },
+  { name: '手斧', en: 'Handaxe', mastery: 'Vex 扰乱' },
+  { name: '标枪', en: 'Javelin', mastery: 'Slow 减速' },
+  { name: '轻锤', en: 'Light Hammer', mastery: 'Nick 轻巧' },
+  { name: '硬头锤', en: 'Mace', mastery: 'Sap 削弱' },
+  { name: '长棍', en: 'Quarterstaff', mastery: 'Topple 绊倒' },
+  { name: '镰刀', en: 'Sickle', mastery: 'Nick 轻巧' },
+  { name: '矛', en: 'Spear', mastery: 'Sap 削弱' },
+  { name: '飞镖', en: 'Dart', mastery: 'Vex 扰乱' },
+  { name: '轻弩', en: 'Light Crossbow', mastery: 'Slow 减速' },
+  { name: '短弓', en: 'Shortbow', mastery: 'Vex 扰乱' },
+  { name: '投石索', en: 'Sling', mastery: 'Slow 减速' },
+];
+const DND2024_MARTIAL_WEAPONS = [
+  { name: '战斧', en: 'Battleaxe', mastery: 'Topple 绊倒' },
+  { name: '链枷', en: 'Flail', mastery: 'Sap 削弱' },
+  { name: '长柄刀', aliases: ['大砍刀'], en: 'Glaive', mastery: 'Graze 擦伤' },
+  { name: '巨斧', en: 'Greataxe', mastery: 'Cleave 顺劈' },
+  { name: '巨剑', en: 'Greatsword', mastery: 'Graze 擦伤' },
+  { name: '戟', en: 'Halberd', mastery: 'Cleave 顺劈' },
+  { name: '骑枪', aliases: ['长枪'], en: 'Lance', mastery: 'Topple 绊倒' },
+  { name: '长剑', en: 'Longsword', mastery: 'Sap 削弱' },
+  { name: '巨锤', en: 'Maul', mastery: 'Topple 绊倒' },
+  { name: '钉头锤', en: 'Morningstar', mastery: 'Sap 削弱' },
+  { name: '长矛', en: 'Pike', mastery: 'Push 推击' },
+  { name: '刺剑', en: 'Rapier', mastery: 'Vex 扰乱' },
+  { name: '弯刀', en: 'Scimitar', mastery: 'Nick 轻巧' },
+  { name: '短剑', en: 'Shortsword', mastery: 'Vex 扰乱' },
+  { name: '三叉戟', en: 'Trident', mastery: 'Topple 绊倒' },
+  { name: '战镐', en: 'War Pick', mastery: 'Sap 削弱' },
+  { name: '战锤', en: 'Warhammer', mastery: 'Push 推击' },
+  { name: '鞭', en: 'Whip', mastery: 'Slow 减速' },
+  { name: '吹箭筒', en: 'Blowgun', mastery: 'Vex 扰乱' },
+  { name: '手弩', en: 'Hand Crossbow', mastery: 'Vex 扰乱' },
+  { name: '重弩', en: 'Heavy Crossbow', mastery: 'Push 推击' },
+  { name: '长弓', en: 'Longbow', mastery: 'Slow 减速' },
+  { name: '火枪', aliases: ['火铳'], en: 'Musket', mastery: 'Slow 减速' },
+  { name: '手铳', aliases: ['手枪'], en: 'Pistol', mastery: 'Vex 扰乱' },
+];
+const DND2024_ALL_WEAPONS = [...DND2024_SIMPLE_WEAPONS, ...DND2024_MARTIAL_WEAPONS];
+
+function getAssetVault() {
+  try { return window.top?.__dndAssetVault || window.parent?.__dndAssetVault || window.__dndAssetVault || null; }
+  catch (_) { return window.__dndAssetVault || null; }
+}
+
+function fvttIconHtml(name, cat, size = 28, level = null) {
+  const v = getAssetVault();
+  return v?.getIconHtml ? v.getIconHtml(name, cat, size, level) : '';
+}
+
+function getWeaponMasteryInfo(name) {
+  const s = String(name || '').trim();
+  if (!s) return null;
+  return DND2024_ALL_WEAPONS.find((w) => s.includes(w.name) || (w.aliases || []).some(a => s.includes(a)) || new RegExp('\\b' + w.en + '\\b', 'i').test(s)) || null;
+}
+
+function getCharacterWeaponMasteryList(charObj = characterData) {
+  const explicit = Array.isArray(charObj?.weaponMasteries) ? charObj.weaponMasteries : [];
+  const fromFeats = [];
+  for (const f of (charObj?.features?.class || [])) {
+    const m = String(f?.name || '').trim().match(/^武器精通\s*[:：]\s*(.+)$/);
+    if (m) m[1].split(/[,，、;；/]+/).map(x => x.trim()).filter(Boolean).forEach(x => fromFeats.push(x));
+  }
+  return [...new Set([...explicit, ...fromFeats])];
+}
+
+function isWeaponMastered(weaponName) {
+  const list = getCharacterWeaponMasteryList(characterData);
+  if (!list.length) return false;
+  const s = String(weaponName || '').trim();
+  const info = getWeaponMasteryInfo(s);
+  return list.some((m) => {
+    const ms = String(m || '').trim();
+    if (!ms) return false;
+    if (s.includes(ms) || ms.includes(s)) return true;
+    if (info && (ms.includes(info.name) || (info.aliases || []).some(a => ms.includes(a)) || ms.toLowerCase().includes(info.en.toLowerCase()))) return true;
+    return false;
+  });
+}
+
+function syncWeaponArmorCombined() {
+  const armors = Array.isArray(characterData.armorProficiencies) ? characterData.armorProficiencies : [];
+  const weapons = Array.isArray(characterData.weaponProficiencies) ? characterData.weaponProficiencies : [];
+  characterData.proficiencies = characterData.proficiencies || {};
+  characterData.proficiencies.weaponAndArmor = [...new Set([...armors, ...weapons])];
+}
+
+function openFvttWeaponMatrixModal() {
+  let dlg = document.getElementById('fvtt-weapon-matrix-modal');
+  if (dlg) dlg.remove();
+  dlg = document.createElement('dialog');
+  dlg.id = 'fvtt-weapon-matrix-modal';
+
+  const curProfs = Array.isArray(characterData.weaponProficiencies) ? [...characterData.weaponProficiencies] : [];
+  const curMasteries = getCharacterWeaponMasteryList(characterData);
+
+  const isStdWeapon = (name) => DND2024_ALL_WEAPONS.some((w) => w.name === name || (w.aliases || []).includes(name) || w.en.toLowerCase() === String(name).toLowerCase());
+  const customSet = new Set();
+  for (const p of curProfs) {
+    if (!/简易武器|军用武器|所有简易|所有军用/.test(p) && !isStdWeapon(p)) customSet.add(p);
+  }
+  for (const m of curMasteries) {
+    if (!isStdWeapon(m)) customSet.add(m);
+  }
+  for (const w of (characterData.inventory?.weapons || [])) {
+    const wn = String(w?.name || '').trim();
+    if (wn && !isStdWeapon(wn)) customSet.add(wn);
+  }
+  const customList = [...customSet];
+
+  const hasSimpleAll = curProfs.some((p) => /简易武器|所有简易/.test(p));
+  const hasMartialAll = curProfs.some((p) => /军用武器|所有军用/.test(p));
+  const hasProf = (w, isSimple) => (isSimple && hasSimpleAll) || (!isSimple && hasMartialAll) || curProfs.some((p) => p === w.name || (w.aliases || []).includes(p) || p.includes(w.name));
+  const hasMast = (w) => curMasteries.some((m) => m === w.name || (w.aliases || []).includes(m) || m.includes(w.name) || (w.en && m.toLowerCase().includes(w.en.toLowerCase())));
+
+  const buildCol = (title, allKey, allChecked, list, isSimple) => {
+    const rows = list.map((w) => `
+      <div class="fvtt-wm-row">
+        <div class="fvtt-wm-name">${fvttIconHtml(w.name, 'weapon', 24)}<span>${w.name} <small style="color:#9ea5b4;">${w.en}</small></span></div>
+        <div class="fvtt-wm-chk"><input type="checkbox" data-wm-prof="${w.name}" ${hasProf(w, isSimple) ? 'checked' : ''} ${allChecked ? 'disabled' : ''}></div>
+        <div class="fvtt-wm-chk"><input type="checkbox" data-wm-mast="${w.name}" ${hasMast(w) ? 'checked' : ''} title="${w.mastery}"></div>
+      </div>
+    `).join('');
+    return `
+      <div class="fvtt-wm-col">
+        <div class="fvtt-wm-col-hdr"><span>${title} (${list.length})</span><span style="text-align:center;" title="武器熟练">◎</span><span style="text-align:center;" title="武器精通">🏅</span></div>
+        <div class="fvtt-wm-row" style="background:rgba(212,175,106,0.10);font-weight:600;">
+          <div class="fvtt-wm-name">所有${title}</div>
+          <div class="fvtt-wm-chk"><input type="checkbox" data-wm-all="${allKey}" ${allChecked ? 'checked' : ''}></div>
+          <div></div>
+        </div>
+        ${rows}
+      </div>
+    `;
+  };
+
+  const renderCustomRowHtml = (cname, profChecked, mastChecked) => `
+    <div class="fvtt-wm-row" data-wm-custom-row="${escapeAttr(cname)}">
+      <div class="fvtt-wm-name">${fvttIconHtml(cname, 'weapon', 22)}<span>${escapeAttr(cname)} <small style="color:#d4af6a;">自定义</small></span></div>
+      <div class="fvtt-wm-chk"><input type="checkbox" data-wm-prof="${escapeAttr(cname)}" ${profChecked ? 'checked' : ''}></div>
+      <div class="fvtt-wm-chk"><input type="checkbox" data-wm-mast="${escapeAttr(cname)}" ${mastChecked ? 'checked' : ''}></div>
+    </div>
+  `;
+
+  dlg.innerHTML = `
+    <div class="fvtt-wm-hd"><span>⚔️ 武器熟练与精通（全 38 种 PHB + 自定义）</span><button type="button" class="fvtt-edit-mini-btn" data-wm-close>✕</button></div>
+    <div class="fvtt-wm-body">
+      <div class="fvtt-wm-grid">
+        ${buildCol('简易武器', 'simple', hasSimpleAll, DND2024_SIMPLE_WEAPONS, true)}
+        ${buildCol('军用武器', 'martial', hasMartialAll, DND2024_MARTIAL_WEAPONS, false)}
+      </div>
+      <div class="fvtt-wm-custom-box">
+        <div style="font-size:12px;font-weight:700;color:#ffe6ae;margin-bottom:6px;">自定义武器熟练 / 精通</div>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+          <input type="text" data-wm-custom-input placeholder="输入自定义武器名（如：钩索、魔导铳、炎舌剑）" style="flex:1;padding:5px 9px;border-radius:6px;border:1px solid rgba(212,175,106,0.38);background:#101218;color:#f5efe3;font-size:12px;">
+          <button type="button" class="fvtt-edit-mini-btn" data-wm-custom-add>+ 添加</button>
+        </div>
+        <div data-wm-custom-list>
+          ${customList.map((cn) => renderCustomRowHtml(cn, curProfs.includes(cn), curMasteries.includes(cn))).join('')}
+        </div>
+      </div>
+    </div>
+    <div class="fvtt-wm-ft">
+      <button type="button" class="fvtt-edit-mini-btn" data-wm-close>取消</button>
+      <button type="button" class="fvtt-edit-mini-btn" style="background:linear-gradient(135deg,#c93b4b,#8a1b2b);color:#fff;border-color:#e56b7b;" data-wm-save>保存武器配置</button>
+    </div>
+  `;
+  document.body.appendChild(dlg);
+
+  const syncGroupDisabled = () => {
+    const sAll = dlg.querySelector('[data-wm-all="simple"]')?.checked;
+    const mAll = dlg.querySelector('[data-wm-all="martial"]')?.checked;
+    DND2024_SIMPLE_WEAPONS.forEach((w) => {
+      const el = dlg.querySelector('[data-wm-prof="' + w.name + '"]');
+      if (el) { el.disabled = Boolean(sAll); if (sAll) el.checked = true; }
+    });
+    DND2024_MARTIAL_WEAPONS.forEach((w) => {
+      const el = dlg.querySelector('[data-wm-prof="' + w.name + '"]');
+      if (el) { el.disabled = Boolean(mAll); if (mAll) el.checked = true; }
+    });
+  };
+  dlg.querySelectorAll('[data-wm-all]').forEach((cb) => cb.addEventListener('change', syncGroupDisabled));
+
+  const addCustomWeapon = () => {
+    const inp = dlg.querySelector('[data-wm-custom-input]');
+    const name = String(inp?.value || '').trim();
+    if (!name) return;
+    if (!dlg.querySelector('[data-wm-custom-row="' + CSS.escape(name) + '"]')) {
+      dlg.querySelector('[data-wm-custom-list]')?.insertAdjacentHTML('beforeend', renderCustomRowHtml(name, true, true));
+    }
+    inp.value = '';
+  };
+  dlg.querySelector('[data-wm-custom-add]')?.addEventListener('click', addCustomWeapon);
+  dlg.querySelector('[data-wm-custom-input]')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); addCustomWeapon(); }
+  });
+
+  dlg.querySelectorAll('[data-wm-close]').forEach((b) => b.addEventListener('click', () => dlg.close()));
+  dlg.querySelector('[data-wm-save]').addEventListener('click', () => {
+    const nextProfs = [];
+    const sAll = dlg.querySelector('[data-wm-all="simple"]')?.checked;
+    const mAll = dlg.querySelector('[data-wm-all="martial"]')?.checked;
+    if (sAll) nextProfs.push('简易武器');
+    if (mAll) nextProfs.push('军用武器');
+    dlg.querySelectorAll('[data-wm-prof]').forEach((cb) => {
+      if (!cb.disabled && cb.checked) nextProfs.push(cb.dataset.wmProf);
+    });
+    const nextMasteries = [];
+    dlg.querySelectorAll('[data-wm-mast]').forEach((cb) => {
+      if (cb.checked) nextMasteries.push(cb.dataset.wmMast);
+    });
+    characterData.weaponProficiencies = [...new Set(nextProfs)];
+    characterData.weaponMasteries = [...new Set(nextMasteries)];
+    syncWeaponArmorCombined();
+
+    // Sync 特性.职业['武器精通: ...'] non-destructively so MvuLite persists checked additions & removals
+    if (Array.isArray(characterData.features?.class)) {
+      const keptByKey = new Map();
+      characterData.features.class = characterData.features.class.filter((f) => {
+        const m = String(f?.name || '').trim().match(/^武器精通\s*[:：]\s*(.+)$/);
+        if (!m) return true;
+        const wName = m[1].trim();
+        const matchTarget = characterData.weaponMasteries.find(x => x === wName || (getWeaponMasteryInfo(wName)?.name && getWeaponMasteryInfo(x)?.name === getWeaponMasteryInfo(wName).name));
+        if (matchTarget) {
+          f.name = '武器精通: ' + matchTarget;
+          keptByKey.set(matchTarget, f);
+          return true;
+        }
+        return false;
+      });
+      for (const wm of characterData.weaponMasteries) {
+        if (!keptByKey.has(wm)) {
+          const ruleDesc = typeof MvuLite?.featureRule === 'function' ? MvuLite.featureRule('武器精通: ' + wm) : '';
+          characterData.features.class.push({ name: '武器精通: ' + wm, details: ruleDesc || '已掌握该武器的精通。', source: '', tags: '', effectTags: [], effects: [] });
+        }
+      }
+    }
+    saveData();
+    renderAll();
+    dlg.close();
+  });
+  dlg.showModal();
+}
+
+const DND2024_ARMOR_GROUPS = [
+  { title: '护甲与盾牌', items: [
+    { name: '轻甲', en: 'Light Armor' },
+    { name: '中甲', en: 'Medium Armor' },
+    { name: '重甲', en: 'Heavy Armor' },
+    { name: '盾牌', en: 'Shields' },
+  ] },
+];
+
+const DND2024_TOOL_GROUPS = [
+  { title: '工匠工具 (17)', items: [
+    { name: '炼金工具', en: "Alchemist's Supplies" },
+    { name: '酿酒工具', en: "Brewer's Supplies" },
+    { name: '书法工具', en: "Calligrapher's Supplies" },
+    { name: '木匠工具', en: "Carpenter's Tools" },
+    { name: '绘图工具', aliases: ['制图工具'], en: "Cartographer's Tools" },
+    { name: '鞋匠工具', en: "Cobbler's Tools" },
+    { name: '厨师工具', en: "Cook's Utensils" },
+    { name: '玻璃匠工具', aliases: ['玻璃吹制工具'], en: "Glassblower's Tools" },
+    { name: '珠宝匠工具', en: "Jeweler's Tools" },
+    { name: '皮匠工具', en: "Leatherworker's Tools" },
+    { name: '石匠工具', en: "Mason's Tools" },
+    { name: '画家工具', en: "Painter's Supplies" },
+    { name: '陶匠工具', aliases: ['陶工工具'], en: "Potter's Tools" },
+    { name: '铁匠工具', en: "Smith's Tools" },
+    { name: '修补工具', en: "Tinker's Tools" },
+    { name: '织布工具', en: "Weaver's Tools" },
+    { name: '木雕工具', en: "Woodcarver's Tools" },
+  ] },
+  { title: '其他工具与套组', items: [
+    { name: '盗贼工具', en: "Thieves' Tools" },
+    { name: '易容工具', en: 'Disguise Kit' },
+    { name: '文书伪造工具', aliases: ['伪造工具'], en: 'Forgery Kit' },
+    { name: '草药工具', en: 'Herbalism Kit' },
+    { name: '领航工具', en: "Navigator's Tools" },
+    { name: '毒药工具', en: "Poisoner's Kit" },
+    { name: '乐器', en: 'Musical Instrument' },
+    { name: '赌具', aliases: ['博弈套组'], en: 'Gaming Set' },
+    { name: '陆地载具', en: 'Vehicles (Land)' },
+    { name: '水上载具', en: 'Vehicles (Water)' },
+  ] },
+];
+
+const DND2024_LANG_GROUPS = [
+  { title: '标准语言', items: [
+    { name: '通用语', en: 'Common' },
+    { name: '通用手语', en: 'Common Sign Language' },
+    { name: '龙语', en: 'Draconic' },
+    { name: '矮人语', en: 'Dwarvish' },
+    { name: '精灵语', en: 'Elvish' },
+    { name: '巨人语', en: 'Giant' },
+    { name: '侏儒语', en: 'Gnomish' },
+    { name: '地精语', en: 'Goblin' },
+    { name: '半身人语', en: 'Halfling' },
+    { name: '兽人语', en: 'Orc' },
+  ] },
+  { title: '稀有语言', items: [
+    { name: '深渊语', en: 'Abyssal' },
+    { name: '天界语', en: 'Celestial' },
+    { name: '深潜语', en: 'Deep Speech' },
+    { name: '德鲁伊语', en: 'Druidic' },
+    { name: '炼狱语', en: 'Infernal' },
+    { name: '原初语', en: 'Primordial' },
+    { name: '木族语', en: 'Sylvan' },
+    { name: '盗贼黑话', en: "Thieves' Cant" },
+    { name: '地底通用语', en: 'Undercommon' },
+  ] },
+];
+
+function openFvttTraitPickerModal({ id, title, iconCat, groups, currentList, placeholder, onSave }) {
+  let dlg = document.getElementById(id);
+  if (dlg) dlg.remove();
+  dlg = document.createElement('dialog');
+  dlg.id = id;
+  dlg.className = 'fvtt-trait-picker-dialog';
+  dlg.style.cssText = 'width:min(760px,94vw);max-height:86vh;padding:0;border-radius:12px;border:1px solid rgba(212,175,106,0.48);background:#151821;color:#f3ede2;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.85);';
+
+  const curSet = new Set((currentList || []).map((x) => String(x || '').trim()).filter(Boolean));
+  const stdNames = new Set(groups.flatMap((g) => g.items.flatMap((i) => [i.name, ...(i.aliases || [])])));
+  const customList = [...curSet].filter((x) => !stdNames.has(x));
+
+  const hasItem = (item) => curSet.has(item.name) || (item.aliases || []).some(a => curSet.has(a)) || [...curSet].some((v) => v === item.name || (item.en && v.toLowerCase() === item.en.toLowerCase()));
+
+  const buildCol = (g) => `
+    <div class="fvtt-wm-col">
+      <div class="fvtt-wm-col-hdr" style="grid-template-columns:1fr 40px;"><span>${g.title}</span><span style="text-align:center;">熟练</span></div>
+      ${g.items.map((item) => `
+        <div class="fvtt-wm-row" style="grid-template-columns:1fr 40px;">
+          <div class="fvtt-wm-name">${iconCat ? fvttIconHtml(item.name, iconCat, 22) : ''}<span>${item.name} <small style="color:#9ea5b4;">${item.en}</small></span></div>
+          <div class="fvtt-wm-chk"><input type="checkbox" data-tp-item="${escapeAttr(item.name)}" ${hasItem(item) ? 'checked' : ''}></div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  const renderCustomRow = (cname) => `
+    <div class="fvtt-wm-row" data-tp-custom-row="${escapeAttr(cname)}" style="grid-template-columns:1fr 40px;">
+      <div class="fvtt-wm-name"><span>${escapeAttr(cname)} <small style="color:#d4af6a;">自定义</small></span></div>
+      <div class="fvtt-wm-chk"><input type="checkbox" data-tp-item="${escapeAttr(cname)}" checked></div>
+    </div>
+  `;
+
+  const gridStyle = groups.length > 1 ? '' : 'grid-template-columns:1fr;';
+  dlg.innerHTML = `
+    <div class="fvtt-wm-hd"><span>${title}</span><button type="button" class="fvtt-edit-mini-btn" data-tp-close>✕</button></div>
+    <div class="fvtt-wm-body">
+      <div class="fvtt-wm-grid" style="${gridStyle}">${groups.map(buildCol).join('')}</div>
+      <div class="fvtt-wm-custom-box">
+        <div style="font-size:12px;font-weight:700;color:#ffe6ae;margin-bottom:6px;">自定义条目</div>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+          <input type="text" data-tp-custom-input placeholder="${escapeAttr(placeholder)}" style="flex:1;padding:5px 9px;border-radius:6px;border:1px solid rgba(212,175,106,0.38);background:#101218;color:#f5efe3;font-size:12px;">
+          <button type="button" class="fvtt-edit-mini-btn" data-tp-custom-add>+ 添加</button>
+        </div>
+        <div data-tp-custom-list>${customList.map(renderCustomRow).join('')}</div>
+      </div>
+    </div>
+    <div class="fvtt-wm-ft">
+      <button type="button" class="fvtt-edit-mini-btn" data-tp-close>取消</button>
+      <button type="button" class="fvtt-edit-mini-btn" style="background:linear-gradient(135deg,#c93b4b,#8a1b2b);color:#fff;border-color:#e56b7b;" data-tp-save>保存配置</button>
+    </div>
+  `;
+  document.body.appendChild(dlg);
+
+  const addCustom = () => {
+    const inp = dlg.querySelector('[data-tp-custom-input]');
+    const val = String(inp?.value || '').trim();
+    if (!val) return;
+    if (!dlg.querySelector('[data-tp-custom-row="' + CSS.escape(val) + '"]')) {
+      dlg.querySelector('[data-tp-custom-list]')?.insertAdjacentHTML('beforeend', renderCustomRow(val));
+    }
+    inp.value = '';
+  };
+  dlg.querySelector('[data-tp-custom-add]')?.addEventListener('click', addCustom);
+  dlg.querySelector('[data-tp-custom-input]')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); addCustom(); }
+  });
+  dlg.querySelectorAll('[data-tp-close]').forEach((b) => b.addEventListener('click', () => dlg.close()));
+  dlg.querySelector('[data-tp-save]').addEventListener('click', () => {
+    const selected = [];
+    dlg.querySelectorAll('[data-tp-item]').forEach((cb) => {
+      if (cb.checked) selected.push(cb.dataset.tpItem);
+    });
+    onSave([...new Set(selected)]);
+    saveData();
+    renderAll();
+    dlg.close();
+  });
+  dlg.showModal();
+}
+
+function renderFvttTraitsPanelHtml() {
+  const clsStr = String(characterData.class || '').trim();
+  const subStr = String(characterData.subclass || characterData.__mvuSource?.子职业 || '').trim();
+  const raceStr = String(characterData.race || '').trim();
+  const bgStr = String(characterData.background || '').trim();
+  const rawRaceTraits = characterData.__mvuSource?.特性?.种族 || {};
+  const sizeStr = String(characterData.size || rawRaceTraits?.体型?.描述 || (/半身人|坎德|侏儒|地精/.test(raceStr) ? '小型' : '中型'));
+  const speedEntries = typeof getSpeedEntries === 'function' ? getSpeedEntries() : [];
+  const effSpeed = typeof getMaxSpeedValue === 'function' ? getMaxSpeedValue(speedEntries) : (Number(characterData.speed) || 30);
+  const speedStr = '速度 ' + String(effSpeed) + ' 尺';
+
+  const allFeatText = [...(characterData.features?.race || []), ...(characterData.features?.class || []), ...(characterData.features?.feats || [])]
+    .map((f) => (f?.name || '') + ' ' + (f?.details || '')).join(' ');
+  const creatureType = String(rawRaceTraits?.生物类型?.描述 || (/巫妖堕冥|亡灵形态|生物类型为亡灵/.test(allFeatText) ? '亡灵' : '类人')).trim();
+
+  let sensesStr = String(characterData.senses || '').trim();
+  if (!sensesStr) {
+    const dvMatches = [...allFeatText.matchAll(/(?:黑暗视觉|真实视觉|盲视)[^\d]{0,8}(\d+)\s*尺/g)];
+    if (dvMatches.length) {
+      sensesStr = dvMatches.map(m => m[0].replace(/\s+/g, ' ')).slice(0, 2).join(' · ');
+    }
+  }
+  const splitList = (v) => Array.isArray(v) ? v : String(v || '').split(/[,，、;；]+/).map((s) => s.trim()).filter(Boolean);
+  let resists = splitList(characterData.resistances);
+  if (!resists.length) {
+    const resTypes = ['火焰','寒冷','闪电','强酸','毒素','雷鸣','暗蚀','黯蚀','光耀','心灵','力场','穿刺','钝击','挥砍'];
+    const rm = allFeatText.match(/(?:伤害抗性|抗性)[^。\n]*/g);
+    if (rm) {
+      const joined = rm.join(' ');
+      resTypes.forEach((rt) => {
+        if (joined.includes(rt)) resists.push(rt === '黯蚀' ? '暗蚀' : rt);
+      });
+      resists = [...new Set(resists)];
+    }
+  }
+  const dmgImm = splitList(characterData.damageImmunities);
+  const condImm = splitList(characterData.conditionImmunities);
+  const vuln = splitList(characterData.vulnerabilities);
+
+  const armorProfs = Array.isArray(characterData.armorProficiencies) ? characterData.armorProficiencies : [];
+  const weaponProfs = Array.isArray(characterData.weaponProficiencies) ? characterData.weaponProficiencies : [];
+  const masteries = getCharacterWeaponMasteryList(characterData);
+  const toolProfs = splitList(characterData.proficiencies?.tools?.length ? characterData.proficiencies.tools : characterData.toolProficiencies);
+  const langs = splitList(characterData.languages);
+
+  const weaponPills = [
+    ...masteries.map((m) => {
+      const info = getWeaponMasteryInfo(m);
+      const tip = info ? (info.name + ' · 精通：' + info.mastery) : (m + ' · 武器精通');
+      return '<span class="fvtt-pill mastery" title="' + escapeAttr(tip) + '"><span class="fvtt-mastery-star">★</span>' + escapeAttr(m) + '</span>';
+    }),
+    ...weaponProfs.filter((p) => !masteries.includes(p)).map((p) => '<span class="fvtt-pill">' + escapeAttr(p) + '</span>'),
+  ].join('');
+
+  const optRow = (label, items, cls) => {
+    if (!items.length) return '';
+    return `<div class="fvtt-trait-row"><div class="fvtt-trait-label">${label}</div><div class="fvtt-trait-val">${items.map((x) => '<span class="fvtt-pill ' + cls + '">' + escapeAttr(x) + '</span>').join('')}</div><div></div></div>`;
+  };
+
+  const gearBtn = (attr, title) => isEditing
+    ? '<button type="button" class="fvtt-trait-gear" ' + attr + ' title="' + escapeAttr(title) + '">⚙</button>'
+    : '<div></div>';
+
+  return `
+    <div class="fvtt-traits-box" data-fvtt-traits>
+      <div class="fvtt-traits-title"><span>角色特质 · CHARACTER TRAITS</span></div>
+      ${clsStr ? `<div class="fvtt-trait-row"><div class="fvtt-trait-label">职业</div><div class="fvtt-trait-val"><span class="fvtt-entity-chip">${fvttIconHtml(clsStr, 'class', 28)}<span>${escapeAttr(clsStr)} · 等级 ${characterData.level || 1}</span></span>${subStr ? '<span class="fvtt-subclass-sub">↳ ' + fvttIconHtml(subStr, 'subclass', 22) + '<span>' + escapeAttr(subStr) + '</span></span>' : ''}</div><div></div></div>` : ''}
+      ${raceStr ? `<div class="fvtt-trait-row"><div class="fvtt-trait-label">种族</div><div class="fvtt-trait-val"><span class="fvtt-entity-chip">${fvttIconHtml(raceStr, 'species', 28)}<span>${escapeAttr(raceStr)}</span></span></div><div></div></div>` : ''}
+      <div class="fvtt-trait-row"><div class="fvtt-trait-label">生物类型</div><div class="fvtt-trait-val"><span style="color:#c9c3b6;">↳ ${escapeAttr(creatureType)}${raceStr ? (' ' + escapeAttr(raceStr)) : ''}</span></div><div></div></div>
+      ${bgStr ? `<div class="fvtt-trait-row"><div class="fvtt-trait-label">背景</div><div class="fvtt-trait-val"><span class="fvtt-entity-chip">${fvttIconHtml(bgStr, 'background', 28)}<span>${escapeAttr(bgStr)}</span></span></div><div></div></div>` : ''}
+      <div class="fvtt-trait-row"><div class="fvtt-trait-label">体型</div><div class="fvtt-trait-val"><span class="fvtt-pill">${escapeAttr(sizeStr)}</span></div><div></div></div>
+      <div class="fvtt-trait-row"><div class="fvtt-trait-label">速度</div><div class="fvtt-trait-val"><span class="fvtt-pill">${escapeAttr(speedStr)}</span></div><div></div></div>
+      ${sensesStr ? `<div class="fvtt-trait-row"><div class="fvtt-trait-label">感官</div><div class="fvtt-trait-val"><span class="fvtt-pill">${escapeAttr(sensesStr)}</span></div><div></div></div>` : ''}
+      ${optRow('抗性', resists, 'resist')}
+      ${optRow('伤害免疫', dmgImm, 'immune')}
+      ${optRow('状态免疫', condImm, 'immune')}
+      ${optRow('易伤', vuln, 'vuln')}
+      <div class="fvtt-trait-row">
+        <div class="fvtt-trait-label">护甲</div>
+        <div class="fvtt-trait-val">${armorProfs.length ? armorProfs.map((a) => '<span class="fvtt-pill">' + escapeAttr(a) + '</span>').join('') : '<span style="color:#8f96a3;">无</span>'}</div>
+        ${gearBtn('data-fvtt-open-armor-gear', '编辑护甲熟练')}
+      </div>
+      <div class="fvtt-trait-row">
+        <div class="fvtt-trait-label">武器</div>
+        <div class="fvtt-trait-val">${weaponPills || '<span style="color:#8f96a3;">无</span>'}</div>
+        ${gearBtn('data-fvtt-open-wm-gear', '编辑武器熟练与精通')}
+      </div>
+      <div class="fvtt-trait-row">
+        <div class="fvtt-trait-label">工具</div>
+        <div class="fvtt-trait-val">${toolProfs.length ? toolProfs.map((t) => '<span class="fvtt-pill">' + escapeAttr(t) + '</span>').join('') : '<span style="color:#8f96a3;">无</span>'}</div>
+        ${gearBtn('data-fvtt-open-tool-gear', '编辑工具熟练')}
+      </div>
+      <div class="fvtt-trait-row">
+        <div class="fvtt-trait-label">语言</div>
+        <div class="fvtt-trait-val">${langs.length ? langs.map((l) => '<span class="fvtt-pill">' + escapeAttr(l) + '</span>').join('') : '<span style="color:#8f96a3;">无</span>'}</div>
+        ${gearBtn('data-fvtt-open-lang-gear', '编辑习得语言')}
+      </div>
+    </div>
+  `;
+}
+
+function parseFvttNamedBonusExpr(raw) {
+  if (raw === null || raw === undefined || raw === '' || raw === 0 || raw === '0') {
+    return { total: 0, raw: '', items: [], descParts: [] };
+  }
+  const str = String(raw).trim();
+  if (!str || str === '0') return { total: 0, raw: '', items: [], descParts: [] };
+  if (/^[+-]?\d+$/.test(str)) {
+    const v = Number(str) || 0;
+    if (v === 0) return { total: 0, raw: '', items: [], descParts: [] };
+    return { total: v, raw: str, items: [{ label: '额外', val: v }], descParts: ['额外（' + (v >= 0 ? '+' + v : v) + '）'] };
+  }
+  const tokens = str.split(/[,，、;；]+/).map((s) => s.trim()).filter(Boolean);
+  let total = 0;
+  const items = [];
+  const descParts = [];
+  for (const tok of tokens) {
+    const m = tok.match(/^(.+?)\s*([+-]\d+)$/) || tok.match(/^(.+?)[（(]\s*([+-]?\d+)\s*[）)]$/) || tok.match(/^([+-]\d+)\s*(.+)$/);
+    if (m) {
+      const isNumFirst = /^[+-]\d+$/.test(m[1]);
+      const label = (isNumFirst ? m[2] : m[1]).trim() || '额外';
+      const val = Number(isNumFirst ? m[1] : m[2]) || 0;
+      if (val !== 0) {
+        total += val;
+        items.push({ label, val });
+        descParts.push(label + '（' + (val >= 0 ? '+' + val : val) + '）');
+      }
+    } else if (/^[+-]?\d+$/.test(tok)) {
+      const val = Number(tok) || 0;
+      if (val !== 0) {
+        total += val;
+        items.push({ label: '额外', val });
+        descParts.push('额外（' + (val >= 0 ? '+' + val : val) + '）');
+      }
+    }
+  }
+  return { total, raw: str, items, descParts };
+}
+
+function getFvttExtraBonuses(charObj) {
+  const eb = (charObj || characterData)?.extraBonuses || {};
+  const acP = parseFvttNamedBonusExpr(eb.ac);
+  const initP = parseFvttNamedBonusExpr(eb.initiative);
+  const spAtkP = parseFvttNamedBonusExpr(eb.spellAttack);
+  const spDcP = parseFvttNamedBonusExpr(eb.spellDc);
+  const svP = parseFvttNamedBonusExpr(eb.saveAll);
+  return {
+    ac: acP.total, acParsed: acP,
+    initiative: initP.total, initiativeParsed: initP,
+    spellAttack: spAtkP.total, spellAttackParsed: spAtkP,
+    spellDc: spDcP.total, spellDcParsed: spDcP,
+    saveAll: svP.total, saveAllParsed: svP,
+  };
+}
+
+// Left-sidebar Temporary Effects Quick-Bar backed directly onto canonical characterData.temporaryEffects
+const FVTT_TEMP_EFFECT_PRESETS = [
+  { name: '虔诚护盾', label: 'AC +2', changes: [{ target: 'ac.bonus', mode: 'add', value: 2 }] },
+  { name: '护盾术', label: 'AC +5', changes: [{ target: 'ac.bonus', mode: 'add', value: 5 }] },
+  { name: '加速术', label: 'AC +2, 速度 ×2', changes: [{ target: 'ac.bonus', mode: 'add', value: 2 }, { target: 'speed.bonus', mode: 'multiply', value: 2 }] },
+  { name: '大步奔行', label: '速度 +10', changes: [{ target: 'speed.bonus', mode: 'add', value: 10 }] },
+  { name: '防护善恶/掩护', label: 'AC +2, 全豁免 +2', changes: [{ target: 'ac.bonus', mode: 'add', value: 2 }, { target: 'save.all', mode: 'add', value: 2 }] },
+  { name: '法术增幅', label: '法术攻击 +1, 法术DC +1', changes: [{ target: 'spell.attack', mode: 'add', value: 1 }, { target: 'spell.dc', mode: 'add', value: 1 }] },
+];
+
+function parseCustomTempEffectTokens(rawStr) {
+  const tokens = String(rawStr || '').split(/[,，、;；]+/).map(s => s.trim()).filter(Boolean);
+  const changes = [];
+  const labels = [];
+  for (const tok of tokens) {
+    const spMult = tok.match(/^速度\s*[×x*]\s*(\d+(?:\.\d+)?)$/i);
+    if (spMult) {
+      changes.push({ target: 'speed.bonus', mode: 'multiply', value: Number(spMult[1]) || 1 });
+      labels.push('速度 ×' + spMult[1]);
+      continue;
+    }
+    const parsed = typeof parseDynamicRuleTag === 'function' ? parseDynamicRuleTag(tok) : null;
+    if (parsed && Array.isArray(parsed.effects)) {
+      for (const ef of parsed.effects) {
+        if (Array.isArray(ef.changes) && ef.changes.length) {
+          changes.push(...ef.changes);
+          labels.push(parsed.key || tok);
+        }
+      }
+    }
+  }
+  return { changes, label: labels.join(', ') };
+}
+
+function summarizeTempEffectChanges(eff) {
+  if (!eff || !Array.isArray(eff.changes)) return '';
+  const targetZh = {
+    'ac.bonus': 'AC', 'initiative.bonus': '先攻', 'speed.bonus': '速度', 'hp.max': '最大HP',
+    'save.all': '全豁免', 'skill.all': '全技能', 'spell.attack': '法术攻击', 'spell.dc': '法术DC',
+    'weapon.attack': '武器命中', 'weapon.damage': '武器伤害', 'weapon.damage.dice': '武器额外',
+  };
+  return eff.changes.filter(c => c && c.enabled !== false).map(c => {
+    const t = targetZh[c.target] || String(c.target || '').replace(/^skill\./, '').replace(/^save\./, '豁免:').replace(/^stat\./, '属性:');
+    if (c.mode === 'multiply') return `${t}×${c.value}`;
+    if (c.mode === 'upgrade') return `${t}≥${c.value}`;
+    if (c.mode === 'override') return `${t}=${c.value}`;
+    const n = Number(c.value);
+    return Number.isFinite(n) ? `${t}${n >= 0 ? '+' + n : n}` : `${t}+${c.value}`;
+  }).join(', ');
+}
+
+function renderFvttTempEffectsSidebar() {
+  const sidebar = document.querySelector('.left-sidebar');
+  if (!sidebar) return;
+  let box = document.getElementById('fvtt-temp-effects-box');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'fvtt-temp-effects-box';
+    box.className = 'fvtt-temp-box';
+    const anchor = document.getElementById('sidebar-stats-view');
+    if (anchor) anchor.insertAdjacentElement('afterend', box);
+    else sidebar.appendChild(box);
+  }
+  const drawerOpen = box.dataset.drawerOpen === '1';
+  const list = Array.isArray(characterData.temporaryEffects) ? characterData.temporaryEffects : [];
+  const pillsHtml = list.length
+    ? list.map((eff, idx) => {
+        const disabled = eff.enabled === false;
+        const tStr = summarizeTempEffectChanges(eff);
+        return `<div class="fvtt-temp-pill ${disabled ? 'is-disabled' : ''}" data-fvtt-te-toggle="${idx}" title="点击临时停用/启用">
+          <span>${escapeAttr(eff.name || ('效果 ' + (idx + 1)))}</span>
+          ${tStr ? '<span class="fvtt-temp-pill-tags">' + escapeAttr(tStr) + '</span>' : ''}
+          <button type="button" class="fvtt-temp-pill-del" data-fvtt-te-del="${idx}" title="移除">×</button>
+        </div>`;
+      }).join('')
+    : '<div class="fvtt-temp-empty">暂无临时增益（点右上 + 增益 快捷套用）</div>';
+
+  const drawerHtml = drawerOpen ? `
+    <div class="fvtt-temp-drawer">
+      <div class="fvtt-temp-presets">
+        ${FVTT_TEMP_EFFECT_PRESETS.map((p, i) => `<button type="button" class="fvtt-temp-preset-btn" data-fvtt-te-preset="${i}" title="${escapeAttr(p.label)}">+ ${escapeAttr(p.name)}</button>`).join('')}
+      </div>
+      <div class="fvtt-temp-custom-row">
+        <input type="text" data-fvtt-te-name placeholder="名称(如:圣盾)">
+        <input type="text" data-fvtt-te-tags placeholder="数值效果(如:AC+2,速度+10,全豁免+1)">
+        <button type="button" class="fvtt-temp-add-btn" data-fvtt-te-custom-add>添加</button>
+      </div>
+    </div>
+  ` : '';
+
+  box.innerHTML = `
+    <div class="fvtt-temp-hd">
+      <span>⚡ 临时效应 / 增益</span>
+      <button type="button" class="fvtt-temp-add-btn" data-fvtt-te-drawer>${drawerOpen ? '收起' : '+ 增益'}</button>
+    </div>
+    <div class="fvtt-temp-pills">${pillsHtml}</div>
+    ${drawerHtml}
+  `;
+
+  box.querySelector('[data-fvtt-te-drawer]')?.addEventListener('click', () => {
+    box.dataset.drawerOpen = drawerOpen ? '0' : '1';
+    renderFvttTempEffectsSidebar();
+  });
+  box.querySelectorAll('[data-fvtt-te-del]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = Number(btn.dataset.fvttTeDel);
+      characterData.temporaryEffects = (characterData.temporaryEffects || []).filter((_, i) => i !== idx);
+      updateCharacterAC(false);
+      saveData();
+      renderAll();
+    });
+  });
+  box.querySelectorAll('[data-fvtt-te-toggle]').forEach((pill) => {
+    pill.addEventListener('click', () => {
+      const idx = Number(pill.dataset.fvttTeToggle);
+      const eff = characterData.temporaryEffects?.[idx];
+      if (!eff) return;
+      eff.enabled = eff.enabled === false ? true : false;
+      updateCharacterAC(false);
+      saveData();
+      renderAll();
+    });
+  });
+  box.querySelectorAll('[data-fvtt-te-preset]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const p = FVTT_TEMP_EFFECT_PRESETS[Number(btn.dataset.fvttTePreset)];
+      if (!p) return;
+      characterData.temporaryEffects = Array.isArray(characterData.temporaryEffects) ? characterData.temporaryEffects : [];
+      const existing = characterData.temporaryEffects.find((e) => e?.name === p.name);
+      if (existing) existing.enabled = true;
+      else {
+        characterData.temporaryEffects.push(canonicalDndEffect({
+          id: 'fvtt-te-' + Date.now().toString(36),
+          name: p.name,
+          enabled: true,
+          changes: p.changes.map(c => ({ ...c })),
+        }, characterData.temporaryEffects.length));
+      }
+      box.dataset.drawerOpen = '0';
+      updateCharacterAC(false);
+      saveData();
+      renderAll();
+    });
+  });
+  box.querySelector('[data-fvtt-te-custom-add]')?.addEventListener('click', () => {
+    const n = String(box.querySelector('[data-fvtt-te-name]')?.value || '').trim();
+    const rawTags = String(box.querySelector('[data-fvtt-te-tags]')?.value || '').trim();
+    const { changes, label } = parseCustomTempEffectTokens(rawTags);
+    if (!changes.length) {
+      alert('请输入有效的数值加成标签，例如：AC+2、速度+10、全豁免+1、法术DC+1、力量=19');
+      return;
+    }
+    characterData.temporaryEffects = Array.isArray(characterData.temporaryEffects) ? characterData.temporaryEffects : [];
+    characterData.temporaryEffects.push(canonicalDndEffect({
+      id: 'fvtt-te-' + Date.now().toString(36),
+      name: n || label || '临时增益',
+      enabled: true,
+      changes,
+    }, characterData.temporaryEffects.length));
+    box.dataset.drawerOpen = '0';
+    updateCharacterAC(false);
+    saveData();
+    renderAll();
+  });
+}
+
+function getFvttAllFeatureText(charObj) {
+  const ch = charObj || characterData || {};
+  return [
+    ch.class || '',
+    ch.subclass || ch.__mvuSource?.子职业 || '',
+    ...(ch.features?.feats || []),
+    ...(ch.features?.class || []),
+    ...(ch.features?.race || []),
+  ].map((x) => typeof x === 'string' ? x : ((x?.name || '') + ' ' + (x?.details || ''))).join(' | ');
+}
+
+function hasExistingStructuredSkillEffect(ch, targetList, pattern) {
+  const feats = [...(ch.features?.class || []), ...(ch.features?.race || []), ...(ch.features?.feats || [])];
+  return feats.some(f => pattern.test(String(f?.name || '')) && Array.isArray(f?.effects) && f.effects.some(e => e?.enabled !== false && Array.isArray(e.changes) && e.changes.some(c => c?.enabled !== false && targetList.includes(c.target))));
+}
+
+function getFvttFeatureSkillBonus(skillName, charObj, profLevel = 0, effectTargets = []) {
+  const ch = charObj || characterData || {};
+  const sk = String(skillName || '').trim();
+  if (!sk) return 0;
+  const allTxt = getFvttAllFeatureText(ch);
+  const wisScore = typeof getEffectiveStat === 'function' ? getEffectiveStat('wis') : (ch.stats?.wis ?? 10);
+  const wisMod = getModifier(wisScore);
+  const pb = getEffectiveProficiencyBonus();
+  let bonus = 0;
+
+  // 1. 牧师 奇术使 Thaumaturge: 奥秘 / 宗教 + max(1, 感知调整值)
+  if (/奇术使|thaumaturge/i.test(allTxt) && /^(奥秘|宗教)$/.test(sk) && !hasExistingStructuredSkillEffect(ch, effectTargets, /奇术使|thaumaturge/i)) {
+    bonus += Math.max(1, wisMod);
+  }
+  // 2. 德鲁伊 术师 Magician: 奥秘 / 自然 + max(1, 感知调整值)
+  const hasMagician = /原初职能\s*[:：]\s*术师|primal order\s*[:：]\s*magician/i.test(allTxt)
+    || (/德鲁伊|druid/i.test(String(ch.class || '')) && /(?:^|\s|[:：])术师(?:\s|$|[（(])/.test(allTxt));
+  if (hasMagician && /^(奥秘|自然)$/.test(sk) && !hasExistingStructuredSkillEffect(ch, effectTargets, /术师|magician/i)) {
+    bonus += Math.max(1, wisMod);
+  }
+  // 3. 妖精漫游者 超凡魅力 Otherworldly Glamour: 魅力技能 + max(1, 感知调整值)
+  if (/超凡魅力|otherworldly glamour/i.test(allTxt) && /^(欺瞒|威吓|表演|游说)$/.test(sk) && !hasExistingStructuredSkillEffect(ch, effectTargets, /超凡魅力|otherworldly glamour/i)) {
+    bonus += Math.max(1, wisMod);
+  }
+  // 4. 吟游诗人 万事通 Jack of All Trades: 非熟练技能 + floor(PB / 2)
+  if (profLevel <= 0 && /万事通|jack of all trades/i.test(allTxt) && !hasExistingStructuredSkillEffect(ch, effectTargets, /万事通|jack of all trades/i)) {
+    bonus += Math.floor(pb / 2);
+  }
+  return bonus;
+}
+
+function getFvttExtraSaveBonus(stat, charObj) {
+  const ch = charObj || characterData || {};
+  const eb = getFvttExtraBonuses(ch);
+  let bonus = eb.saveAll;
+  const allTxt = getFvttAllFeatureText(ch);
+  const paladinLv = Number(ch.__mvuSource?.职业详情?.classLevels?.paladin ?? ch.__mvuSource?.职业?.圣武士 ?? 0);
+  const isPurePaladin6 = !ch.__mvuSource && /^\s*圣武士/.test(String(ch.class || '')) && !/\//.test(String(ch.class || '')) && (Number(ch.level) || 1) >= 6;
+  const hasAura = /守护灵光|aura of protection/i.test(allTxt) || paladinLv >= 6 || isPurePaladin6;
+  if (hasAura && !hasExistingStructuredSkillEffect(ch, ['save.all', `save.${stat}`], /守护灵光|aura of protection/i)) {
+    const chaScore = typeof getEffectiveStat === 'function' ? getEffectiveStat('cha') : (ch.stats?.cha ?? 10);
+    bonus += Math.max(1, getModifier(chaScore));
+  }
+  return bonus;
+}
+
+function decorateFvttRowsAfterRender() {
+  if (typeof document === 'undefined' || typeof document.querySelectorAll !== 'function') return;
+
+  // 1. Render Left Sidebar Temporary Effects Quick-Bar
+  try { renderFvttTempEffectsSidebar(); } catch (_) {}
+
+  // 2. Render FVTT CHARACTER TRAITS panel & wrench-mode named Extra Bonuses bar in #attributes
+  const attrTab = document.getElementById('attributes');
+  if (attrTab) {
+    attrTab.querySelector('[data-fvtt-traits]')?.remove();
+    const alwaysHiddenTitles = /^(护甲与武器熟练|工具熟练|习得语言)$/;
+    const viewHiddenTitles = /^(种族|背景|移动速度|速度)$/;
+    attrTab.querySelectorAll('h3.section-header').forEach((h3) => {
+      const txt = (h3.textContent || '').trim();
+      const box = h3.parentElement;
+      if (!box) return;
+      if (alwaysHiddenTitles.test(txt)) box.classList.add('fvtt-legacy-hidden');
+      else if (viewHiddenTitles.test(txt)) box.classList.toggle('fvtt-legacy-hidden', !isEditing);
+    });
+
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = renderFvttTraitsPanelHtml();
+    const traitsEl = wrapper.firstElementChild;
+    const rightCol = attrTab.querySelector('.grid > .space-y-6') || attrTab.querySelector('.space-y-6');
+    if (rightCol) rightCol.appendChild(traitsEl);
+    else attrTab.appendChild(traitsEl);
+
+    attrTab.querySelector('[data-fvtt-extra-bonuses]')?.remove();
+    if (isEditing) {
+      const eb = getFvttExtraBonuses(characterData);
+      const acPresets = ['防护斗篷+1', '防护戒指+1', '虔诚护盾+2', '半掩护+2'];
+      const acCurStr = eb.acParsed.raw;
+      const presetChipsHtml = acPresets.map((p) => {
+        const active = acCurStr.includes(p.replace(/[+-]\d+$/, ''));
+        return '<button type="button" class="fvtt-custom-toggle' + (active ? ' is-custom' : '') + '" data-fvtt-ac-preset="' + p + '">' + p + '</button>';
+      }).join('');
+      const ebBox = document.createElement('div');
+      ebBox.className = 'fvtt-extra-bonus-bar';
+      ebBox.dataset.fvttExtraBonuses = '1';
+      ebBox.innerHTML = `
+        <div class="fvtt-extra-bonus-title">记名额外加值（支持写 "防护斗篷+1, 虔诚护盾+2" 或纯数字，自动汇入 AC / 法术 / 先攻 / 豁免）</div>
+        <div class="fvtt-extra-bonus-grid">
+          <div class="fvtt-extra-bonus-cell"><label>AC 额外（${eb.ac >= 0 ? '+' + eb.ac : eb.ac}）</label><input type="text" data-fvtt-eb="ac" value="${escapeAttr(eb.acParsed.raw)}" placeholder="如: 防护斗篷+1"></div>
+          <div class="fvtt-extra-bonus-cell"><label>先攻 额外（${eb.initiative >= 0 ? '+' + eb.initiative : eb.initiative}）</label><input type="text" data-fvtt-eb="initiative" value="${escapeAttr(eb.initiativeParsed.raw)}" placeholder="如: 警觉之盾+2"></div>
+          <div class="fvtt-extra-bonus-cell"><label>法术攻击 额外（${eb.spellAttack >= 0 ? '+' + eb.spellAttack : eb.spellAttack}）</label><input type="text" data-fvtt-eb="spellAttack" value="${escapeAttr(eb.spellAttackParsed.raw)}" placeholder="如: 奥法秘典+1"></div>
+          <div class="fvtt-extra-bonus-cell"><label>法术DC 额外（${eb.spellDc >= 0 ? '+' + eb.spellDc : eb.spellDc}）</label><input type="text" data-fvtt-eb="spellDc" value="${escapeAttr(eb.spellDcParsed.raw)}" placeholder="如: 奥法秘典+1"></div>
+          <div class="fvtt-extra-bonus-cell"><label>全豁免 额外（${eb.saveAll >= 0 ? '+' + eb.saveAll : eb.saveAll}）</label><input type="text" data-fvtt-eb="saveAll" value="${escapeAttr(eb.saveAllParsed.raw)}" placeholder="如: 防护斗篷+1"></div>
+        </div>
+        <div style="margin-top:7px;display:flex;flex-wrap:wrap;align-items:center;gap:4px;">
+          <span style="font-size:10.5px;color:#9aa3b4;">AC 常用来源快捷点选：</span>
+          ${presetChipsHtml}
+        </div>
+      `;
+      const saveEbValue = (key, rawVal) => {
+        characterData.extraBonuses = characterData.extraBonuses || {};
+        const trimmed = String(rawVal || '').trim();
+        characterData.extraBonuses[key] = (!trimmed || trimmed === '0') ? '' : trimmed;
+        updateCharacterAC(false);
+        saveData();
+        renderAll();
+      };
+      ebBox.querySelectorAll('[data-fvtt-eb]').forEach((inp) => {
+        inp.addEventListener('change', () => saveEbValue(inp.dataset.fvttEb, inp.value));
+      });
+      ebBox.querySelectorAll('[data-fvtt-ac-preset]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const preset = btn.dataset.fvttAcPreset;
+          const labelPrefix = preset.replace(/[+-]\d+$/, '').trim();
+          const curTokens = (characterData.extraBonuses?.ac ? String(characterData.extraBonuses.ac) : '')
+            .split(/[,，、;；]+/).map((s) => s.trim()).filter(Boolean);
+          const exists = curTokens.some((t) => t.startsWith(labelPrefix));
+          const nextTokens = exists ? curTokens.filter((t) => !t.startsWith(labelPrefix)) : [...curTokens, preset];
+          saveEbValue('ac', nextTokens.join(', '));
+        });
+      });
+      traitsEl.insertAdjacentElement('beforebegin', ebBox);
+    }
+  }
+
+  const splitListLocal = (v) => Array.isArray(v) ? v : String(v || '').split(/[,，、;；]+/).map((s) => s.trim()).filter(Boolean);
+  document.querySelectorAll('[data-fvtt-open-wm-gear]').forEach((btn) => {
+    if (!btn.dataset.bound) { btn.dataset.bound = '1'; btn.addEventListener('click', openFvttWeaponMatrixModal); }
+  });
+  document.querySelectorAll('[data-fvtt-open-armor-gear]').forEach((btn) => {
+    if (!btn.dataset.bound) {
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', () => openFvttTraitPickerModal({
+        id: 'fvtt-armor-picker-modal',
+        title: '护甲熟练配置',
+        iconCat: 'armor',
+        groups: DND2024_ARMOR_GROUPS,
+        currentList: Array.isArray(characterData.armorProficiencies) ? characterData.armorProficiencies : [],
+        placeholder: '输入自定义护甲熟练（如：秘银甲）',
+        onSave: (list) => { characterData.armorProficiencies = list; syncWeaponArmorCombined(); },
+      }));
+    }
+  });
+  document.querySelectorAll('[data-fvtt-open-tool-gear]').forEach((btn) => {
+    if (!btn.dataset.bound) {
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', () => openFvttTraitPickerModal({
+        id: 'fvtt-tool-picker-modal',
+        title: '工具熟练配置（PHB 2024 + 自定义）',
+        iconCat: 'magic',
+        groups: DND2024_TOOL_GROUPS,
+        currentList: splitListLocal(characterData.proficiencies?.tools?.length ? characterData.proficiencies.tools : characterData.toolProficiencies),
+        placeholder: '输入自定义工具（如：鲁特琴、三龙牌、飞艇驾驶）',
+        onSave: (list) => {
+          characterData.proficiencies = characterData.proficiencies || {};
+          characterData.proficiencies.tools = list;
+          characterData.toolProficiencies = list;
+        },
+      }));
+    }
+  });
+  document.querySelectorAll('[data-fvtt-open-lang-gear]').forEach((btn) => {
+    if (!btn.dataset.bound) {
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', () => openFvttTraitPickerModal({
+        id: 'fvtt-lang-picker-modal',
+        title: '习得语言配置（PHB 2024 + 自定义）',
+        iconCat: '',
+        groups: DND2024_LANG_GROUPS,
+        currentList: splitListLocal(characterData.languages),
+        placeholder: '输入自定义语言（如：耐色瑞尔古语、吉斯语）',
+        onSave: (list) => { characterData.languages = list.join(', '); },
+      }));
+    }
+  });
+
+  // 3. Non-destructive icon decoration + fallback hydration ONLY when existing details are blank/placeholder/legacy stub
+  const vault = getAssetVault();
+  const isBlankText = (t) => !t || /^(无描述|—|\s*)$/.test(String(t));
+  const isExplicitHomebrew = (obj) => Boolean(obj?.isCustom || /自制|自定义|原创|homebrew/i.test(String(obj?.source || obj?.来源 || '')));
+
+  const findDataObjForRow = (kind, row) => {
+    const grp = row?.dataset?.panelGroup || '';
+    const idx = Number(row?.dataset?.panelIndex);
+    if (!Number.isFinite(idx)) return null;
+    if (kind === 'inventory') {
+      if (grp.includes('weapon')) return characterData.inventory?.weapons?.[idx] || null;
+      if (grp.includes('equip') || grp.includes('armor') || grp.includes('gear') || grp.includes('item')) return characterData.inventory?.equipment?.[idx] || null;
+    } else if (kind === 'features') {
+      if (grp.includes('class')) return characterData.features?.class?.[idx] || null;
+      if (grp.includes('race')) return characterData.features?.race?.[idx] || null;
+      if (grp.includes('feat')) return characterData.features?.feats?.[idx] || null;
+    }
+    return null;
+  };
+
+  document.querySelectorAll('#inventory .item-main-row').forEach((row) => {
+    const nameEl = row.querySelector('.truncate.font-semibold, .font-semibold');
+    if (!nameEl || nameEl.dataset.fvttDecorated) return;
+    const rawText = nameEl.textContent?.trim() || '';
+    if (!rawText) return;
+    const dataObj = findDataObjForRow('inventory', row);
+    const compItem = vault?.lookupItem ? vault.lookupItem(dataObj?.en || rawText) : null;
+    const lookupKey = compItem?.en || rawText;
+    const enSub = (compItem?.en && compItem.en.toLowerCase() !== rawText.toLowerCase() && !rawText.includes(compItem.en))
+      ? '<span class="fvtt-en-sub">' + escapeAttr(compItem.en) + '</span>' : '';
+    const hbBadge = isExplicitHomebrew(dataObj) ? '<span class="fvtt-badge-homebrew">自制</span>' : '';
+    const isWeapon = row.classList.contains('weapon') || Boolean(getWeaponMasteryInfo(compItem?.zh || rawText));
+    const cat = isWeapon ? 'weapon' : (/甲|盾|衣|袍|armor|shield/i.test(lookupKey) ? 'armor' : (/药|卷轴|油|箭|弹|potion|scroll/i.test(lookupKey) ? 'consumable' : 'magic'));
+    const ico = fvttIconHtml(lookupKey, cat, 26);
+    const star = isWeapon && isWeaponMastered(compItem?.zh || rawText)
+      ? '<span class="fvtt-mastery-star" title="已精通：' + escapeAttr(getWeaponMasteryInfo(compItem?.zh || rawText)?.mastery || '武器精通') + '">★</span>'
+      : '';
+    nameEl.dataset.fvttDecorated = '1';
+    nameEl.innerHTML = '<span class="fvtt-row-icon-wrap">' + ico + '<span>' + escapeAttr(rawText) + enSub + '</span>' + star + hbBadge + '</span>';
+
+    if (!isEditing && compItem?.desc && isBlankText(dataObj?.details)) {
+      const detailVal = row.parentElement?.querySelector('.item-detail-panel .detail-value:last-child');
+      if (detailVal && isBlankText(detailVal.textContent)) detailVal.textContent = compItem.desc;
+    }
+  });
+
+  const allFeatObjs = [
+    ...(characterData.features?.class || []),
+    ...(characterData.features?.race || []),
+    ...(characterData.features?.feats || []),
+  ];
+  document.querySelectorAll('#features .item-main-row .font-semibold, #features .feature-title, #features h4, #features .font-bold').forEach((el) => {
+    if (el.dataset.fvttDecorated || el.tagName === 'INPUT' || el.closest('button') || el.closest('.list-item-grid')) return;
+    const rawText = el.textContent?.trim() || '';
+    if (!rawText || rawText.length > 56 || /^(职业特性|种族特性|专长|职业资源|资源)$/.test(rawText)) return;
+    const row = el.closest('.item-main-row');
+    const dataObj = findDataObjForRow('features', row) || allFeatObjs.find((f) => f && String(f.name || '').trim() === rawText) || null;
+    const featCtx = { className: characterData.class, subclassName: characterData.subclass, raceName: characterData.race };
+    const compFeat = vault?.lookupFeature ? vault.lookupFeature(dataObj?.en || rawText, featCtx) : null;
+    const lookupKey = compFeat?.en || rawText;
+    const sec = el.closest('[data-section], div');
+    const fallbackCat = /种族/.test(sec?.previousElementSibling?.textContent || '') ? 'species' : 'feature';
+    const ico = fvttIconHtml(lookupKey, fallbackCat, 24);
+    const enSub = (compFeat?.en && compFeat.en.toLowerCase() !== rawText.toLowerCase() && !rawText.includes(compFeat.en))
+      ? '<span class="fvtt-en-sub">' + escapeAttr(compFeat.en) + '</span>' : '';
+    const hbBadge = isExplicitHomebrew(dataObj) ? '<span class="fvtt-badge-homebrew">自制</span>' : '';
+    el.dataset.fvttDecorated = '1';
+    el.innerHTML = '<span class="fvtt-row-icon-wrap">' + ico + '<span>' + escapeAttr(rawText) + enSub + '</span>' + hbBadge + '</span>';
+
+    if (!isEditing && compFeat?.desc) {
+      const curDetails = String(dataObj?.details || '').trim();
+      if (isBlankText(curDetails) || (typeof MvuLite?.featureLegacy === 'function' && MvuLite.featureLegacy(curDetails))) {
+        const rowWrap = el.closest('.item-row-wrapper');
+        const detailVal = el.parentElement?.querySelector('p') || rowWrap?.querySelector('.item-detail-panel .detail-value:last-child, .item-detail-panel p');
+        if (detailVal) detailVal.textContent = compFeat.desc;
+      }
+    }
+  });
+}
+
+function renderFvttSpellsTabView(container) {
+  if (!container || !characterData?.spells) return false;
+  const vault = getAssetVault();
+  const { spells } = characterData;
+  const ebSp = getFvttExtraBonuses(characterData);
+  const effAbility = spells.ability || 'none';
+  const spellAbilityMod = (effAbility && effAbility !== 'none') ? getModifier(getEffectiveStat(effAbility)) : 0;
+  const pb = getEffectiveProficiencyBonus();
+  const autoSpellAttack = spellAbilityMod + pb;
+  const autoSpellDC = 8 + spellAbilityMod + pb;
+  const spellAttackBase = (Number.isFinite(spells.attackBonus) ? spells.attackBonus : autoSpellAttack) + ebSp.spellAttack;
+  const spellDCBase = (Number.isFinite(spells.dc) ? spells.dc : autoSpellDC) + ebSp.spellDc;
+  const spellAttack = applyNumericEffects(spellAttackBase, ['spell.attack']);
+  const spellDC = applyNumericEffects(spellDCBase, ['spell.dc']);
+  const { maxPrepared, currentPrepared } = spellPreparationState();
+
+  const abilityLabel = ABILITY_FROM_KEY[effAbility] || (effAbility === 'none' ? '无' : String(effAbility || '无').toUpperCase());
+  const prepBtnHeader = hasPreparationAccess()
+    ? `<button type="button" class="add-item-btn mb-3" data-action="prepare-spells" ${isEditing ? 'disabled' : ''}>更换准备法术</button><p class="text-sm text-gray-400 mb-3">${isEditing ? '请先保存或退出档案编辑，再更换准备法术。' : '长休后从职业法术表换备；法师从自己的法术书准备。'}</p>`
+    : '';
+  const statusBanner = `<p class="text-sm text-gray-400 mb-4" role="status">${currentPrepared > maxPrepared ? `已超出普通准备上限 ${currentPrepared - maxPrepared} 个，请取消部分勾选；原选择已保留。` : currentPrepared === maxPrepared ? '普通准备名额已满，取消一个后可改选。' : '勾选普通法术占用准备名额。'} 常驻法术锁定勾选，不占名额；戏法也不计入。</p>`;
+
+  const summaryHtml = prepBtnHeader + `
+    <div class="grid grid-cols-4 gap-3 text-center mb-3 p-3 rounded-lg spell-summary-grid" style="background:#1c202b;border:1px solid rgba(212,175,106,0.24);">
+      <div><div class="text-xs" style="color:#a9b1c2;">施法属性</div><div class="font-bold text-base" style="color:#e8cc8e;">${escapeAttr(abilityLabel)}</div></div>
+      <div><div class="text-xs" style="color:#a9b1c2;">法术攻击</div><div class="font-bold text-base" style="color:#fff4df;">${spellAttack >= 0 ? ('+' + spellAttack) : spellAttack}</div></div>
+      <div><div class="text-xs" style="color:#a9b1c2;">法术豁免DC</div><div class="font-bold text-base" style="color:#fff4df;">${spellDC}</div></div>
+      <div><div class="text-xs" style="color:#a9b1c2;">普通已准备法术</div><div class="font-bold text-base" style="color:#fff4df;">${currentPrepared} / ${maxPrepared}</div></div>
+    </div>
+  ` + statusBanner;
+
+  const isBlankText = (t) => !t || /^(无描述|—|\s*)$/.test(String(t));
+  const knownObj = spells.known || {};
+
+  const renderLevelSection = (level) => {
+    const list = Array.isArray(knownObj[level]) ? knownObj[level] : [];
+    const slotInfo = spells.slots?.[level];
+    const totalSlots = Number(slotInfo?.total || 0);
+    const usedSlots = Number(slotInfo?.used || 0);
+    const remainSlots = Math.max(0, totalSlots - usedSlots);
+    if (level !== '0' && list.length === 0 && totalSlots === 0) return '';
+    if (level === '0' && list.length === 0) return '';
+
+    const titleTxt = level === '0' ? '戏法 (0环)' : (level + '环法术');
+    const slotCtrlHtml = (level !== '0' && totalSlots > 0)
+      ? `<span class="fvtt-slot-ctrl" onclick="event.stopPropagation()">
+          <button type="button" class="fvtt-slot-btn" data-fvtt-slot-delta="-1" data-fvtt-slot-level="${level}" title="消耗1个法术位">−</button>
+          <span>${remainSlots} / ${totalSlots}</span>
+          <button type="button" class="fvtt-slot-btn" data-fvtt-slot-delta="1" data-fvtt-slot-level="${level}" title="恢复1个法术位">+</button>
+        </span>`
+      : '';
+
+    const rowsHtml = list.map((spell, index) => {
+      const rawName = String(spell?.name || ('法术' + (index + 1))).trim();
+      const comp = vault?.lookupSpell ? vault.lookupSpell(spell?.en || rawName) : null;
+      const zhTitle = rawName || comp?.zh || ('法术' + (index + 1));
+      const enSub = comp?.en && comp.en.toLowerCase() !== zhTitle.toLowerCase() && !zhTitle.includes(comp.en) ? comp.en : '';
+      const hbBadge = (spell?.isCustom || /自制|自定义|原创|homebrew/i.test(String(spell?.source || '')))
+        ? '<span class="fvtt-badge-homebrew">自制</span>' : '';
+
+      const timeTxt = !isBlankText(spell?.castingTime) ? spell.castingTime : (comp?.time || '—');
+      const rangeTxt = !isBlankText(spell?.range) ? spell.range : (comp?.range || '—');
+      const compTxt = !isBlankText(spell?.components) ? spell.components : (comp?.comp || '');
+      const schoolTxt = !isBlankText(spell?.school) ? spell.school : (comp?.school || '');
+      const durTxt = !isBlankText(spell?.duration) ? spell.duration : (comp?.dur || '—');
+      const fullDesc = !isBlankText(spell?.details) ? spell.details : (comp?.desc || '无描述');
+
+      let rollHtml = '<span style="color:#6c7484;">—</span>';
+      if (comp?.roll === 'ATK') {
+        rollHtml = '<span class="fvtt-spell-roll-atk">' + (spellAttack >= 0 ? ('+' + spellAttack) : spellAttack) + '</span>';
+      } else if (comp?.roll && /^[A-Z]{3}$/.test(comp.roll)) {
+        rollHtml = '<span class="fvtt-spell-roll-save"><small>' + comp.roll + '</small><b>' + spellDC + '</b></span>';
+      }
+
+      const isAlways = level === '0' ? true : (spell?.isPrepared === 'always');
+      const isPrepared = level === '0' ? true : (isAlways || spell?.isPrepared === true || spell?.isPrepared === 'true');
+      const ico = fvttIconHtml(comp?.en || rawName, 'spell', 32, Number(level) || 1);
+      const subMeta = [schoolTxt, compTxt].filter(Boolean).join(' · ');
+      const panelGroup = 'spells-view-' + level;
+      const expandedClass = (typeof isPanelExpanded === 'function' && isPanelExpanded(panelGroup, index)) ? 'expanded' : '';
+      const racialNote = typeof racialCastingText === 'function' ? racialCastingText(spell?.name) : '';
+
+      const prepCtrlHtml = level === '0'
+        ? ''
+        : (isAlways
+          ? `<input type="checkbox" checked disabled aria-label="始终准备，不占普通准备名额" title="始终准备，不占普通准备名额">`
+          : `<input type="checkbox" data-spell-prep-level="${level}" data-spell-prep-index="${index}" ${isPrepared ? 'checked' : currentPrepared >= maxPrepared ? 'disabled' : ''} aria-label="准备法术" title="${!isPrepared && currentPrepared >= maxPrepared ? '普通准备名额已满，请先取消一个已准备法术' : '准备或取消准备'}">`);
+
+      return `
+        <div class="fvtt-spell-row-wrap item-row-wrapper ${expandedClass}" data-panel-group="${panelGroup}" data-panel-index="${index}">
+          <div class="fvtt-spell-row item-main-row spell ${isPrepared ? '' : 'unprepared'}" data-fvtt-toggle-spell>
+            <div class="fvtt-spell-main">
+              ${ico}
+              <div class="fvtt-spell-text">
+                <div class="fvtt-spell-title">
+                  <span class="fvtt-spell-title-zh">${escapeAttr(zhTitle)}</span>
+                  ${enSub ? '<span class="fvtt-spell-title-en">' + escapeAttr(enSub) + '</span>' : ''}
+                  ${hbBadge}
+                </div>
+                ${subMeta ? '<div class="fvtt-spell-sub">' + escapeAttr(subMeta) + '</div>' : ''}
+              </div>
+            </div>
+            <div class="fvtt-spell-cell" title="${escapeAttr(timeTxt)}">${escapeAttr(timeTxt)}</div>
+            <div class="fvtt-spell-cell" title="${escapeAttr(rangeTxt)}">${escapeAttr(rangeTxt)}</div>
+            <div class="fvtt-spell-cell">${rollHtml}</div>
+            <div class="fvtt-spell-actions" onclick="event.stopPropagation()">
+              ${prepCtrlHtml}
+              <button type="button" class="fvtt-spell-icon-btn" data-action="cast-spell" data-level="${level}" data-index="${index}" title="${level === '0' ? '记录施放戏法' : ('消耗法术位施放 ' + escapeAttr(zhTitle))}"><i class="fa-solid fa-wand-sparkles"></i></button>
+            </div>
+          </div>
+          <div class="fvtt-spell-detail item-detail-panel">
+            ${racialNote ? `<p class="text-sm mb-2" style="color:var(--ink-soft)">${escapeAttr(racialNote)}</p>` : ''}
+            <div class="fvtt-spell-detail-meta">
+              ${schoolTxt ? '<span><b>学派：</b>' + escapeAttr(schoolTxt) + '</span>' : ''}
+              <span><b>时间：</b>${escapeAttr(timeTxt)}</span>
+              <span><b>射程：</b>${escapeAttr(rangeTxt)}</span>
+              <span><b>持续：</b>${escapeAttr(durTxt)}</span>
+              ${compTxt ? '<span><b>成分：</b>' + escapeAttr(compTxt) + '</span>' : ''}
+            </div>
+            <div>${escapeAttr(fullDesc)}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div class="fvtt-spell-section" data-panel-scope="spells-view-${level}">
+        <div class="fvtt-spell-hdr">
+          <div class="fvtt-spell-hdr-left">
+            <span>${titleTxt} <small style="opacity:0.78;font-weight:500;">${list.length}</small></span>
+            ${slotCtrlHtml}
+          </div>
+          <div class="fvtt-spell-hdr-col">时间</div>
+          <div class="fvtt-spell-hdr-col">射程</div>
+          <div class="fvtt-spell-hdr-col">掷骰</div>
+          <div class="fvtt-spell-hdr-col">操作</div>
+        </div>
+        <div>${rowsHtml}</div>
+      </div>
+    `;
+  };
+
+  const levels = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+  const sectionsHtml = levels.map(renderLevelSection).filter(Boolean).join('');
+  container.innerHTML = summaryHtml + (sectionsHtml || '<div style="padding:20px;text-align:center;color:#8e96a6;">当前角色未配置法术</div>');
+
+  container.querySelectorAll('[data-fvtt-toggle-spell]').forEach((row) => {
+    row.addEventListener('click', () => {
+      const wrap = row.closest('.fvtt-spell-row-wrap');
+      if (!wrap) return;
+      wrap.classList.toggle('expanded');
+      if (typeof togglePanelExpanded === 'function') {
+        try { togglePanelExpanded(wrap.dataset.panelGroup, Number(wrap.dataset.panelIndex)); } catch (_) {}
+      }
+    });
+  });
+
+  container.querySelectorAll('[data-fvtt-slot-delta]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const lv = btn.dataset.fvttSlotLevel;
+      const delta = Number(btn.dataset.fvttSlotDelta);
+      const slot = characterData.spells?.slots?.[lv];
+      if (!slot) return;
+      const total = Number(slot.total || 0);
+      const curUsed = Number(slot.used || 0);
+      slot.used = Math.max(0, Math.min(total, curUsed - delta));
+      saveData();
+      renderFvttSpellsTabView(container);
+    });
+  });
+  return true;
+}
+
+// ===== PHB 2024 + DMG 2024 Compendium Browser Picker Modal =====
+function openFvttCompendiumPickerModal(mode, opt = {}) {
+  const vault = getAssetVault();
+  const dbAll = vault?.getCompendiumAll ? vault.getCompendiumAll() : null;
+  if (!dbAll || (!(dbAll.items || []).length && !(dbAll.spells || []).length && !(dbAll.features || []).length)) return false;
+  document.getElementById('fvtt-compendium-picker-modal')?.remove();
+
+  const charClass = String(characterData.class || '').trim();
+  const charSubclass = String(characterData.subclass || characterData.__mvuSource?.子职业 || '').trim();
+  const charRace = String(characterData.race || '').trim();
+  const charLvl = Math.max(1, Math.min(20, Number(characterData.level) || 1));
+
+  const CLASS_NAMES = ['野蛮人','吟游诗人','牧师','德鲁伊','战士','武僧','圣武士','游侠','游荡者','术士','魔契师','法师','奇械师'];
+  const RACE_NAMES = ['人类','精灵','矮人','半身人','龙裔','侏儒','歌利亚','兽人','提夫林','阿斯莫'];
+  const baseClassZh = CLASS_NAMES.find((c) => charClass.includes(c)) || charClass;
+  const baseRaceZh = RACE_NAMES.find((r) => charRace.includes(r)) || charRace;
+
+  const isWeaponMode = mode === 'weapon';
+  const isEquipMode = mode === 'equipment';
+  const isSpellMode = mode === 'spell';
+  const isClassFeatMode = mode === 'features.class';
+  const isRaceFeatMode = mode === 'features.race';
+  const isFeatMode = mode === 'features.feats';
+
+  const modalTitle = isWeaponMode ? '⚔️ PHB 2024 + DMG 2024 武器图鉴'
+    : isEquipMode ? '🎒 PHB 2024 + DMG 2024 装备与魔法物品图鉴'
+    : isSpellMode ? '✨ PHB 2024 法术图鉴'
+    : isClassFeatMode ? '⭐ PHB 2024 职业与子职特性图鉴'
+    : isRaceFeatMode ? '🧬 PHB 2024 种族特质图鉴'
+    : '🏅 PHB 2024 专长图鉴';
+
+  const searchPlaceholder = isWeaponMode ? '搜索武器名称、英文名、词条或精通（如：长剑、焰舌、灵巧）...'
+    : isEquipMode ? '搜索护甲、盾牌、药水、奇物或英文名（如：防护斗篷、次元袋、全身板甲）...'
+    : isSpellMode ? '搜索法术中文名、英文名、学派或效果（如：火球、治愈真言、治疗）...'
+    : '搜索特性/专长名称、英文名或效果...';
+
+  const state = {
+    query: '',
+    srcFilter: 'all',
+    subFilter: 'all',
+    spellLv: isSpellMode && opt.level !== undefined ? String(opt.level) : 'all',
+    onlyOwnClass: false,
+    onlyRitual: false,
+    onlyConc: false,
+  };
+
+  const getOwnedSet = () => {
+    const s = new Set();
+    if (isWeaponMode) {
+      (characterData.inventory?.weapons || []).forEach((w) => { if (w?.name) s.add(String(w.name).trim()); });
+    } else if (isEquipMode) {
+      (characterData.inventory?.equipment || []).forEach((e) => { if (e?.name) s.add(String(e.name).trim()); });
+    } else if (isSpellMode) {
+      Object.values(characterData.spells?.known || {}).forEach((arr) => {
+        (arr || []).forEach((sp) => { if (sp?.name) s.add(String(sp.name).trim()); });
+      });
+    } else {
+      const targetKey = isRaceFeatMode ? 'race' : (isFeatMode ? 'feats' : 'class');
+      (characterData.features?.[targetKey] || []).forEach((f) => { if (f?.name) s.add(String(f.name).trim()); });
+    }
+    return s;
+  };
+
+  const rarityClass = (r) => {
+    if (r === '非普通') return 'rar-uncommon';
+    if (r === '珍稀') return 'rar-rare';
+    if (r === '极珍稀') return 'rar-veryrare';
+    if (r === '传说') return 'rar-legendary';
+    if (r === '神器') return 'rar-artifact';
+    return '';
+  };
+
+  const dlg = document.createElement('dialog');
+  dlg.id = 'fvtt-compendium-picker-modal';
+  dlg.innerHTML = `
+    <div class="fvtt-cp-hd">
+      <div class="fvtt-cp-title"><span>${modalTitle}</span><span class="fvtt-cp-count" id="fvtt-cp-count">0 项</span></div>
+      <button type="button" data-cp-close style="background:none;border:none;color:#d6d0c4;font-size:18px;cursor:pointer;">✕</button>
+    </div>
+    <div class="fvtt-cp-toolbar">
+      <input type="text" id="fvtt-cp-search" class="fvtt-cp-search" placeholder="${escapeAttr(searchPlaceholder)}">
+      <div class="fvtt-cp-pills" id="fvtt-cp-pills-1"></div>
+      <div class="fvtt-cp-pills" id="fvtt-cp-pills-2"></div>
+    </div>
+    <div class="fvtt-cp-list" id="fvtt-cp-list"></div>
+    <div class="fvtt-cp-ft">
+      <button type="button" data-cp-add-blank class="fvtt-edit-mini-btn">+ 新建空白自定义条目</button>
+      <button type="button" data-cp-close class="fvtt-cp-add-btn" style="padding:5px 16px;">完成并关闭</button>
+    </div>
+  `;
+  document.body.appendChild(dlg);
+
+  const renderFilterPills = () => {
+    const p1 = dlg.querySelector('#fvtt-cp-pills-1');
+    const p2 = dlg.querySelector('#fvtt-cp-pills-2');
+    const pill = (attr, val, label, active) => `<button type="button" class="fvtt-cp-pill ${active ? 'active' : ''}" data-cp-filter="${attr}" data-cp-val="${val}">${label}</button>`;
+    if (isWeaponMode) {
+      p1.innerHTML = [
+        pill('src', 'all', '全部来源', state.srcFilter === 'all'),
+        pill('src', 'PHB', 'PHB 2024 标准武器', state.srcFilter === 'PHB'),
+        pill('src', 'DMG', 'DMG 2024 魔法武器', state.srcFilter === 'DMG'),
+      ].join('');
+      p2.innerHTML = [
+        pill('sub', 'all', '全部类型', state.subFilter === 'all'),
+        pill('sub', 'simple', '简易武器', state.subFilter === 'simple'),
+        pill('sub', 'martial', '军用武器', state.subFilter === 'martial'),
+        pill('sub', 'rare+', '珍稀及以上魔法', state.subFilter === 'rare+'),
+      ].join('');
+    } else if (isEquipMode) {
+      p1.innerHTML = [
+        pill('src', 'all', '全部来源', state.srcFilter === 'all'),
+        pill('src', 'PHB', 'PHB 2024 装备', state.srcFilter === 'PHB'),
+        pill('src', 'DMG', 'DMG 2024 魔法物品', state.srcFilter === 'DMG'),
+      ].join('');
+      p2.innerHTML = [
+        pill('sub', 'all', '全部分类', state.subFilter === 'all'),
+        pill('sub', 'armor', '护甲 / 盾牌', state.subFilter === 'armor'),
+        pill('sub', 'potion', '药水 / 卷轴', state.subFilter === 'potion'),
+        pill('sub', 'wondrous', '奇物', state.subFilter === 'wondrous'),
+        pill('sub', 'focus', '戒指 / 杖 / 魔杖', state.subFilter === 'focus'),
+        pill('sub', 'gear', '冒险装备 / 工具', state.subFilter === 'gear'),
+      ].join('');
+    } else if (isSpellMode) {
+      const lvs = [['all', '全部环阶'], ['0', '戏法'], ['1', '1环'], ['2', '2环'], ['3', '3环'], ['4', '4环'], ['5', '5环'], ['6', '6环'], ['7', '7环'], ['8', '8环'], ['9', '9环']];
+      p1.innerHTML = lvs.map(([v, lb]) => pill('spellLv', v, lb, state.spellLv === v)).join('');
+      p2.innerHTML = [
+        baseClassZh ? pill('onlyOwn', 'toggle', `仅看本职 (${baseClassZh})`, state.onlyOwnClass) : '',
+        pill('ritual', 'toggle', '仅仪式', state.onlyRitual),
+        pill('conc', 'toggle', '仅专注', state.onlyConc),
+      ].join('');
+    } else if (isClassFeatMode) {
+      p1.innerHTML = [
+        pill('sub', 'all', `全部职业`, state.subFilter === 'all'),
+        baseClassZh ? pill('sub', 'own', `仅看 ${baseClassZh}`, state.subFilter === 'own') : '',
+        baseClassZh ? pill('sub', 'own-lvl', `仅看 ${baseClassZh} ≤${charLvl}级`, state.subFilter === 'own-lvl') : '',
+      ].join('');
+      p2.innerHTML = '';
+    } else if (isFeatMode) {
+      p1.innerHTML = [
+        pill('sub', 'all', '全部专长', state.subFilter === 'all'),
+        pill('sub', 'feat-origin', '起源专长', state.subFilter === 'feat-origin'),
+        pill('sub', 'feat-style', '战斗风格', state.subFilter === 'feat-style'),
+        pill('sub', 'feat-general', '通用专长', state.subFilter === 'feat-general'),
+        pill('sub', 'feat-epic', '传奇恩惠', state.subFilter === 'feat-epic'),
+      ].join('');
+      p2.innerHTML = '';
+    } else if (isRaceFeatMode) {
+      p1.innerHTML = [
+        pill('sub', 'all', `全部种族`, state.subFilter === 'all'),
+        baseRaceZh ? pill('sub', 'own', `仅看 ${baseRaceZh}`, state.subFilter === 'own') : '',
+      ].join('');
+      p2.innerHTML = '';
+    }
+    p2.style.display = p2.innerHTML.trim() ? 'flex' : 'none';
+  };
+
+  let renderedEntries = [];
+
+  const addEntryToCharacter = (entry) => {
+    if (isWeaponMode) {
+      const m = entry.meta || {};
+      const strVal = Number(characterData.stats?.str) || 10;
+      const dexVal = Number(characterData.stats?.dex) || 10;
+      const subTxt = String(m.sub || '') + ' ' + String(entry.zh || '');
+      const inferredStat = m.stat || (/弓|弩|飞镖|投石索|吹箭|火枪|手铳|手枪/.test(subTxt) ? 'dex' : (/匕首|短剑|刺剑|弯刀|鞭/.test(subTxt) ? 'finesse' : 'str'));
+      const atkStat = inferredStat === 'finesse' ? (dexVal >= strVal ? 'dex' : 'str') : (inferredStat === 'dex' ? 'dex' : 'str');
+      const inferredDmg = m.dmg || (/巨剑|巨锤/.test(subTxt) ? '2d6' : (/巨斧|骑枪|长枪/.test(subTxt) ? '1d12' : (/戟|长柄刀|大砍刀|长矛|重弩|手铳|火枪/.test(subTxt) ? '1d10' : (/匕首|飞镖|轻锤|镰刀|短棒/.test(subTxt) ? '1d4' : (/短剑|弯刀|短弓|手斧|标枪|矛|长棍|硬头锤/.test(subTxt) ? '1d6' : '1d8')))));
+      const inferredDmgType = m.dmgType || (/锤|棍|棒|链枷|投石索/.test(subTxt) ? '钝击' : (/匕首|刺剑|弓|弩|矛|标枪|三叉戟|枪|铳|镐|飞镖/.test(subTxt) ? '穿刺' : '挥砍'));
+      const wProfs = Array.isArray(characterData.weaponProficiencies) ? characterData.weaponProficiencies : [];
+      const isProf = wProfs.includes(entry.zh) || (m.cat && wProfs.includes(m.cat)) || wProfs.includes('简易武器') || wProfs.includes('军用武器');
+      characterData.inventory = characterData.inventory || { currency: { cp:0,sp:0,ep:0,gp:0,pp:0 }, weapons: [], equipment: [] };
+      characterData.inventory.weapons.push({
+        name: entry.zh,
+        attackStat: atkStat,
+        damage: inferredDmg,
+        type: inferredDmgType,
+        proficient: isProf,
+        magicBonus: Number(m.bonus) || 0,
+        tags: m.props || m.sub || '',
+        details: entry.desc || '',
+        isEquipped: true,
+        requiresAttunement: Boolean(m.attune),
+        isAttuned: false,
+        quantity: 1,
+        weight: 0,
+        value: '',
+        effectTags: [],
+        effects: [],
+      });
+    } else if (isEquipMode) {
+      const m = entry.meta || {};
+      characterData.inventory = characterData.inventory || { currency: { cp:0,sp:0,ep:0,gp:0,pp:0 }, weapons: [], equipment: [] };
+      const isArmorOrShield = entry.type === 'armor' || entry.type === 'shield';
+      const armorTypeEn = isArmorOrShield
+        ? (m.armorTypeEn || (entry.type === 'shield' ? 'shield' : (/重甲|板甲|链甲|环甲|板条/.test(entry.zh + ' ' + (m.sub || '')) ? 'heavy' : (/中甲|鳞甲|胸甲|半身|兽皮|链甲衫/.test(entry.zh + ' ' + (m.sub || '')) ? 'medium' : 'light'))))
+        : undefined;
+      characterData.inventory.equipment.push(normalizeEquipmentItem({
+        ...Object.values(PRESET_DATA.armors).find(p => p.name === entry.zh || (entry.zh === '板甲' && p.name === '全身板甲')),
+        name: entry.zh === '板甲' ? '全身板甲' : entry.zh,
+        category: isArmorOrShield ? 'armor' : (m.attune || entry.src === 'DMG' ? 'wondrous' : 'misc'),
+        type: isArmorOrShield ? 'armor' : 'item',
+        ...(armorTypeEn ? { armorType: armorTypeEn } : {}),
+        ...(m.ac ? { baseAc: Number(m.ac) } : (armorTypeEn === 'shield' ? { baseAc: 2 } : {})),
+        isEquipped: false,
+        requiresAttunement: Boolean(m.attune),
+        isAttuned: false,
+        quantity: 1,
+        tags: m.sub || '',
+        details: entry.desc || '',
+        effectTags: [],
+        effects: [],
+      }));
+    } else if (isSpellMode) {
+      characterData.spells = characterData.spells || {};
+      characterData.spells.known = characterData.spells.known || { '0':[],'1':[],'2':[],'3':[],'4':[],'5':[],'6':[],'7':[],'8':[],'9':[] };
+      const lvKey = String(entry.lv ?? 0);
+      characterData.spells.known[lvKey] = characterData.spells.known[lvKey] || [];
+      characterData.spells.known[lvKey].push({
+        name: entry.zh,
+        school: entry.school || '',
+        castingTime: entry.time || '动作',
+        range: entry.range || '60尺',
+        duration: entry.dur || '立即',
+        components: entry.comp || '',
+        isPrepared: lvKey === '0' ? 'always' : true,
+        ritual: (entry.comp || '').includes('仪式'),
+        concentration: (entry.dur || '').includes('专注') || (entry.comp || '').includes('专注'),
+        details: entry.desc || '',
+      });
+    } else {
+      const targetKey = isRaceFeatMode ? 'race' : (isFeatMode ? 'feats' : 'class');
+      characterData.features = characterData.features || { class: [], race: [], feats: [] };
+      characterData.features[targetKey] = characterData.features[targetKey] || [];
+      characterData.features[targetKey].push({
+        name: entry.zh,
+        source: entry.owner || '',
+        details: entry.desc || '',
+        tags: '',
+        effectTags: [],
+        effects: [],
+      });
+    }
+    updateCharacterAC(false);
+    saveData();
+    renderAll();
+  };
+
+  const renderList = () => {
+    const listEl = dlg.querySelector('#fvtt-cp-list');
+    const countEl = dlg.querySelector('#fvtt-cp-count');
+    const q = state.query.trim().toLowerCase();
+    const owned = getOwnedSet();
+    const matchesQuery = (str) => !q || String(str || '').toLowerCase().includes(q);
+    const sections = [];
+
+    if (isWeaponMode || isEquipMode) {
+      let pool = (dbAll.items || []).filter((it) => isWeaponMode ? it.type === 'weapon' : it.type !== 'weapon');
+      if (state.srcFilter !== 'all') pool = pool.filter((it) => it.src === state.srcFilter);
+      if (isWeaponMode) {
+        if (state.subFilter === 'simple') pool = pool.filter((it) => it.meta?.cat === '简易武器');
+        else if (state.subFilter === 'martial') pool = pool.filter((it) => it.meta?.cat === '军用武器');
+        else if (state.subFilter === 'rare+') pool = pool.filter((it) => ['珍稀','极珍稀','传说','神器'].includes(it.rarity));
+      } else {
+        if (state.subFilter === 'armor') pool = pool.filter((it) => it.type === 'armor' || it.type === 'shield');
+        else if (state.subFilter === 'potion') pool = pool.filter((it) => it.type === 'potion' || it.type === 'scroll');
+        else if (state.subFilter === 'wondrous') pool = pool.filter((it) => it.type === 'wondrous');
+        else if (state.subFilter === 'focus') pool = pool.filter((it) => ['ring','rod','staff','wand'].includes(it.type));
+        else if (state.subFilter === 'gear') pool = pool.filter((it) => it.type === 'gear' || it.type === 'tool');
+      }
+      if (q) pool = pool.filter((it) => matchesQuery(it.zh + ' ' + it.en + ' ' + (it.aliases || []).join(' ') + ' ' + it.rarity + ' ' + (it.meta?.props || '') + ' ' + (it.meta?.sub || '') + ' ' + it.desc));
+      const phbList = pool.filter((it) => it.src === 'PHB');
+      const dmgList = pool.filter((it) => it.src === 'DMG');
+      if (phbList.length) sections.push({ title: isWeaponMode ? 'PHB 2024 标准武器' : 'PHB 2024 护甲与冒险装备', cls: '', items: phbList });
+      if (dmgList.length) sections.push({ title: isWeaponMode ? 'DMG 2024 魔法武器' : 'DMG 2024 魔法物品与奇物', cls: 'dmg', items: dmgList });
+    } else if (isSpellMode) {
+      let pool = (dbAll.spells || []).slice();
+      if (state.spellLv !== 'all') pool = pool.filter((sp) => String(sp.lv) === state.spellLv);
+      if (state.onlyRitual) pool = pool.filter((sp) => (sp.comp || '').includes('仪式'));
+      if (state.onlyConc) pool = pool.filter((sp) => (sp.comp || '').includes('专注') || (sp.dur || '').includes('专注'));
+      if (q) pool = pool.filter((sp) => matchesQuery(sp.zh + ' ' + sp.en + ' ' + (sp.aliases || []).join(' ') + ' ' + sp.school + ' ' + (sp.classes || []).join(' ') + ' ' + sp.desc));
+      pool.sort((a, b) => (a.lv - b.lv) || a.zh.localeCompare(b.zh, 'zh-CN'));
+      const ownSpells = baseClassZh ? pool.filter((sp) => (sp.classes || []).includes(baseClassZh)) : [];
+      const otherSpells = baseClassZh ? pool.filter((sp) => !(sp.classes || []).includes(baseClassZh)) : pool;
+      if (ownSpells.length) sections.push({ title: `本职可用法术 · ${baseClassZh}`, cls: '', items: ownSpells });
+      if (!state.onlyOwnClass && otherSpells.length) sections.push({ title: baseClassZh ? '其他职业法术' : 'PHB 2024 全部法术', cls: 'other', items: otherSpells });
+    } else if (isClassFeatMode) {
+      let pool = (dbAll.features || []).filter((f) => f.cat === 'class' || f.cat === 'subclass');
+      if (q) pool = pool.filter((f) => matchesQuery(f.zh + ' ' + f.en + ' ' + (f.aliases || []).join(' ') + ' ' + f.owner + ' ' + f.desc));
+      const isOwnMain = (f) => baseClassZh && f.owner === baseClassZh;
+      const isOwnSub = (f) => baseClassZh && f.owner && f.owner.startsWith(baseClassZh + '/');
+      if (state.subFilter === 'own') pool = pool.filter((f) => isOwnMain(f) || isOwnSub(f));
+      else if (state.subFilter === 'own-lvl') pool = pool.filter((f) => (isOwnMain(f) || isOwnSub(f)) && (f.lvl <= charLvl));
+      const sortByLvl = (a, b) => (a.lvl - b.lvl) || a.zh.localeCompare(b.zh, 'zh-CN');
+      const ownMain = pool.filter(isOwnMain).sort(sortByLvl);
+      const ownSub = pool.filter(isOwnSub).sort((a, b) => ((charSubclass && a.owner.includes(charSubclass) ? 0 : 1) - (charSubclass && b.owner.includes(charSubclass) ? 0 : 1)) || sortByLvl(a, b));
+      const others = pool.filter((f) => !isOwnMain(f) && !isOwnSub(f)).sort((a, b) => a.owner.localeCompare(b.owner, 'zh-CN') || sortByLvl(a, b));
+      if (ownMain.length) sections.push({ title: `本职主职业特性 · ${baseClassZh}`, cls: '', items: ownMain });
+      if (ownSub.length) sections.push({ title: `本职子职特性 · ${baseClassZh}`, cls: 'dmg', items: ownSub });
+      if (others.length) sections.push({ title: '其他职业特性', cls: 'other', items: others });
+    } else if (isFeatMode) {
+      let pool = (dbAll.features || []).filter((f) => f.cat && f.cat.startsWith('feat'));
+      if (state.subFilter !== 'all') pool = pool.filter((f) => f.cat === state.subFilter);
+      if (q) pool = pool.filter((f) => matchesQuery(f.zh + ' ' + f.en + ' ' + (f.aliases || []).join(' ') + ' ' + f.desc));
+      for (const [gKey, gTitle, gCls] of [['feat-origin', '起源专长', ''], ['feat-style', '战斗风格专长', 'dmg'], ['feat-general', '通用专长', ''], ['feat-epic', '传奇恩惠专长', 'dmg']]) {
+        const sub = pool.filter((f) => f.cat === gKey);
+        if (sub.length) sections.push({ title: gTitle, cls: gCls, items: sub });
+      }
+    } else if (isRaceFeatMode) {
+      let pool = (dbAll.features || []).filter((f) => f.cat === 'race');
+      if (state.subFilter === 'own' && baseRaceZh) pool = pool.filter((f) => f.owner === baseRaceZh);
+      if (q) pool = pool.filter((f) => matchesQuery(f.zh + ' ' + f.en + ' ' + (f.aliases || []).join(' ') + ' ' + f.owner + ' ' + f.desc));
+      const ownR = baseRaceZh ? pool.filter((f) => f.owner === baseRaceZh) : [];
+      const otherR = baseRaceZh ? pool.filter((f) => f.owner !== baseRaceZh) : pool;
+      if (ownR.length) sections.push({ title: `本种族特质 · ${baseRaceZh}`, cls: '', items: ownR });
+      if (otherR.length) sections.push({ title: baseRaceZh ? '其他种族特质' : 'PHB 2024 全部种族特质', cls: 'other', items: otherR });
+    }
+
+    renderedEntries = [];
+    let totalCount = 0;
+    const htmlParts = [];
+    for (const sec of sections) {
+      totalCount += sec.items.length;
+      htmlParts.push(`<div class="fvtt-cp-sec-hdr ${sec.cls}"><span>${escapeAttr(sec.title)}</span><span>${sec.items.length} 项</span></div>`);
+      for (const it of sec.items) {
+        const idx = renderedEntries.length;
+        renderedEntries.push(it);
+        const isOwned = owned.has(String(it.zh || '').trim());
+        const icoCat = isWeaponMode ? 'weapon' : isEquipMode ? (it.type === 'armor' || it.type === 'shield' ? 'armor' : 'magic') : isSpellMode ? 'spell' : isRaceFeatMode ? 'species' : 'feature';
+        const ico = fvttIconHtml(it.en || it.zh, icoCat, 28, isSpellMode ? it.lv : null);
+        const tags = [];
+        if (isWeaponMode || isEquipMode) {
+          if (it.src === 'DMG' && it.rarity) tags.push(`<span class="fvtt-cp-tag ${rarityClass(it.rarity)}">${escapeAttr(it.rarity)}${it.meta?.attune ? ' · 需同调' : ''}</span>`);
+          if (it.meta?.dmg) tags.push(`<span class="fvtt-cp-tag">${escapeAttr(it.meta.dmg)} ${escapeAttr(it.meta.dmgType || '')}</span>`);
+          if (it.meta?.ac) tags.push(`<span class="fvtt-cp-tag">AC ${it.type === 'shield' ? '+' : ''}${it.meta.ac}</span>`);
+          if (it.meta?.props) tags.push(`<span class="fvtt-cp-tag">${escapeAttr(it.meta.props)}</span>`);
+          else if (it.meta?.sub) tags.push(`<span class="fvtt-cp-tag">${escapeAttr(it.meta.sub)}</span>`);
+        } else if (isSpellMode) {
+          tags.push(`<span class="fvtt-cp-tag">${it.lv === 0 ? '戏法' : (it.lv + '环')}${it.school ? ' · ' + escapeAttr(it.school) : ''}</span>`);
+          if (it.time) tags.push(`<span class="fvtt-cp-tag">${escapeAttr(it.time)}</span>`);
+          if (it.range) tags.push(`<span class="fvtt-cp-tag">${escapeAttr(it.range)}</span>`);
+        } else {
+          if (it.lvl > 0) tags.push(`<span class="fvtt-cp-tag">Lv${it.lvl}</span>`);
+          if (it.owner) tags.push(`<span class="fvtt-cp-tag">${escapeAttr(it.owner)}</span>`);
+        }
+        htmlParts.push(`
+          <div class="fvtt-cp-row" data-cp-row="${idx}">
+            <div class="fvtt-cp-row-top" data-cp-toggle="${idx}">
+              <div class="fvtt-cp-row-main">
+                ${ico}
+                <div class="fvtt-cp-row-text">
+                  <div class="fvtt-cp-row-title"><span>${escapeAttr(it.zh)}</span><span class="fvtt-cp-row-en">${escapeAttr(it.en)}</span></div>
+                  <div class="fvtt-cp-row-meta">${tags.join('')}</div>
+                </div>
+              </div>
+              <button type="button" class="fvtt-cp-add-btn ${isOwned ? 'added' : ''}" data-cp-add="${idx}">${isOwned ? '✓ 已拥有' : '+ 添加'}</button>
+            </div>
+            <div class="fvtt-cp-desc">${escapeAttr(it.desc || '（无详细规则描述）')}</div>
+          </div>
+        `);
+      }
+    }
+    countEl.textContent = `共 ${totalCount} 项`;
+    listEl.innerHTML = htmlParts.length ? htmlParts.join('') : '<div style="text-align:center;padding:32px 12px;color:#8f98a8;font-size:13px;">未找到匹配条目，可清空搜索词或点击左下角新建自定义条目。</div>';
+  };
+
+  dlg.addEventListener('click', (e) => {
+    if (e.target.closest('[data-cp-close]')) { dlg.close(); return; }
+    const filterBtn = e.target.closest('[data-cp-filter]');
+    if (filterBtn) {
+      const fType = filterBtn.dataset.cpFilter, fVal = filterBtn.dataset.cpVal;
+      if (fType === 'src') state.srcFilter = fVal;
+      else if (fType === 'sub') state.subFilter = fVal;
+      else if (fType === 'spellLv') state.spellLv = fVal;
+      else if (fType === 'onlyOwn') state.onlyOwnClass = !state.onlyOwnClass;
+      else if (fType === 'ritual') state.onlyRitual = !state.onlyRitual;
+      else if (fType === 'conc') state.onlyConc = !state.onlyConc;
+      renderFilterPills(); renderList(); return;
+    }
+    const addBtn = e.target.closest('[data-cp-add]');
+    if (addBtn) {
+      e.stopPropagation();
+      const entry = renderedEntries[Number(addBtn.dataset.cpAdd)];
+      if (entry) { addEntryToCharacter(entry); addBtn.classList.add('added'); addBtn.textContent = '✓ 已添加'; }
+      return;
+    }
+    if (e.target.closest('[data-cp-add-blank]')) {
+      if (isWeaponMode) characterData.inventory.weapons.push({ name: '新武器', attackStat: 'str', damage: '1d8', type: '挥砍', proficient: true, magicBonus: 0, tags: '', details: '', isEquipped: true, requiresAttunement: false, isAttuned: false, effectTags: [], effects: [] });
+      else if (isEquipMode) characterData.inventory.equipment.push(normalizeEquipmentItem({ name: '新物品', category: 'misc', type: 'item', isEquipped: false, quantity: 1, details: '', effectTags: [], effects: [] }));
+      else if (isSpellMode) {
+        const lvKey = state.spellLv === 'all' ? '1' : state.spellLv;
+        characterData.spells.known[lvKey] = characterData.spells.known[lvKey] || [];
+        characterData.spells.known[lvKey].push({ name: '自定义法术', isCustom: true, school: '', castingTime: '动作', range: '60尺', duration: '立即', components: 'V、S', isPrepared: lvKey === '0' ? 'always' : true, details: '' });
+      } else {
+        const targetKey = isRaceFeatMode ? 'race' : (isFeatMode ? 'feats' : 'class');
+        characterData.features[targetKey].push({ name: '新自定义特性', isCustom: true, source: '自定义', details: '', tags: '', effectTags: [], effects: [] });
+      }
+      saveData(); renderAll(); dlg.close(); return;
+    }
+    const toggleRow = e.target.closest('[data-cp-toggle]');
+    if (toggleRow) toggleRow.closest('.fvtt-cp-row')?.classList.toggle('expanded');
+  });
+
+  dlg.querySelector('#fvtt-cp-search')?.addEventListener('input', (e) => { state.query = e.target.value || ''; renderList(); });
+  renderFilterPills(); renderList(); dlg.showModal();
+  dlg.querySelector('#fvtt-cp-search')?.focus();
+  return true;
+}
+
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function' && !window.__fvttCompendiumPickerBound) {
+  window.__fvttCompendiumPickerBound = true;
+  document.addEventListener('click', (e) => {
+    const addTypeBtn = e.target.closest?.('button[data-add-type]');
+    if (addTypeBtn) {
+      const t = addTypeBtn.dataset.addType;
+      if (['weapon', 'equipment', 'features.class', 'features.race', 'features.feats'].includes(t)) {
+        if (openFvttCompendiumPickerModal(t)) {
+          e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+          return;
+        }
+      }
+    }
+    const addSpellBtn = e.target.closest?.('button[data-add-spell-level]');
+    if (addSpellBtn) {
+      if (openFvttCompendiumPickerModal('spell', { level: addSpellBtn.dataset.addSpellLevel })) {
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+        return;
+      }
+    }
+  }, true);
+}
+/* __fvttUiOverhaulEnd */
             function renderAll() {
                 if (!characterData) return;
                 updateCharacterAC(false);
                 characterData.currentHp = Math.min(characterData.currentHp, getEffectiveMaxHp());
                 renderHeader(); renderSidebar(); renderAttributesTab(); renderInventoryTab();
                 renderFeaturesTab(); renderSpellsTab(); renderNotesTab(); renderBioTab(); updateEditModeUI();
+                try { decorateFvttRowsAfterRender(); } catch (e) { console.warn('[FVTT UI]', e); }
             }
             (function initDndPortraitVaultPlugin() {
   const DB_NAME = 'dnd2024_portrait_vault_db';
@@ -6029,7 +8350,42 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                                 return `<button class="px-3 py-1 rounded-full bg-gray-800 border border-gray-600 text-[11px] text-gray-200 hover:bg-gray-700 transition" data-action="toggle-unarmored-defense" title="${btnHint}">${btnLabel}</button>`;
                             })()
                             : '';
-                        acModeContainer.innerHTML = `${unarmoredToggle}<div class="flex justify-center mt-2">${modeSelect}</div><div id="ac-effective-summary" class="text-xs text-center mt-2">有效 AC：${acValue}${acMode === 'custom' ? '（输入框为效果前基础值）' : '（由装备、属性及效果计算）'}</div>`;
+                        const curFormulaRaw = String(characterData.acFormula || '').trim();
+                        const acFormulaPresets = [
+                            { label: '公式预设（选填）…', val: '' },
+                            { label: '13 + 敏捷（法师/自然护甲）', val: '13 + 敏捷' },
+                            { label: '10 + 敏捷 + 体质 + 盾牌（野蛮人）', val: '10 + 敏捷 + 体质 + 盾牌' },
+                            { label: '10 + 敏捷 + 感知（武僧）', val: '10 + 敏捷 + 感知' },
+                            { label: '10 + 敏捷 + 魅力（龙脉/舞蹈）', val: '10 + 敏捷 + 魅力' },
+                            { label: '10 + 敏捷 + 智力（剑歌）', val: '10 + 敏捷 + 智力' },
+                            { label: '护甲 + 敏捷(上限3) + 盾牌（中甲大师）', val: '护甲 + 敏捷(上限3) + 盾牌' },
+                            { label: '17 + 盾牌（龟人）', val: '17 + 盾牌' },
+                        ];
+                        const fOpts = acFormulaPresets.map(p => `<option value="${escapeAttr(p.val)}" ${curFormulaRaw === p.val && p.val ? 'selected' : ''}>${escapeAttr(p.label)}</option>`).join('');
+                        acModeContainer.innerHTML = `${unarmoredToggle}<div class="flex justify-center mt-2">${modeSelect}</div>
+                            <div class="mt-2 p-2 rounded-lg border text-left" style="background:rgba(24,27,36,0.88);border-color:rgba(212,175,106,0.38);">
+                                <select class="edit-input text-xs w-full mb-1.5" data-ac-preset-select>${fOpts}</select>
+                                <div class="flex items-center gap-1">
+                                    <input type="text" class="edit-input text-xs flex-1" data-ac-formula-input value="${escapeAttr(curFormulaRaw)}" placeholder="中文公式，如 10+敏捷+魅力" />
+                                    ${curFormulaRaw ? '<button type="button" class="fvtt-edit-mini-btn" data-ac-reset-auto>清空</button>' : ''}
+                                </div>
+                            </div>
+                            <div id="ac-effective-summary" class="text-xs text-center mt-2">有效 AC：${acValue}${acMode === 'custom' ? '（输入框为效果前基础值）' : '（由装备、属性及效果计算）'}</div>`;
+                        const fSelect = acModeContainer.querySelector('[data-ac-preset-select]');
+                        const fInput = acModeContainer.querySelector('[data-ac-formula-input]');
+                        const fReset = acModeContainer.querySelector('[data-ac-reset-auto]');
+                        const applyFormulaVal = (v, saveNow = false) => {
+                            characterData.acFormula = String(v || '').trim();
+                            if (characterData.acFormula) characterData.acMode = 'auto';
+                            updateCharacterAC(false);
+                            if (saveNow) { saveData(); renderSidebar(); }
+                        };
+                        fSelect?.addEventListener('change', () => {
+                            if (fInput) fInput.value = fSelect.value;
+                            applyFormulaVal(fSelect.value, true);
+                        });
+                        fInput?.addEventListener('change', () => applyFormulaVal(fInput.value, true));
+                        fReset?.addEventListener('click', () => applyFormulaVal('', true));
                     } else {
                         acModeContainer.innerHTML = '';
                     }
@@ -6741,6 +9097,9 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
             }
             function renderSpellsTab() {
                 const container = document.getElementById('spells');
+                if (!isEditing && typeof renderFvttSpellsTabView === 'function' && renderFvttSpellsTabView(container)) {
+                    return;
+                }
                 if (renderSpellsTabModern(container)) {
                     if (hasPreparationAccess()) container.insertAdjacentHTML('afterbegin', `<button type="button" class="add-item-btn mb-4" data-action="prepare-spells" ${isEditing ? 'disabled' : ''}>更换准备法术</button><p class="text-sm text-gray-400 mb-4">${isEditing ? '请先保存或退出档案编辑，再更换准备法术。' : '长休后从职业法术表换备；法师从自己的法术书准备。'}</p>`);
                     return;
@@ -8165,6 +10524,7 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
 
             function applyStatusAiData(mode, data) {
                 if (!data || typeof data !== 'object') return;
+                const vault = (typeof getAssetVault === 'function' ? getAssetVault() : null);
                 const sStr = (v, fb) => (typeof v === 'string' && v.trim()) ? v.trim() : fb;
                 if (mode === 'all') {
                     if (sStr(data.name)) characterData.name = data.name.trim();
@@ -8195,11 +10555,15 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     characterData.features = characterData.features || { class: [], race: [], feats: [] };
                     for (const k of ['class', 'race', 'feats']) {
                         if (Array.isArray(data.features[k])) {
-                            characterData.features[k] = data.features[k].map(f => ({
-                                name: String(f?.name || '特性'),
-                                source: String(f?.source || ''),
-                                details: String(f?.details || '')
-                            }));
+                            characterData.features[k] = data.features[k].map(f => {
+                                const rawName = typeof f === 'string' ? f : String(f?.en || f?.name || '特性');
+                                const hit = vault?.lookupFeature ? vault.lookupFeature(rawName, { className: characterData.class, subclassName: characterData.subclass, raceName: characterData.race }) : null;
+                                return {
+                                    name: sStr(f?.name) || (hit ? hit.zh : rawName),
+                                    source: String(f?.source || ''),
+                                    details: sStr(f?.details) || (hit ? hit.desc : '')
+                                };
+                            });
                         }
                     }
                 }
@@ -8218,14 +10582,20 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                         characterData.spells.known = characterData.spells.known || {};
                         for (const lvl of Object.keys(data.spells.known)) {
                             if (Array.isArray(data.spells.known[lvl])) {
-                                characterData.spells.known[lvl] = data.spells.known[lvl].map(sp => ({
-                                    name: String(sp?.name || '法术'),
-                                    castingTime: String(sp?.castingTime || '1动作'),
-                                    range: String(sp?.range || '60尺'),
-                                    duration: String(sp?.duration || '立即'),
-                                    isPrepared: sp?.isPrepared !== false,
-                                    details: String(sp?.details || '')
-                                }));
+                                characterData.spells.known[lvl] = data.spells.known[lvl].map(sp => {
+                                    const rawName = typeof sp === 'string' ? sp : String(sp?.en || sp?.name || '法术');
+                                    const hit = vault?.lookupSpell ? vault.lookupSpell(rawName) : null;
+                                    return {
+                                        name: sStr(sp?.name) || (hit ? hit.zh : rawName),
+                                        school: sStr(sp?.school) || (hit ? hit.school : ''),
+                                        castingTime: sStr(sp?.castingTime) || (hit ? hit.time : '1动作'),
+                                        range: sStr(sp?.range) || (hit ? hit.range : '60尺'),
+                                        duration: sStr(sp?.duration) || (hit ? hit.dur : '立即'),
+                                        components: sStr(sp?.components) || (hit ? hit.comp : ''),
+                                        isPrepared: lvl === '0' ? 'always' : ((typeof sp === 'object' && sp !== null && 'isPrepared' in sp) ? sp.isPrepared !== false : true),
+                                        details: sStr(sp?.details) || (hit ? hit.desc : '')
+                                    };
+                                });
                             }
                         }
                     }
@@ -8303,9 +10673,12 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                     setMsg('🧹 已清空当前角色的特性、法术、物品、背景与个性档案！', '#8fe3a1');
                     return;
                 }
+                const apiHub = globalThis.top?.__dndApiHub || globalThis.parent?.__dndApiHub || globalThis.__dndApiHub;
+                const hubCfg = apiHub?.getModuleConfig?.('statusbar');
+                const useHub = Boolean(apiHub?.callAi && hubCfg && hubCfg.mode !== 'st_default');
                 const genRaw = resolveStatusGenerateRawFn();
-                if (!genRaw) {
-                    setMsg('❌ 未检测到 SillyTavern generateRaw 接口。', '#ff8c8c');
+                if (!useHub && !genRaw) {
+                    setMsg('❌ 未检测到 SillyTavern generateRaw 或统一 API 接口。', '#ff8c8c');
                     return;
                 }
                 const concept = (document.getElementById('status-ai-concept')?.value || '').trim();
@@ -8323,15 +10696,18 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
                 btns.forEach(b => { b.disabled = true; });
                 setMsg('⏳ 正在调用 AI 生成并写入当前角色卡...');
                 try {
-                    const raw = await genRaw({
-                        should_stream: false,
-                        should_silence: true,
-                        max_chat_history: 0,
-                        ordered_prompts: [
-                            { role: 'system', content: '你是精通 D&D 2024 的角色卡助手。请严格只输出一个合法 JSON 对象，中文填写。' },
-                            { role: 'user', content: `当前角色：${summary}\n玩家方向/想法：${concept || '贴合当前职业与背景自动补全'}\n请严格按以下 JSON 结构输出（只填需要更新的内容）：\n${schemaHint}` }
-                        ]
-                    });
+                    const ordered_prompts = [
+                        { role: 'system', content: '你是精通 D&D 2024 的角色卡助手。请严格只输出一个合法 JSON 对象，中文填写。' },
+                        { role: 'user', content: `当前角色：${summary}\n玩家方向/想法：${concept || '贴合当前职业与背景自动补全'}\n请严格按以下 JSON 结构输出（只填需要更新的内容）：\n${schemaHint}` }
+                    ];
+                    const raw = useHub
+                        ? await apiHub.callAi({ moduleKey: 'statusbar', messages: ordered_prompts, should_silence: true })
+                        : await genRaw({
+                            should_stream: false,
+                            should_silence: true,
+                            max_chat_history: 0,
+                            ordered_prompts
+                        });
                     const parsed = extractStatusAiJson(raw);
                     applyStatusAiData(mode, parsed);
                     setMsg('✅ AI 帮填完成并已保存到当前角色卡！', '#8fe3a1');
@@ -8351,6 +10727,9 @@ html[data-status-theme="night"] .detail-label { color:var(--ink-muted); }
             document.getElementById('short-rest-btn').addEventListener('click', openShortRestModal);
             document.getElementById('mobile-toggle-btn').addEventListener('click', toggleMobileMode);
             document.getElementById('export-data-btn').addEventListener('click', exportCharacterData);
+            document.addEventListener('dnd-asset-vault-updated', () => {
+                if (characterData) { try { renderAll(); } catch (_) {} }
+            });
             document.getElementById('normalize-terms-btn').addEventListener('click', async (event) => {
                 const button = event.currentTarget;
                 button.disabled = true;

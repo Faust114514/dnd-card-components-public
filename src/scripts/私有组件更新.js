@@ -14,7 +14,9 @@ function hasOriginalCharacterPattern(rule) {
 }
 
 function buildDndComponentUpdate(card, manifest, sources, updaterId) {
+  const extraIds = new Set(['a1b2c3d4-7072-4772-8002-202400000002','a1b2c3d4-7072-4772-8003-202400000003','a1b2c3d4-7072-4772-8004-202400000004','b63c4ec0-2024-4d20-b630-000000000001','b63c4ec0-2024-4d20-b630-000000000002']);
   const allowed = new Set([
+    ...extraIds,
     '998cb3fe-cd53-44dd-a118-1437232659b6','fa7510ec-d99f-4d86-9ad5-18c6d625887b','785d4054-38d8-4f15-9edc-9954cbedea78',
     'e2a5bb3c-baa2-47dd-a306-494339a4b5fb','fbf175a5-3276-443f-9765-f16e3e843ada','28c1bd41-a967-4869-99d1-e8d935f62b3a',
     'c3c9ad44-9e9b-4c6e-ae93-f2b098a20125','87d2112d-e610-48c7-bae1-57f3c743be81','a39757e2-61fd-4aa0-8fd2-9ca4c264955a',
@@ -63,6 +65,14 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
     }
     if (item.kind==='script' && item.id==='a1b2c3d4-7072-4772-8001-202400000001' && matches.length===0) {
       const added={...{"type":"script","enabled":true,"name":"角色头像库","id":"a1b2c3d4-7072-4772-8001-202400000001","info":"独立存储玩家裁剪后的角色头像图片数据（IndexedDB + 内存高速缓存），完全脱离 MVU 聊天变量与图床 URL/本地文件名限制。","button":{"enabled":false,"buttons":[]},"data":{},"export_with":{"data":true,"button":true}},content:body}; helper.scripts.push(added); scripts.push(added); changed.push('新增角色头像库'); continue;
+    }
+    if (!matches.length && extraIds.has(item.id)) {
+      const meta = item.template;
+      if (meta?.id !== item.id || (item.kind === 'script' ? meta.type !== 'script' : typeof meta.findRegex !== 'string')) throw Error('新增组件配置无效');
+      const added = {...structuredClone(meta), [item.kind === 'script' ? 'content' : 'replaceString']: body};
+      if (item.kind === 'script') {helper.scripts.push(added); scripts.push(added);}
+      else regexes.push(added);
+      changed.push(item.name); continue;
     }
     if (matches.length === 0) throw Error('未找到组件：' + item.name);
     if (matches.length > 1) throw Error('组件 ID 重复：' + item.name);
@@ -136,7 +146,7 @@ function buildDndComponentUpdate(card, manifest, sources, updaterId) {
 }
 
 function planDndWorldbook(book, patches, kept = [], additions = []) {
-  const allowed = new Set([18, 643316, 781421, 12, 207976, 6, 781420, 2, 781426, 1, 10, 781427]);
+  const allowed = new Set([18, 643316, 781421, 12, 207976, 6, 781420, 2, 781426, 1, 10, 781427, 9]);
   const plan = patches.map(patch => {
     if (!allowed.delete(patch.uid) || typeof patch.previous !== 'string' || typeof patch.content !== 'string' || !patch.content.trim()) throw Error('世界书更新条目无效');
     const entry = book.entries[patch.uid];
@@ -162,14 +172,16 @@ function planDndWorldbook(book, patches, kept = [], additions = []) {
     if (retired.uid !== 781429 || typeof retired.content !== 'string' || !retired.content.trim().startsWith('<战场生成规则>')) throw Error('旧地图规则编号已被其他内容占用，请先核对 UID 781429');
     plan.push({uid:781429, name:'移除自制旧地图规则', before:retired.content, action:'remove'});
   }
-  const addable = new Set([781430]);
+  const tags = {781430: '长途旅行规则', 781503: '交涉检定规则', 781504: 'BG3检定选项规则', 781506: '对话建卡规则'};
+  const addable = new Set(Object.keys(tags).map(Number));
   for (const template of additions) {
+    const tag = tags[template.uid];
     if (!addable.delete(template.uid) || typeof template.content !== 'string' ||
-        !template.content.startsWith('<长途旅行规则>') || !template.content.endsWith('</长途旅行规则>') ||
+        !template.content.startsWith('<' + tag + '>') || !template.content.endsWith('</' + tag + '>') ||
         template.constant !== true || template.disable !== false) throw Error('新增世界书条目无效');
     // Earlier releases also supported manually pasting this rule under a host-assigned UID.
-    const matches = Object.values(book.entries).filter(entry => typeof entry.content === 'string' && entry.content.trimStart().startsWith('<长途旅行规则>'));
-    if (matches.length > 1) throw Error('世界书已有多条长途旅行规则，请先保留需要的一条');
+    const matches = Object.values(book.entries).filter(entry => typeof entry.content === 'string' && entry.content.trimStart().startsWith('<' + tag + '>'));
+    if (matches.length > 1) throw Error('世界书已有多条' + tag + '，请先保留需要的一条');
     const entry = matches[0] || book.entries[template.uid];
     if (entry && !matches.length && entry.comment !== template.comment) throw Error('新增规则编号已被其他条目占用：' + template.uid);
     if (entry && (book.entries[entry.uid] !== entry || typeof entry.content !== 'string')) throw Error('世界书条目编号或正文无效');
@@ -284,6 +296,16 @@ function dndVersionIsNewer(next, current) {
       additions = Object.values(JSON.parse(await github(candidate.worldbook_additions_path, candidate.version)).entries); guard(start);
       if (additions.length !== 1) throw Error('新增世界书条目数量无效');
     }
+    if (candidate.worldbook_v18_path) {
+      if (candidate.worldbook_v18_path !== 'src/worldbook/检定与交涉规则.json') throw Error('新版规则路径无效');
+      const extra = JSON.parse(await github(candidate.worldbook_v18_path, candidate.version)); guard(start);
+      for (const patch of extra.patches) {
+        const index = patches.findIndex(old => old.uid === patch.uid);
+        if (index < 0) patches.push(patch);
+        else patches[index] = patch;
+      }
+      additions.push(...Object.values(extra.entries));
+    }
     const book = await ctx().loadWorldInfo(name); guard(start);
     if (api('getCharWorldbookNames')('current').primary !== name) throw Error('绑定世界书已切换，请重新检查更新');
     const receipt = current().data.extensions.dnd_component_updates?.worldbook;
@@ -321,6 +343,9 @@ function dndVersionIsNewer(next, current) {
       guard(start);
       const candidate = JSON.parse(await github('latest.json', 'main')); guard(start);
       if (!candidate || !Array.isArray(candidate.components)) throw Error('更新清单格式无效');
+      for (const item of candidate.v18_components || []) {
+        (item.empty ? candidate.empty_regexes : candidate.components).push(item);
+      }
       const placeholders = Object.fromEntries(candidate.components.map(item => [item.path, item.kind === 'script' ? '/* validate manifest */' : '']));
       buildDndComponentUpdate(current(), candidate, placeholders, updaterId);
       if (!Array.isArray(candidate.notes) || candidate.notes.some(note => typeof note !== 'string')) throw Error('版本说明格式无效');
@@ -329,7 +354,13 @@ function dndVersionIsNewer(next, current) {
       if (candidate.version === installed()) {
         const pending = current().data.extensions.regex_scripts.filter(rule => hasOriginalCharacterPattern(rule) ||
           (dndVersionIsNewer(candidate.version, 'vf.0.4.5') && battlePatternFixes.some(([id, previous]) => rule.id === id && rule.findRegex === previous)));
-        const needsRepair = item => item.kind === 'regex' && dndVersionIsNewer(candidate.version, 'vf.0.3.4') && pending.some(rule => rule.id === item.id);
+        const installedIds = new Set();
+        function recordIds(items) {
+          for (const item of items) item.type === 'folder' ? recordIds(item.scripts) : installedIds.add(item.id);
+        }
+        recordIds(current().data.extensions.tavern_helper.scripts);
+        recordIds(current().data.extensions.regex_scripts);
+        const needsRepair = item => (item.template && !installedIds.has(item.id)) || item.kind === 'regex' && dndVersionIsNewer(candidate.version, 'vf.0.3.4') && pending.some(rule => rule.id === item.id);
         candidate.components = candidate.components.filter(needsRepair);
         if (candidate.empty_regexes) candidate.empty_regexes = candidate.empty_regexes.filter(needsRepair);
         const rulesVersion = dndVersionIsNewer(candidate.version, 'vf.0.4.4') ? 'vf.0.4.5' : 'vf.0.3.8';
@@ -360,7 +391,7 @@ function dndVersionIsNewer(next, current) {
       if (bookPlan) {
         const live = await ctx().loadWorldInfo(bookPlan.name); guard(start);
         const next = structuredClone(live);
-        if (bookPlan.entries.some(entry => entry.action === 'add') &&
+        if (bookPlan.entries.some(entry => entry.action === 'add' && entry.template.content.startsWith('<长途旅行规则>')) &&
             Object.values(next.entries).some(entry => typeof entry.content === 'string' && entry.content.trimStart().startsWith('<长途旅行规则>'))) throw Error('长途旅行规则已被添加，请重新检查更新');
         for (const entry of bookPlan.entries) {
           if (next.entries[entry.uid]?.content !== entry.before) throw Error('规则已被修改，请重新检查：' + entry.name);

@@ -170,6 +170,123 @@ const normalizeAcMode = (value, fallback = 'auto') => {
 
 const getModifier = (score) => Math.floor((parseInt(score, 10) - 10) / 2);
 
+function parseNamedBonus(raw) {
+    if (raw === null || raw === undefined || raw === '' || raw === 0 || raw === '0') {
+        return { total: 0, parts: [] };
+    }
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+        return raw === 0 ? { total: 0, parts: [] } : { total: raw, parts: [`额外（${raw >= 0 ? '+' + raw : raw}）`] };
+    }
+    const str = String(raw).trim();
+    if (!str || str === '0') return { total: 0, parts: [] };
+    if (/^[+-]?\d+$/.test(str)) {
+        const v = Number(str) || 0;
+        return v === 0 ? { total: 0, parts: [] } : { total: v, parts: [`额外（${v >= 0 ? '+' + v : v}）`] };
+    }
+    const tokens = str.split(/[,，、;；]+/).map(s => s.trim()).filter(Boolean);
+    let total = 0;
+    const parts = [];
+    for (const tok of tokens) {
+        const m = tok.match(/^(.+?)\s*([+-]\d+)$/) || tok.match(/^(.+?)[（(]\s*([+-]?\d+)\s*[）)]$/) || tok.match(/^([+-]\d+)\s*(.+)$/);
+        if (m) {
+            const numFirst = /^[+-]\d+$/.test(m[1]);
+            const label = (numFirst ? m[2] : m[1]).trim() || '额外';
+            const val = Number(numFirst ? m[1] : m[2]) || 0;
+            if (val !== 0) {
+                total += val;
+                parts.push(`${label}（${val >= 0 ? '+' + val : val}）`);
+            }
+        } else if (/^[+-]?\d+$/.test(tok)) {
+            const val = Number(tok) || 0;
+            if (val !== 0) {
+                total += val;
+                parts.push(`额外（${val >= 0 ? '+' + val : val}）`);
+            }
+        }
+    }
+    return { total, parts };
+}
+
+function evalSafeAcArithmetic(expr) {
+    const tokens = String(expr || '').match(/\d+(?:\.\d+)?|min|max|[()+\-*,]/gi);
+    if (!tokens || !tokens.length) return NaN;
+    let pos = 0;
+    const peek = () => tokens[pos];
+    const consume = () => tokens[pos++];
+    function parseExpr() {
+        let v = parseTerm();
+        while (peek() === '+' || peek() === '-') {
+            const op = consume();
+            const r = parseTerm();
+            v = op === '+' ? v + r : v - r;
+        }
+        return v;
+    }
+    function parseTerm() {
+        let v = parseUnary();
+        while (peek() === '*') {
+            consume();
+            v *= parseUnary();
+        }
+        return v;
+    }
+    function parseUnary() {
+        if (peek() === '+') { consume(); return parseUnary(); }
+        if (peek() === '-') { consume(); return -parseUnary(); }
+        return parsePrimary();
+    }
+    function parsePrimary() {
+        const t = peek();
+        if (!t) return NaN;
+        if (t.toLowerCase() === 'min' || t.toLowerCase() === 'max') {
+            const fn = consume().toLowerCase();
+            if (consume() !== '(') return NaN;
+            const args = [parseExpr()];
+            while (peek() === ',') { consume(); args.push(parseExpr()); }
+            if (consume() !== ')') return NaN;
+            return fn === 'min' ? Math.min(...args) : Math.max(...args);
+        }
+        if (t === '(') {
+            consume();
+            const v = parseExpr();
+            if (consume() !== ')') return NaN;
+            return v;
+        }
+        consume();
+        return Number(t);
+    }
+    const res = parseExpr();
+    return (pos === tokens.length && Number.isFinite(res)) ? Math.round(res) : NaN;
+}
+
+function evaluateChineseAcFormula(formulaRaw, ctxVars) {
+    let f = String(formulaRaw || '').trim();
+    if (!f) return null;
+    f = f.replace(/（/g, '(').replace(/）/g, ')').replace(/，/g, ',').replace(/＋/g, '+').replace(/－/g, '-').replace(/×/g, '*');
+    f = f.replace(/(力量|敏捷|体质|智力|感知|魅力)(?:调整值)?\s*\(\s*(?:上限|最大|最多)\s*(\d+)\s*\)/g, (_, ab, cap) => {
+        const map = { '力量': ctxVars.str, '敏捷': ctxVars.dex, '体质': ctxVars.con, '智力': ctxVars.int, '感知': ctxVars.wis, '魅力': ctxVars.cha };
+        return String(Math.min(map[ab] ?? 0, Number(cap)));
+    });
+    const repl = [
+        [/力量调整值|力量|\bstr\b/gi, ctxVars.str],
+        [/敏捷调整值|敏捷|\bdex\b/gi, ctxVars.dex],
+        [/体质调整值|体质|\bcon\b/gi, ctxVars.con],
+        [/智力调整值|智力|\bint\b/gi, ctxVars.int],
+        [/感知调整值|感知|\bwis\b/gi, ctxVars.wis],
+        [/魅力调整值|魅力|\bcha\b/gi, ctxVars.cha],
+        [/熟练加值|熟练|\bpb\b|\bprof\b/gi, ctxVars.prof],
+        [/等级|\blevel\b/gi, ctxVars.level],
+        [/护甲基础|护甲|\barmor\b/gi, ctxVars.armorBase],
+        [/盾牌加值|盾牌|\bshield\b/gi, ctxVars.shieldBonus],
+    ];
+    for (const [re, val] of repl) {
+        f = f.replace(re, '(' + String(val) + ')');
+    }
+    const val = evalSafeAcArithmetic(f);
+    if (!Number.isFinite(val)) return null;
+    return { value: val, description: `自定义公式：${formulaRaw.trim()} = ${val}`, usingArmor: ctxVars.hasArmor };
+}
+
 function normalizeEffects(rawEffects = []) {
     return normalizeDndEffects(rawEffects);
 }
@@ -341,7 +458,12 @@ function fromSchema(raw) {
     proficiencyBonus:normalizeNumber(raw.熟练加值,2),
     maxHp:normalizeNumber(raw.生命值?.最大,1),currentHp:normalizeNumber(raw.生命值?.当前,0),
     speed:normalizeNumber(raw.速度?.步行,0),
-    acMode:raw.护甲模式 || 'auto',overrides:{ac:raw.基础AC覆盖,initiative:Number.isFinite(initiativeOverride)?initiativeOverride:null},
+    acMode:raw.护甲模式 || 'auto',acFormula:normalizeString(raw.护甲公式 ?? raw.acFormula ?? '',''),
+    extraBonuses:{
+      ac:normalizeString((object(raw.额外加值)?raw.额外加值:{}).AC ?? (object(raw.额外加值)?raw.额外加值:{}).ac ?? '',''),
+      initiative:normalizeString((object(raw.额外加值)?raw.额外加值:{}).先攻 ?? (object(raw.额外加值)?raw.额外加值:{}).initiative ?? '','')
+    },
+    overrides:{ac:raw.基础AC覆盖,initiative:Number.isFinite(initiativeOverride)?initiativeOverride:null},
     initiativeBonus:normalizeNumber(initiativeExtra,0),
     useUnarmoredDefense:raw.无甲防御!==false,temporaryEffects:normalizeEffects(raw.临时效果)
   };
@@ -573,6 +695,19 @@ function calculateACDetails(mode = (characterData.acMode || 'auto')) {
         return { value: best.value, description: best.description, usingArmor: false };
     }
 
+    if (mode === 'auto' && characterData.acFormula && String(characterData.acFormula).trim()) {
+        const strMod = getModifier(applyNumericEffects(characterData.stats.str, ['stat.str']));
+        const intMod = getModifier(applyNumericEffects(characterData.stats.int, ['stat.int']));
+        const chaMod = getModifier(applyNumericEffects(characterData.stats.cha, ['stat.cha']));
+        const evaluated = evaluateChineseAcFormula(characterData.acFormula, {
+            str: strMod, dex: dexMod, con: conMod, int: intMod, wis: wisMod, cha: chaMod,
+            prof: normalizeNumber(characterData.proficiencyBonus, Math.floor(((Number(characterData.level) || 1) - 1) / 4) + 2),
+            level: Number(characterData.level) || 1,
+            armorBase: armorBase ?? 10, shieldBonus, hasArmor: Boolean(baseArmor)
+        });
+        if (evaluated) return evaluated;
+    }
+
     if (baseArmor) {
         return {
             value: armorAc + shieldBonus + defenseBonus,
@@ -589,6 +724,29 @@ function calculateACDetails(mode = (characterData.acMode || 'auto')) {
     }
 
     const autoOptions = buildUnarmoredOptions();
+    const chaModAuto = getModifier(applyNumericEffects(characterData.stats.cha, ['stat.cha']));
+    const chaPartAuto = formatAbilityPart('魅力', chaModAuto);
+    if (hasFeature('龙族韧性') || hasFeature('Draconic Resilience')) {
+        autoOptions.push({
+            value: 10 + dexMod + chaModAuto + shieldBonus,
+            description: buildSpecialArmorDescription('龙族韧性', ['10', dexPart, chaPartAuto, shieldPart(true)]),
+            allowShield: true
+        });
+    }
+    if (!shield && (hasFeature('优雅无甲') || ((characterData.class || '').includes('诗人') && hasFeature('舞蹈学院')))) {
+        autoOptions.push({
+            value: 10 + dexMod + chaModAuto,
+            description: buildSpecialArmorDescription('舞蹈学院无甲', ['10', dexPart, chaPartAuto]),
+            allowShield: false
+        });
+    }
+    if (/龟人|Tortle/i.test(characterData.race || '') || hasFeature('天生护甲：龟壳')) {
+        autoOptions.push({
+            value: 17 + shieldBonus,
+            description: buildSpecialArmorDescription('龟人自然护甲', ['17', shieldPart(true)]),
+            allowShield: true
+        });
+    }
     const bestAuto = autoOptions.reduce((acc, cur) => cur.value > acc.value ? cur : acc, autoOptions[0]);
     return { value: bestAuto.value, description: bestAuto.description, usingArmor: false };
 }
@@ -911,12 +1069,14 @@ function calculateInitiativeDetails() {
     parts.splice(0,parts.length,`手动基础先攻 ${signed(base)}`);
   }
   const trace=[];
-  const total=applyNumericEffects(base,['initiative.bonus'],{},trace);
+  const ebInit=parseNamedBonus(characterData.extraBonuses?.initiative);
+  const total=applyNumericEffects(base,['initiative.bonus'],{},trace)+ebInit.total;
   for(const step of trace){
     const name=step.entry.source.sourceType==='temporary'?step.entry.effect.name:step.entry.source.sourceName;
     const operation={add:signed(step.value),multiply:`×${step.value}`,override:`设为${step.value}`,upgrade:`至少${step.value}`,downgrade:`至多${step.value}`}[step.mode];
     parts.push(`${name} ${operation}`);
   }
+  for(const p of ebInit.parts) parts.push(p);
   return {base,total,description:parts.join('；')+` → 先攻 ${signed(total)}`+(notes.length?'\n'+[...new Set(notes)].join('\n'):'')};
 }
 
@@ -927,8 +1087,10 @@ function calculateInitiativeDetails() {
   const base=mode==='custom'?{value:characterData.overrides.ac,description:`手动基础AC：${characterData.overrides.ac}`} : calculateACDetails(mode);
   if (detailsOnly) return base;
   const trace=[];
-  const total=Math.floor(applyNumericEffects(base.value,['ac.bonus'],{},trace));
-  return {base:base.value,total,description:armorEffectDescription(base.description,trace)};
+  const ebAc=parseNamedBonus(characterData.extraBonuses?.ac);
+  const total=Math.floor(applyNumericEffects(base.value,['ac.bonus'],{},trace))+ebAc.total;
+  const desc=armorEffectDescription(base.description,trace)+(ebAc.parts.length?' + '+ebAc.parts.join(' + '):'');
+  return {base:base.value,total,description:desc};
 }
 
 function syncCharacter(raw) {
@@ -954,7 +1116,7 @@ function syncRoot(root) {
   for (const c of Object.values(root?.角色列表 || {})) if (c && typeof c==='object' && !Array.isArray(c)) syncCharacter(c);
   return root;
 }
-return {fromSchema,syncCharacter,syncRoot,initiative:character=>evaluate(character,false,undefined,true),calculate:character=>evaluate(character),details:(character,mode)=>evaluate(character,true,mode)};
+return {fromSchema,syncCharacter,syncRoot,parseNamedBonus,evaluateChineseAcFormula,initiative:character=>evaluate(character,false,undefined,true),calculate:character=>evaluate(character),details:(character,mode)=>evaluate(character,true,mode)};
 })();
 
 export const Schema = z.object({当前角色ID:z.any().optional(),角色列表:z.any().optional()}).passthrough().transform((data,ctx)=>{

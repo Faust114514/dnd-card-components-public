@@ -104,7 +104,8 @@ if(customClearBtn){
 if(customAiBtn){
   customAiBtn.addEventListener('click',async()=>{
     const genRaw=globalThis.TavernHelper?.generateRaw||globalThis.top?.TavernHelper?.generateRaw||globalThis.parent?.TavernHelper?.generateRaw||globalThis.generateRaw;
-    if(typeof genRaw!=='function'){
+    const hub=globalThis.top?.__dndApiHub;
+    if(!hub?.callAi && typeof genRaw!=='function'){
       if(customAiStatus)customAiStatus.textContent='⚠️ 未检测到 TavernHelper.generateRaw';
       return;
     }
@@ -114,7 +115,8 @@ if(customAiBtn){
     try{
       const sys='你是资深 D&D 2024 跑团主持人设定师。请根据玩家提供的只言片语或灵感（若为空则自由原创一位极具活人感与魅力的原创DM），扩写成一份直接可用、生动自然的【自定义DM人设】。\n要求：\n1. 严格输出纯文本设定（不要Markdown标题/代码块/多余寒暄），按以下几行紧凑呈现：\n名字：...\n外形：...（含标志性小配饰、神态或桌边姿态）\n性格：...（有反差萌或真实小毛病，像真人朋友带团一样有活人感）\n口吻：...（对玩家的称呼、口癖、紧张/得意时的说话方式）\n小动作：...（掷骰、大成功、大失败时的具体反应）\n带团偏好：...（叙事/战斗/难度/规则松紧倾向）\n2. 若玩家已经写了部分点子，必须100%保留并深化玩家的核心设定，不要擅自推翻。';
       const usr=seed?('玩家已填点子/草稿：\n'+seed+'\n\n请保留核心点子并补全成完整的自定义DM人设。'):'玩家尚未填写任何点子，请原创一位性格鲜明、非常有活人感的 D&D 跑团 DM 人设。';
-      const raw=await genRaw({should_stream:false,should_silence:true,max_chat_history:0,ordered_prompts:[{role:'system',content:sys},{role:'user',content:usr}]});
+      const messages=[{role:'system',content:sys},{role:'user',content:usr}];
+      const raw=hub?.callAi ? await hub.callAi({moduleKey:'creator',messages}) : await genRaw({should_stream:false,should_silence:true,max_chat_history:0,ordered_prompts:messages});
       const text=String(raw||'').replace(/^\s*```[a-zA-Z]*\s*/,'').replace(/```\s*$/,'').trim();
       if(!text)throw new Error('AI 返回内容为空');
       custom.value=text;
@@ -468,7 +470,7 @@ document.getElementById('create-character').addEventListener('click',()=>{for(co
         ? comment
         : ('投出 ' + lastRolled + ' · ' + comment);
     }
-    if (hint) hint.textContent = '在桌面拖拽/甩掷 · 点击原地掷骰';
+    if (hint) hint.textContent = '';
   }
 
   function triggerThrowRoll() {
@@ -744,7 +746,7 @@ document.getElementById('create-character').addEventListener('click',()=>{for(co
       if (isValidRoll) {
         announceResult(top);
       } else if (caption) {
-        caption.textContent = '轻轻拨动不计掷骰 · 大力甩飞或点击掷骰';
+        caption.textContent = '';
       }
     }
   }

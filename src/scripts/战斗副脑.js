@@ -1,3 +1,131 @@
+/* __dndToolbarToolsMenuV7 */
+(() => {
+  const h = (typeof window !== 'undefined' && window.top) ? window.top : globalThis;
+  const d = h.document;
+  if (!d) return;
+  try { h.__dndToolsFolderCleanup?.(); } catch (_) {}
+
+  let st = d.getElementById('dnd-tools-popover-style');
+  if (!st) {
+    st = d.createElement('style');
+    st.id = 'dnd-tools-popover-style';
+    st.textContent = '#dnd-tools-popover{position:fixed;z-index:10060;display:flex;flex-direction:column;gap:5px;min-width:144px;padding:8px;border-radius:11px;background:rgba(18,21,28,.96);backdrop-filter:blur(14px);border:1px solid rgba(223,185,116,.38);box-shadow:0 16px 40px rgba(0,0,0,.78)}#dnd-tools-popover[hidden]{display:none!important}#dnd-tools-popover button{width:100%!important;justify-content:flex-start!important;margin:0!important;padding:7px 11px!important;min-height:34px!important;border:1px solid rgba(223,185,116,.2)!important;border-radius:7px!important;background:rgba(255,255,255,.04)!important;color:#e8dcc6!important;font:500 12.5px/1.2 inherit!important;cursor:pointer!important}#dnd-tools-popover button:hover{background:rgba(223,185,116,.16)!important;border-color:#d1aa63!important}#dnd-tools-popover button[aria-pressed="true"]{background:#6b5029!important;color:#fff0d1!important;border-color:#d1aa63!important}';
+    d.head?.appendChild(st);
+  }
+
+  d.getElementById('dnd-tools-popover')?.remove();
+  const pop = d.createElement('div');
+  pop.id = 'dnd-tools-popover';
+  pop.hidden = true;
+  d.body?.appendChild(pop);
+
+  let toolsBtn = null;
+  let syncing = false;
+  let activeBar = null;
+  const isPrimaryBtn = (btn) => {
+    if (!btn || btn === toolsBtn) return true;
+    const t = String(btn.textContent || '').trim();
+    if (/副脑设置|API设置|盲骰|变量|法术|MUV|补全/i.test(t)) return false;
+    return /🗺️|模组地图|战术地图|升级|创建|DM人设|战斗副脑|^副脑[：:]/i.test(t);
+  };
+
+  function positionPopover() {
+    if (!toolsBtn || !pop || pop.hidden) return;
+    const r = toolsBtn.getBoundingClientRect();
+    const pw = Math.max(150, pop.offsetWidth || 156);
+    const ph = pop.offsetHeight || 160;
+    const left = Math.max(8, Math.min(h.innerWidth - pw - 8, r.right - pw));
+    const top = r.top > ph + 14 ? (r.top - ph - 8) : (r.bottom + 8);
+    pop.style.left = left + 'px';
+    pop.style.top = Math.max(8, top) + 'px';
+  }
+
+  function syncToolbar() {
+    if (syncing) return;
+    const bar = d.getElementById('dnd-script-toolbar');
+    if (!bar) return;
+    syncing = true;
+    try {
+      if (activeBar && activeBar !== bar) pop.innerHTML = '';
+      activeBar = bar;
+      if (!toolsBtn || !bar.contains(toolsBtn)) {
+        toolsBtn = bar.querySelector('#dnd-tools-toggle-btn') || d.createElement('button');
+        toolsBtn.id = 'dnd-tools-toggle-btn';
+        toolsBtn.type = 'button';
+        toolsBtn.textContent = '⚙️ 工具';
+        toolsBtn.title = '展开次要工具';
+        toolsBtn.onclick = (ev) => {
+          ev.stopPropagation();
+          pop.hidden = !pop.hidden;
+          toolsBtn.setAttribute('aria-pressed', String(!pop.hidden));
+          if (!pop.hidden) positionPopover();
+        };
+      }
+      const barBtns = [...bar.children].filter((el) => el.tagName === 'BUTTON' && el !== toolsBtn);
+      for (const btn of barBtns) {
+        if (!isPrimaryBtn(btn)) {
+          const lbl = String(btn.textContent || '').trim();
+          [...pop.children].forEach((old) => {
+            if (old !== btn && String(old.textContent || '').trim() === lbl) old.remove();
+          });
+          pop.appendChild(btn);
+        }
+      }
+      const hasTools = pop.children.length > 0;
+      if (hasTools) {
+        if (bar.lastElementChild !== toolsBtn) bar.appendChild(toolsBtn);
+      } else if (toolsBtn.parentElement === bar) {
+        toolsBtn.remove();
+      }
+    } finally {
+      syncing = false;
+    }
+  }
+
+  const onPopClick = (ev) => {
+    const btn = ev.target.closest('button');
+    if (btn) {
+      setTimeout(() => {
+        pop.hidden = true;
+        toolsBtn?.setAttribute('aria-pressed', 'false');
+      }, 30);
+    }
+  };
+  const onDocClick = (ev) => {
+    if (!pop.hidden && !pop.contains(ev.target) && ev.target !== toolsBtn) {
+      pop.hidden = true;
+      toolsBtn?.setAttribute('aria-pressed', 'false');
+    }
+  };
+  pop.addEventListener('click', onPopClick);
+  d.addEventListener('click', onDocClick);
+
+  const mo = new MutationObserver(() => syncToolbar());
+  let pollTimer = null;
+  const attach = () => {
+    const bar = d.getElementById('dnd-script-toolbar');
+    if (bar) {
+      syncToolbar();
+      mo.observe(bar, { childList: true });
+      return true;
+    }
+    return false;
+  };
+  if (!attach()) {
+    pollTimer = setInterval(() => { if (attach() && pollTimer) { clearInterval(pollTimer); pollTimer = null; } }, 400);
+    setTimeout(() => { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }, 15000);
+  }
+  h.__dndToolsFolderCleanup = () => {
+    try { mo.disconnect(); } catch (_) {}
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    try { pop.removeEventListener('click', onPopClick); } catch (_) {}
+    try { d.removeEventListener('click', onDocClick); } catch (_) {}
+    try { pop.remove(); } catch (_) {}
+    try { st.remove(); } catch (_) {}
+  };
+})();
+/* __dndToolbarToolsMenuEnd */
+
 (() => {
 function createCombatRules() {
   'use strict';
@@ -23,7 +151,7 @@ function createCombatRules() {
   };
   const DEFAULT_PROMPT=PRESETS.balanced.prompt;
   const FORMAT=`按事件顺序分配dice中的骰值，每种面数从索引0顺序消费，不跳过、不挑选；优势劣势消耗两枚d20。审核不得重掷既有检定。不要使用其他随机数或前文尚未明确分配的骰子序列。骰池不足暂停。
-直接输出自然语言战斗推演，可用简短标题或列表，不要求JSON、固定字段或代码块。拿到固定骰池后，必须把本回合【我方行动】与【敌方行动】都逐一掷骰结算清楚（写明使用固定骰池中哪种面数第几个索引、加值与总值、对比AC/DC结果、命中与伤害/治疗数值、移动、资源消耗与状态变化）。严禁只输出“敌方行动可能性”“战术预测”或A/B多分支假设。最后交代双方结束位置、HP/状态、回合进度、专注与下一个行动角色（以及若触发玩家反应/抉择时的待决事项）。法术、反应和战术规则由你核对，给出必要的简短依据即可。若 materials.tacticalMap 存在，请严格依据其中的拓扑图、安全落点白名单、单位坐标与墙体视线阻挡关系推演移动、射程与掩体，并在结尾用一行简明标注坐标与状态变化（如“位置/状态建议：马克->(60,65)，暗哨地精2->dead”）。
+直接输出自然语言战斗推演，可用简短标题或列表，不要求JSON、固定字段或代码块。拿到固定骰池后，必须把本回合【我方行动】与【敌方行动】都逐一掷骰结算清楚（写明使用固定骰池中哪种面数第几个索引、加值与总值、对比AC/DC结果、命中与伤害/治疗数值、移动、资源消耗与状态变化）。严禁只输出“敌方行动可能性”“战术预测”或A/B多分支假设。最后交代双方结束位置、HP/状态、回合进度、专注与下一个行动角色（以及若触发玩家反应/抉择时的待决事项）。法术、反应和战术规则由你核对，给出必要的简短依据即可。若 materials.tacticalMap 存在，请严格依据其中的拓扑图、安全落点白名单、单位坐标与墙体视线阻挡关系推演移动、射程与掩体，并在结尾用一行简明标注所有在场单位的最终坐标与状态（未移动单位必须原样保留原坐标，严禁擅自更改或乾坤大挪移；如“位置/状态建议：马克->(60,65)，队友A->(35,40)未动，暗哨地精2->dead”）。
 你只负责战斗推演，不负责变量更新。说明对象和数量；临时敌人无需建档。不要生成变量路径、补丁或数据写入指令，不核对角色列表键名。若需要玩家决定，明确写出问题并停在该决定之前，不替玩家选择或结算尚未决定的行动。旧提示中的events、ending、blocked等仅指语义，不需要输出这些字段。只输出结论与简短依据，不输出内部思考。`;
   function connection(c) {
     if(c.mode==='current')return undefined;
@@ -75,7 +203,8 @@ function shouldAssistCombat(action, snapshot, job) {
   const recent=(snapshot.history||[]).filter(m=>m.role==='assistant').slice(-1).map(m=>m.text).join('\n');
   const clean=recent.replace(/<(?:update_?variable|analysis|thinking)>[\s\S]*?<\/(?:update_?variable|analysis|thinking)>/gi,'');
   const ended=/战斗(?:已经|已|正式)?结束|脱离战斗|结束战斗|combat\s+(?:ended|over)/i.test(clean);
-  const explicit=/(?:攻击|射击|斩击|挥剑|开弓|(?:砍|刺|射|砸|打|冲)(?:向|中|击|他|她|它|敌|怪|哥布林|兽人)|投掷.*(?:敌|怪)|反击|借机攻击|擒抱|推撞|attack\b|grapple\b)/i.test(text) || /(?:施放|施展|释放).*(?:火球|飞弹|魔能爆|震荡|雷鸣|闪电|灼热|冰霜|酸液|射线|定身|催眠|恐惧|致盲|衰弱|诅咒|灵体武器|精神武器|护盾术)|\bcast\b.*\b(?:fireball|magic missile|eldritch blast|lightning bolt)\b/i.test(text);
+  const nonCombatSpell=/(?:神导术|光亮术|舞光术|法师之手|侦测魔法|侦测善恶|侦测毒性和疾病|通晓语言|鉴定术|修复术|奇术|德鲁伊伎术|交友术|隐形仆役|造水|净化饮食|神莓术|动物交谈|死者交谈|定位术|预言术|奥术眼|传讯术|巧言术|易容术|敲击术|奥术锁|浮碟术|寻获魔宠|找寻魔宠|召唤坐骑|仪式|guidance|light|mage hand|detect magic|identify|mending|prestidigitation|thaumaturgy|druidcraft|friends|find familiar)/i.test(text);
+  const explicit=(/(?:发起攻击|进行攻击|发动攻击|偷袭|突袭|攻击|射击|斩击|挥剑|开弓|(?:砍|刺|射|砸|打|冲|挥砍|劈砍)(?:向|中|击|他|她|它|敌|怪|哥布林|兽人|强盗|骷髅|丧尸)|投掷.*(?:敌|怪)|反击|借机攻击|擒抱|推撞|attack\b|grapple\b)/i.test(text) || /(?:施放|施展|释放).*(?:火球|飞弹|魔能爆|震荡|雷鸣|闪电|灼热|冰霜|酸液|毒|射线|定身|催眠|惑控|恐惧|致盲|衰弱|诅咒|灵体武器|精神武器|护盾术)|\bcast\b.*\b(?:fireball|magic missile|eldritch blast|lightning bolt)\b/i.test(text))&&!nonCombatSpell;
   if(explicit&&!/(?:讨论|研究|讲解|解释|学习).*(?:攻击|法术|施放)/.test(text))return true;
   if(ended)return false;
   if(/<battle\b|<battlecheck\b|战斗开始|进入战斗|轮到你.*(?:行动|回合)|你的回合|进行先攻/i.test(clean))return true;
@@ -216,13 +345,31 @@ function createCombatEngine(rules, io) {
   return {execute,dispatch,attachToGeneration,stop,recover,retryHost,hostStarted,hostEnded,replyShape,get job(){return job?copy(job):null;},get busy(){return running;}};
 }
 
-function mountDndScriptToolbar(host,{enabled,toggle,open}){
-  const doc=host.document,ids=['e2a5bb3c-baa2-47dd-a306-494339a4b5fb','998cb3fe-cd53-44dd-a118-1437232659b6','fa7510ec-d99f-4d86-9ad5-18c6d625887b','fbf175a5-3276-443f-9765-f16e3e843ada'];
+function mountDndScriptToolbar(host,{enabled,toggle,open,openApi}){
+  const doc=host.document;
+  const externalIds=['e2a5bb3c-baa2-47dd-a306-494339a4b5fb','998cb3fe-cd53-44dd-a118-1437232659b6','fa7510ec-d99f-4d86-9ad5-18c6d625887b'];
+  const ids=[...externalIds,'fbf175a5-3276-443f-9765-f16e3e843ada'];
   const style=doc.createElement('style');
-  style.textContent=`.dnd-native-script-buttons{display:none!important}#dnd-script-toolbar{box-sizing:border-box;display:flex!important;flex-flow:row nowrap!important;align-items:center;justify-content:flex-start;gap:6px;width:100%;max-width:100%;min-width:0;overflow-x:auto;padding:7px 5px;scrollbar-width:thin;scrollbar-color:#8c7553 transparent}#dnd-script-toolbar button{box-sizing:border-box;flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;min-height:36px;margin:0;padding:6px 10px;border:1px solid #716044;border-radius:7px;background:linear-gradient(#38352e,#292720);color:#e8dcc6;font:500 13px/1.2 inherit;font-size:13px;line-height:1.2;white-space:nowrap;box-shadow:none;cursor:pointer;transition:background .15s}#dnd-script-toolbar button:hover{background:#4b4030;border-color:#b89760}#dnd-script-toolbar button:focus-visible{outline:2px solid #d1aa63;outline-offset:-3px}#dnd-script-toolbar button[aria-pressed=true]{background:#6b5029;color:#fff0d1;border-color:#d1aa63}#dnd-script-toolbar button:disabled{opacity:.45;cursor:not-allowed}@media(max-width:600px){#dnd-script-toolbar{gap:4px}#dnd-script-toolbar button{padding:7px 8px;min-height:38px;font-size:12px}}`;
-  // Auto margins center when space permits and collapse safely on narrow screens.
-  style.textContent+='#dnd-script-toolbar button:first-child{margin-left:auto}#dnd-script-toolbar button:last-child{margin-right:auto}';
+  style.textContent=`.dnd-native-script-buttons{display:none!important}#dnd-script-toolbar{box-sizing:border-box;display:flex!important;flex-flow:row nowrap!important;align-items:center;justify-content:flex-start;gap:6px;width:100%;max-width:100%;min-width:0;overflow-x:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x;padding:7px 6px;scrollbar-width:none;cursor:grab}#dnd-script-toolbar::-webkit-scrollbar{display:none}#dnd-script-toolbar.dnd-bar-dragging{cursor:grabbing;user-select:none}#dnd-script-toolbar button{box-sizing:border-box;flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;min-height:36px;margin:0;padding:6px 10px;border:1px solid #716044;border-radius:7px;background:linear-gradient(#38352e,#292720);color:#e8dcc6;font:500 13px/1.2 inherit;font-size:13px;line-height:1.2;white-space:nowrap;box-shadow:none;cursor:pointer;transition:background .15s}#dnd-script-toolbar button:hover{background:#4b4030;border-color:#b89760}#dnd-script-toolbar button:focus-visible{outline:2px solid #d1aa63;outline-offset:-3px}#dnd-script-toolbar button[aria-pressed=true]{background:#6b5029;color:#fff0d1;border-color:#d1aa63}#dnd-script-toolbar button:disabled{opacity:.45;cursor:not-allowed}@media(min-width:769px){#dnd-script-toolbar button:first-child{margin-left:auto}#dnd-script-toolbar button:last-child{margin-right:auto}}@media(max-width:768px){#dnd-script-toolbar{gap:5px;padding:6px 4px}#dnd-script-toolbar button{padding:7px 9px;min-height:38px;font-size:12px}}`;
   const bar=doc.createElement('nav');bar.id='dnd-script-toolbar';bar.setAttribute('aria-label','角色卡快捷操作');
+  let barDrag=null,barSuppressClick=false;
+  const onPointerMove=ev=>{
+    if(!barDrag)return;
+    const dx=ev.clientX-barDrag.x;
+    if(Math.abs(dx)>5){barDrag.moved=true;bar.classList.add('dnd-bar-dragging');bar.scrollLeft=barDrag.scrollLeft-dx;}
+  };
+  const onPointerUp=()=>{
+    if(!barDrag)return;
+    if(barDrag.moved){barSuppressClick=true;setTimeout(()=>{barSuppressClick=false;},60);}
+    barDrag=null;bar.classList.remove('dnd-bar-dragging');
+  };
+  bar.addEventListener('pointerdown',ev=>{
+    if(ev.pointerType==='touch')return;
+    barDrag={x:ev.clientX,scrollLeft:bar.scrollLeft,moved:false};
+  });
+  host.addEventListener('pointermove',onPointerMove);
+  host.addEventListener('pointerup',onPointerUp);
+  bar.addEventListener('click',ev=>{if(barSuppressClick){ev.preventDefault();ev.stopImmediatePropagation();}},true);
   const controls=new Map(),marked=new Set();let disposed=false,queued=false;
   const labels={'创建角色':'创建','重新处理变量':'重算变量','重新读取初始变量':'重读初始变量'};
   function ensure(key,label,title,action){
@@ -239,7 +386,7 @@ function mountDndScriptToolbar(host,{enabled,toggle,open}){
     if(!style.isConnected)doc.head.appendChild(style);
     if(!bar.isConnected)containers[0].parentElement.insertBefore(bar,containers[0]);
     const present=new Set();
-    for(const id of ids.slice(0,-1)){
+    for(const id of externalIds){
       const container=doc.getElementById('script_container_'+id);if(!container)continue;
       const originals=[...container.querySelectorAll('button,.qr--button,.menu_button')].filter(el=>!el.hidden&&host.getComputedStyle(el).display!=='none');
       for(const original of originals){
@@ -257,15 +404,21 @@ function mountDndScriptToolbar(host,{enabled,toggle,open}){
     for(const [key,button]of controls)if(!key.startsWith('combat:')&&!present.has(key)){button.remove();controls.delete(key);}
     const switcher=ensure('combat:toggle',enabled()?'副脑：开':'副脑：关','开启或关闭自动战斗辅助',()=>void toggle());
     const pressed=String(enabled());if(switcher.getAttribute('aria-pressed')!==pressed)switcher.setAttribute('aria-pressed',pressed);
-    ensure('combat:settings','副脑设置','配置副 API 和宽松／严查模式',open);
-    // A source container may mount late: restore the fixed order without replacing buttons.
-    const order=[...present].map(key=>controls.get(key)).concat(controls.get('combat:toggle'),controls.get('combat:settings'));
-    order.forEach((button,index)=>{if(bar.children[index]!==button)bar.insertBefore(button,bar.children[index]||null);});
+    ensure('combat:settings','副脑设置','配置副脑推演、难度与 API',open);
+    ensure('combat:api-settings','API设置','打开 D&D 统一 API 设置中心',openApi);
+    const muvPrefix='fa7510ec-d99f-4d86-9ad5-18c6d625887b:';
+    const mainKeys=[...present].filter(k=>!k.startsWith(muvPrefix)).map(k=>controls.get(k));
+    const muvKeys=[...present].filter(k=>k.startsWith(muvPrefix)).map(k=>controls.get(k));
+    const modBtn=bar.querySelector('[data-dnd-module-btn="1"]');
+    const order=[...(modBtn?[modBtn]:[]),...mainKeys,controls.get('combat:toggle'),controls.get('combat:settings'),controls.get('combat:api-settings'),...muvKeys].filter(Boolean);
+    const pop=doc.getElementById('dnd-tools-popover');
+    let idx=0;
+    order.forEach(button=>{if(pop&&button.parentElement===pop)return;if(bar.children[idx]!==button)bar.insertBefore(button,bar.children[idx]||null);idx++;});
     for(const container of containers)if(!container.classList.contains('dnd-native-script-buttons')){container.classList.add('dnd-native-script-buttons');marked.add(container);}
   }
   const observer=new host.MutationObserver(()=>{if(!queued&&!disposed){queued=true;host.requestAnimationFrame(refresh);}});
   observer.observe(doc.body,{childList:true,subtree:true,attributes:true,attributeFilter:['hidden','disabled','style','class']});refresh();
-  return {refresh,dispose(){disposed=true;observer.disconnect();bar.remove();style.remove();for(const c of marked)c.classList.remove('dnd-native-script-buttons');}};
+  return {refresh,dispose(){disposed=true;observer.disconnect();host.removeEventListener('pointermove',onPointerMove);host.removeEventListener('pointerup',onPointerUp);try{host.__dndToolsFolderCleanup?.();}catch{}bar.remove();style.remove();for(const c of marked)c.classList.remove('dnd-native-script-buttons');}};
 }
 
 function createCombatKeyVault(host) {
@@ -334,9 +487,26 @@ function mountCombatBrain(rules, createEngine) {
     return {source:s.chat_completion_source||'custom',url:(s.chat_completion_source==='custom'?s.custom_url:s.reverse_proxy)||'',model:ctx().getChatCompletionModel?.(s)||'',secret:undefined};
   }
   function sameEndpoint(c){const b=baseConnection(c);const normalize=v=>String(v||'').replace(/\/+$/,'');return c.mode!=='custom'&&c.source===b.source&&normalize(c.url)===normalize(b.url);}
-  function validateConnection(c){if(c.mode==='profile'&&!profiles().some(p=>p.id===c.profile))throw Error('请选择有效的 API 连接配置。');if(c.mode!=='custom'&&sameEndpoint(c))return;if(c.mode==='current'&&!c.connectionEdited)return;rules.connection({...c,mode:'custom'});}
+  function validateConnection(c){
+    const hub=host.__dndApiHub||globalThis.__dndApiHub;
+    if(hub?.getEffectiveConfig){
+      const eff=hub.getEffectiveConfig('combat');
+      if(eff&&eff.mode!=='st_default')return;
+    }
+    if(c.mode==='profile'&&!profiles().some(p=>p.id===c.profile))throw Error('请选择有效的 API 连接配置。');
+    if(c.mode!=='custom'&&sameEndpoint(c))return;
+    if(c.mode==='current'&&!c.connectionEdited)return;
+    rules.connection({...c,mode:'custom'});
+  }
   async function keyFor(c){return c.key|| (c.url?await vault.read(c):'');}
   async function requestApi(messages,c,id){
+    const hub=host.__dndApiHub||globalThis.__dndApiHub;
+    if(hub?.getEffectiveConfig&&hub?.callAi){
+      const eff=hub.getEffectiveConfig('combat');
+      if(eff&&eff.mode!=='st_default'){
+        return await hub.callAi({moduleKey:'combat',messages,maxTokens:eff.maxTokens||4096});
+      }
+    }
     validateConnection(c);
     const controller=new host.AbortController();requestController=controller;
     const ownKey=await keyFor(c);
@@ -641,38 +811,54 @@ function mountCombatBrain(rules, createEngine) {
     }catch{status('获取模型失败：接口可能不提供模型列表或限制跨域，仍可手动填写模型。',false);}
     finally{clearTimeout(timer);button.disabled=false;}
   }
+  function openApiSettings(tab='global'){
+    const hub=host.__dndApiHub||globalThis.__dndApiHub;
+    if(hub?.openSettings)hub.openSettings(tab);
+    else status('统一 API 设置尚未加载；在线更新请再点一次冒险设置→组件更新补齐新增组件',true);
+  }
   function open(){
     if(modal){if(!modal.open)modal.showModal();render(engine.job);void fillConnection(false);return;}
     modal=doc.createElement('dialog');modal.dataset.combat='true';
     modal.innerHTML=`<style>
-      dialog[data-combat]{--ink:#e7dfcf;--muted:#a6aaa6;--line:#a68a542e;box-sizing:border-box;width:min(640px,calc(100vw - 24px));max-height:88dvh;margin:auto;padding:0;border:1px solid #b6995b66;border-radius:18px;background:linear-gradient(140deg,#282c2c,#1c2227);color:var(--ink);box-shadow:0 24px 80px #0008;font:14px/1.6 Georgia,'Noto Serif SC','Microsoft YaHei',serif;text-align:left;color-scheme:dark;overflow:auto}
+      dialog[data-combat]{--ink:#ede3cf;--muted:#9ea5a6;--gold:#dfb974;--line:rgba(223,185,116,.22);box-sizing:border-box;width:min(680px,calc(100vw - 16px));max-height:90dvh;margin:auto;padding:0;border:1px solid rgba(223,185,116,.42);border-radius:16px;background:linear-gradient(155deg,#1d2228,#12161b);color:var(--ink);box-shadow:0 24px 80px rgba(0,0,0,.86);font:13.5px/1.55 'Noto Sans SC','Microsoft YaHei',sans-serif;text-align:left;color-scheme:dark;overflow:hidden;display:flex;flex-direction:column}
+      dialog[data-combat]:not([open]){display:none!important}
       dialog[data-combat] *,dialog[data-combat] *:before,dialog[data-combat] *:after{box-sizing:border-box;text-shadow:none;min-width:0}
-      dialog[data-combat]::backdrop{background:#101619b3;backdrop-filter:blur(3px)}
-      dialog[data-combat] header{display:flex;align-items:center;justify-content:space-between;padding:22px 26px 14px;gap:14px}
-      dialog[data-combat] h2{margin:0;font-size:24px;font-weight:500;letter-spacing:.12em;color:#ead6ad}
-      dialog[data-combat] p{margin:5px 0;color:var(--muted);font-size:12px}
-      dialog[data-combat] .body{padding:0 26px 18px}
-      dialog[data-combat] section{padding:17px 0;border-top:1px solid var(--line)}
-      dialog[data-combat] .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+      dialog[data-combat]::backdrop{background:rgba(8,11,14,.74);backdrop-filter:blur(4px)}
+      dialog[data-combat] header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;gap:12px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.02)}
+      dialog[data-combat] h2{margin:0;font-size:18px;font-weight:600;letter-spacing:.06em;color:#f4dfa8}
+      dialog[data-combat] p{margin:3px 0;color:var(--muted);font-size:12px}
+      dialog[data-combat] .dcb-tabs{display:flex;gap:6px;padding:10px 20px 0;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}
+      dialog[data-combat] .dcb-tab{flex:0 0 auto;border:1px solid transparent;border-bottom:none;border-radius:8px 8px 0 0;background:transparent;color:var(--muted);padding:7px 13px;font-size:12.5px;cursor:pointer;white-space:nowrap}
+      dialog[data-combat] .dcb-tab[aria-selected="true"]{background:rgba(255,255,255,.05);border-color:var(--line);color:#f4dfa8;font-weight:600}
+      dialog[data-combat] .body{flex:1 1 auto;overflow-y:auto;padding:14px 20px 18px}
+      dialog[data-combat] section{padding:12px 14px;border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.025);margin-bottom:12px}
+      dialog[data-combat] .dcb-pane[hidden]{display:none!important}
+      dialog[data-combat] .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
       dialog[data-combat] .model-row{display:flex;align-items:stretch;gap:7px;margin-top:5px}
       dialog[data-combat] .model-row select{flex:1;width:0;margin:0}
-      dialog[data-combat] .model-row button{flex:0 0 auto;white-space:nowrap;padding:8px 10px}
-      dialog[data-combat] label{display:block;margin:0 0 12px;color:#c7c7bc;font-size:12px}
-      dialog[data-combat] input:not([type=checkbox]),dialog[data-combat] select,dialog[data-combat] textarea{display:block;width:100%;margin:5px 0 0;padding:9px 11px;border:1px solid #a5a58c38;border-radius:8px;background:#151c20;color:var(--ink);font-family:inherit;font-size:13px;line-height:1.6;box-shadow:none}
-      dialog[data-combat] input:disabled{opacity:.62}dialog[data-combat] textarea{font:13px/1.8 'Microsoft YaHei',sans-serif;resize:vertical;min-height:200px}
-      dialog[data-combat] input:focus,dialog[data-combat] select:focus,dialog[data-combat] textarea:focus{outline:1px solid #c0a468;outline-offset:1px}
-      dialog[data-combat] .switch{display:flex;align-items:center;gap:8px;margin:0;white-space:nowrap}
-      dialog[data-combat] input[type=checkbox]{width:17px;height:17px;margin:0;accent-color:#c8ac72}
-      dialog[data-combat] button{width:auto;margin:0;padding:8px 13px;border:1px solid #a68a5445;border-radius:8px;background:transparent;color:#ddc99f;font:13px/1.5 'Microsoft YaHei',sans-serif;cursor:pointer;box-shadow:none}
-      dialog[data-combat] button:hover{background:#ac8d5520}dialog[data-combat] button:disabled{opacity:.5;cursor:wait}
-      dialog[data-combat] .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}dialog[data-combat] .title-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px}
-      dialog[data-combat] footer{display:flex;justify-content:space-between;align-items:center;gap:8px;position:sticky;bottom:0;padding:13px 26px;background:#20272bf5;border-top:1px solid var(--line)}
-      dialog[data-combat] button[data-act=save]{background:#c2a66e;color:#172025;border-color:#c2a66e;padding-inline:22px}
-      dialog[data-combat] details{margin-top:12px;font-size:12px;color:var(--muted)}dialog[data-combat] summary{cursor:pointer}dialog[data-combat] pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:240px;overflow:auto;font-size:11px}
+      dialog[data-combat] .model-row button{flex:0 0 auto;white-space:nowrap;padding:7px 10px}
+      dialog[data-combat] label{display:block;margin:0 0 10px;color:#cfc7b4;font-size:12px}
+      dialog[data-combat] input:not([type=checkbox]),dialog[data-combat] select,dialog[data-combat] textarea{display:block;width:100%;margin:5px 0 0;padding:8px 10px;border:1px solid rgba(255,255,255,.14);border-radius:8px;background:#0f1317;color:var(--ink);font-family:inherit;font-size:13px;line-height:1.5;box-shadow:none}
+      dialog[data-combat] input:disabled{opacity:.58}dialog[data-combat] textarea{font:13px/1.7 'Microsoft YaHei',sans-serif;resize:vertical;min-height:160px}
+      dialog[data-combat] input:focus,dialog[data-combat] select:focus,dialog[data-combat] textarea:focus{outline:1px solid var(--gold);outline-offset:1px}
+      dialog[data-combat] .switch{display:inline-flex;align-items:center;gap:8px;margin:0;padding:5px 11px;border-radius:999px;border:1px solid var(--line);background:rgba(223,185,116,.08);color:#f4dfa8;white-space:nowrap;cursor:pointer}
+      dialog[data-combat] input[type=checkbox]{width:16px;height:16px;margin:0;accent-color:#c8ac72}
+      dialog[data-combat] button{width:auto;margin:0;padding:7px 12px;border:1px solid var(--line);border-radius:8px;background:rgba(255,255,255,.04);color:#e9d7ad;font:12.5px/1.4 'Microsoft YaHei',sans-serif;cursor:pointer;box-shadow:none}
+      dialog[data-combat] button:hover{background:rgba(223,185,116,.16)}dialog[data-combat] button:disabled{opacity:.5;cursor:wait}
+      dialog[data-combat] .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px}
+      dialog[data-combat] .title-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px}
+      dialog[data-combat] footer{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 20px;background:#14191f;border-top:1px solid var(--line)}
+      dialog[data-combat] button[data-act=save]{background:linear-gradient(135deg,#c9943d,#8e6320);color:#fff9ec;border-color:#eab963;padding-inline:20px;font-weight:600}
+      dialog[data-combat] details{margin-top:8px;font-size:12px;color:var(--muted)}dialog[data-combat] summary{cursor:pointer;color:#d6c6a2}dialog[data-combat] pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:200px;overflow:auto;font-size:11px;background:#0d1014;padding:8px;border-radius:6px}
       dialog[data-combat] [hidden]{display:none!important}
-      @media(max-width:480px){dialog[data-combat] header{padding:18px 16px 12px}dialog[data-combat] .body{padding:0 16px 12px}dialog[data-combat] footer{padding:12px 16px}dialog[data-combat] .grid{grid-template-columns:1fr;gap:0}dialog[data-combat] h2{font-size:21px}}
+      @media(max-width:600px){dialog[data-combat]{width:calc(100vw - 8px);max-height:94dvh;border-radius:12px}dialog[data-combat] header,dialog[data-combat] .dcb-tabs,dialog[data-combat] .body,dialog[data-combat] footer{padding-left:12px;padding-right:12px}dialog[data-combat] .grid{grid-template-columns:1fr;gap:0}}
       </style>
-      <header><div><h2>战斗副脑</h2><p>推演交给副脑，故事留给正文。</p></div><label class="switch"><input name="enabled" type="checkbox">启用</label></header>
+      <header><div><h2>⚔️ 战斗副脑</h2><p>推演交给副脑，故事留给正文。</p></div><label class="switch"><input name="enabled" type="checkbox">启用副脑</label></header>
+      <div class="dcb-tabs" role="tablist">
+        <button type="button" class="dcb-tab" data-dcb-tab="mode" aria-selected="true">⚡ 推演与状态</button>
+        <button type="button" class="dcb-tab" data-dcb-tab="prompt" aria-selected="false">📜 难度与提示词</button>
+        <button type="button" class="dcb-tab" data-dcb-tab="conn" aria-selected="false">🔌 独立连接(兼容)</button>
+      </div>
       <div class="body"><section><div class="grid"><label>推演模式<select name="strict"><option value="loose">宽松 · 一次推演</option><option value="strict">严查 · 推演后审核</option></select></label><label>API 连接<select name="mode"><option value="custom">自定义连接</option><option value="current">跟随酒馆</option><option value="profile">API 连接配置</option></select></label></div>
       <details data-connection-fields><summary data-connection-summary>连接详情</summary><label data-profile-row hidden>API 连接配置<select name="profile"></select></label>
       <div class="grid"><label>接口类型<input name="source" list="dnd-source-options"><datalist id="dnd-source-options"><option value="custom">OpenAI 兼容</option><option value="openai"></option><option value="claude"></option><option value="makersuite">Google</option><option value="openrouter"></option><option value="deepseek"></option></datalist></label><div><label>模型<div class="model-row"><select id="dnd-model-options" name="model-choice" aria-label="模型列表"></select><button type="button" data-act="models">获取模型</button></div><input name="model" aria-label="手动模型名称" placeholder="填写模型名称" hidden></label></div></div>
@@ -682,6 +868,44 @@ function mountCombatBrain(rules, createEngine) {
       <p data-status role="status">就绪</p><details><summary>运行记录</summary><pre data-result></pre><details><summary>详细记录</summary><pre data-log></pre></details></details></div>
       <footer><button data-act="close">关闭</button><div class="actions"><button data-act="stop">停止推演</button><button data-act="save">保存设置</button></div></footer>`;
     doc.body.appendChild(modal);
+    const sections=[...modal.querySelectorAll('.body > section')];
+    if(sections.length>=2){
+      sections[0].dataset.dcbPane='conn';
+      sections[0].classList.add('dcb-pane');
+      sections[1].dataset.dcbPane='prompt';
+      sections[1].classList.add('dcb-pane');
+      const modePane=doc.createElement('section');
+      modePane.className='dcb-pane';
+      modePane.dataset.dcbPane='mode';
+      const strictLabel=modal.querySelector('select[name="strict"]')?.closest('label');
+      if(strictLabel)modePane.appendChild(strictLabel);
+      const apiHint=doc.createElement('div');
+      apiHint.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:12px;color:#a7ada7;margin:6px 0 10px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);';
+      apiHint.innerHTML='<span>推荐使用统一 API 设置管理全部模块连接；未配置时沿用「独立连接(兼容)」或酒馆当前连接。</span><button type="button" data-act="open-api-hub">打开 API 设置</button>';
+      modePane.appendChild(apiHint);
+      const arbCard=doc.createElement('div');
+      arbCard.style.cssText='margin:8px 0 10px;padding:10px 12px;border-radius:10px;background:rgba(223,185,116,.06);border:1px solid rgba(223,185,116,.28);';
+      const arbOn=(()=>{try{const inst=host.__dndBlindArbiter||globalThis.__dndBlindArbiter;if(inst?.isEnabled)return Boolean(inst.isEnabled());return host.localStorage?.getItem('dnd2024_blind_arbiter_v1')==='1';}catch{return false;}})();
+      arbCard.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px;"><span style="font-weight:700;font-size:13px;color:#f4dfa8;">🎲 两段式盲骰仲裁（默认关闭）</span><label class="switch" style="margin:0;padding:4px 10px;"><input type="checkbox" data-dnd-arbiter-toggle '+(arbOn?'checked':'')+'><span>'+(arbOn?'已开启':'已关闭')+'</span></label></div><div style="font-size:12px;color:#cfd4d8;line-height:1.55;"><b>这是什么：</b>开启后，非战斗检定（技能、属性、豁免、交涉）会先由独立 AI 在<b>看不到骰子结果</b>的前提下盲定 DC 与后果，再由前端真随机数（CSPRNG）掷 d20 锁定结果，杜绝偷看骰子序列挑骰或改 DC。<br><span style="color:#a7ada7;">关闭时不额外消耗 API 调用（直接使用阵营分池骰子序列）；可在「API设置 → 🎲 盲骰仲裁」单独指定快速小模型。</span></div>';
+      const arbCb=arbCard.querySelector('[data-dnd-arbiter-toggle]'),arbTxt=arbCb?.nextElementSibling;
+      arbCb?.addEventListener('change',()=>{
+        const next=Boolean(arbCb.checked);
+        try{const inst=host.__dndBlindArbiter||globalThis.__dndBlindArbiter;if(inst?.setEnabled)inst.setEnabled(next);else host.localStorage?.setItem('dnd2024_blind_arbiter_v1',next?'1':'0');}catch{}
+        if(arbTxt)arbTxt.textContent=next?'已开启':'已关闭';
+      });
+      modePane.appendChild(arbCard);
+      const statusEl=modal.querySelector('[data-status]'),logDetails=statusEl?.nextElementSibling;
+      if(statusEl)modePane.appendChild(statusEl);
+      if(logDetails)modePane.appendChild(logDetails);
+      modal.querySelector('.body').insertBefore(modePane,sections[0]);
+      const showTab=tabKey=>{
+        modal.querySelectorAll('.dcb-tab').forEach(t=>t.setAttribute('aria-selected',String(t.dataset.dcbTab===tabKey)));
+        modal.querySelectorAll('.dcb-pane').forEach(p=>{p.hidden=p.dataset.dcbPane!==tabKey;});
+      };
+      modal.querySelectorAll('.dcb-tab').forEach(t=>t.addEventListener('click',()=>showTab(t.dataset.dcbTab)));
+      showTab('mode');
+    }
+    modal.querySelector('[data-act="open-api-hub"]')?.addEventListener('click',()=>{modal.close();openApiSettings('combat');});
     if(config.profile){const saved=doc.createElement('option');saved.value=config.profile;saved.textContent='已保存配置';modal.querySelector('[name="profile"]').appendChild(saved);}
     if(config.mode==='proxy'){const legacy=doc.createElement('option');legacy.value='proxy';legacy.textContent='旧代理预设（兼容）';modal.querySelector('[name="mode"]').appendChild(legacy);}
     modal.dataset.connectionEdited=String(!!config.connectionEdited);
@@ -708,7 +932,7 @@ function mountCombatBrain(rules, createEngine) {
   function click(e){const b=e.target.closest?.('button,.qr--button,.menu_button');if(!b||b.textContent.trim()!=='战斗副脑')return;const frame=String(window.frameElement?.id||'').split('--').pop();if(!doc.getElementById('script_container_'+(frame||ID))?.contains(b))return;e.preventDefault();e.stopImmediatePropagation();open();}
   async function dispose(){if(disposed)return;disposed=true;++autoEpoch;clearTimeout(bannerTimer);try{await engine.stop();}catch{}clearInjection();removers.forEach(remove=>remove());toolbar?.dispose();modal?.remove();banner?.remove();sessionKey='';doc.removeEventListener('click',click,true);if(host[NS]?.open===open)delete host[NS];}
   host[NS]={open,dispose,toggle:toggleEnabled};doc.addEventListener('click',click,true);window.addEventListener('pagehide',()=>void dispose(),{once:true});
-  if(typeof mountDndScriptToolbar==='function')toolbar=mountDndScriptToolbar(host,{enabled:()=>config.enabled,toggle:toggleEnabled,open});
+  if(typeof mountDndScriptToolbar==='function')toolbar=mountDndScriptToolbar(host,{enabled:()=>config.enabled,toggle:toggleEnabled,open,openApi:()=>openApiSettings('global')});
 }
 
 mountCombatBrain(createCombatRules(),createCombatEngine);

@@ -1,0 +1,71 @@
+```html
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  *{box-sizing:border-box}body{margin:0;padding:4px 0;background:transparent;font:13px/1.45 'Noto Sans SC','Microsoft YaHei',sans-serif;color:#eee3cc}
+  .wrap{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-radius:12px;background:linear-gradient(145deg,rgba(22,26,34,.92),rgba(13,16,22,.94));border:1px solid rgba(234,185,99,.32)}
+  .hdr{display:flex;align-items:center;justify-content:space-between;font-size:11.5px;color:#dfb974;letter-spacing:.08em;font-weight:600}
+  .opt{width:100%;display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.035);color:#f0e5ce;cursor:pointer;text-align:left;transition:all .16s}
+  .opt:hover{border-color:#eab963;background:rgba(234,185,99,.14);transform:translateY(-1px)}
+  .opt.combat{border-color:rgba(224,79,79,.42);background:rgba(165,36,36,.16)}
+  .opt.combat:hover{border-color:#ff6b6b;background:rgba(204,46,46,.28);transform:translateY(-1px)}
+  .badge{flex:0 0 auto;padding:3px 8px;border-radius:6px;background:rgba(234,185,99,.18);border:1px solid rgba(234,185,99,.42);color:#ffe4a3;font-size:11.5px;font-weight:700;white-space:nowrap}
+  .badge.combat{background:rgba(214,51,51,.26);border-color:rgba(255,107,107,.55);color:#ffd0d0}
+  .desc{flex:1 1 auto;font-size:12.5px;color:#e5dcc8}
+  .dc{flex:0 0 auto;font-size:11.5px;color:#b8c0c8;white-space:nowrap}
+  .dc.combat{color:#ffa8a8;font-weight:600}
+</style>
+</head>
+<body>
+<textarea id="src" hidden>$1</textarea>
+<div class="wrap">
+  <div class="hdr"><span>🎲 检定选项</span></div>
+  <div id="list" style="display:flex;flex-direction:column;gap:6px;"></div>
+</div>
+<script>
+(() => {
+  const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const raw = (document.getElementById('src')?.value || '').trim();
+  const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const list = document.getElementById('list');
+  for (const line of lines) {
+    const parts = line.split('|').map(s => s.trim());
+    if (parts.length < 2) continue;
+    const actor = parts[0] || '主角';
+    const skill = parts[1] || '属性检定';
+    const isCombat = /直接开战|直接战斗|进入战斗|开战|先手攻击|直接攻击|combat/i.test(skill) || /^战斗$|^开战$/i.test(parts[2] || '');
+    const dcMatch = (parts[2] || '').match(/\d+/);
+    const dc = dcMatch ? Number(dcMatch[0]) : 12;
+    const adv = parts[3] || '普通';
+    const desc = parts.slice(4).join(' | ') || (isCombat ? (actor + ' 拔出武器直接开战') : (actor + ' 进行 ' + skill + ' 检定'));
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = isCombat ? 'opt combat' : 'opt';
+    if (isCombat) {
+      btn.innerHTML = '<span class="badge combat">⚔️ ' + esc(actor) + ' · 直接开战</span><span class="desc">' + esc(desc) + '</span><span class="dc combat">⚔️ 进入战斗</span>';
+    } else {
+      btn.innerHTML = '<span class="badge">🎲 ' + esc(actor) + ' · ' + esc(skill) + '</span><span class="desc">' + esc(desc) + '</span><span class="dc">DC ' + dc + (adv && adv !== '普通' ? (' · ' + esc(adv)) : '') + '</span>';
+    }
+    btn.addEventListener('click', () => {
+      const hub = window.top?.__dndBg3Check || window.parent?.__dndBg3Check || window.__dndBg3Check;
+      if (isCombat) {
+        if (hub?.startCombat) {
+          hub.startCombat({ actor, desc });
+        } else {
+          alert('BG3 检定台尚未加载，请刷新页面或确认已开启 D&D BG3检定台脚本。');
+        }
+      } else if (hub?.open) {
+        hub.open({ actor, skill, dc, adv, desc });
+      } else {
+        alert('BG3 检定台尚未加载，请刷新页面或确认已开启 D&D BG3检定台脚本。');
+      }
+    });
+    list.appendChild(btn);
+  }
+})();
+</script>
+</body>
+</html>
+```

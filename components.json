@@ -1,5 +1,5 @@
 {
-  "version": "vf.0.6.19",
+  "version": "vf.0.6.20",
   "scripts": [
     {
       "type": "script",
@@ -350,6 +350,57 @@
         "button": true
       },
       "source": "src/scripts/角色头像库.js"
+    },
+    {
+      "type": "script",
+      "enabled": true,
+      "name": "D&D 统一API设置",
+      "id": "a1b2c3d4-7072-4772-8002-202400000002",
+      "info": "统一管理创建面板、自定义DM、状态栏AI助手、战术副脑与模组地图的API连接（支持酒馆默认、酒馆预设与自定义API）。",
+      "button": {
+        "enabled": false,
+        "buttons": []
+      },
+      "data": {},
+      "export_with": {
+        "data": false,
+        "button": false
+      },
+      "source": "src/scripts/统一API设置.js"
+    },
+    {
+      "type": "script",
+      "enabled": true,
+      "name": "D&D 盲骰仲裁",
+      "id": "a1b2c3d4-7072-4772-8003-202400000003",
+      "info": "可选两段式盲骰仲裁：先在无骰子透视下定DC，再由前端CSPRNG真随机掷骰锁定结果，彻底杜绝挑骰与垫骰。",
+      "button": {
+        "enabled": false,
+        "buttons": []
+      },
+      "data": {},
+      "export_with": {
+        "data": false,
+        "button": false
+      },
+      "source": "src/scripts/盲骰仲裁.js"
+    },
+    {
+      "type": "script",
+      "enabled": true,
+      "name": "D&D BG3检定台",
+      "id": "a1b2c3d4-7072-4772-8004-202400000004",
+      "info": "BG3 风格 3D 检定台与全队 D&D 2024 Buff 自动识别引擎（神导术、诗人激励、战士战术思维、战斗大师战技、野蛮人原初学识、装备规则标签、协助、英雄激励等）。",
+      "button": {
+        "enabled": false,
+        "buttons": []
+      },
+      "data": {},
+      "export_with": {
+        "data": false,
+        "button": false
+      },
+      "source": "src/scripts/BG3检定台.js"
     }
   ],
   "regexes": [
@@ -691,6 +742,40 @@
       "minDepth": 1,
       "maxDepth": null,
       "source": "src/regexes/旧模组地图标记清理.txt"
+    },
+    {
+      "id": "b63c4ec0-2024-4d20-b630-000000000001",
+      "scriptName": "BG3检定选项栏",
+      "findRegex": "/<dnd-check>([\\s\\S]*?)<\\/dnd-check>/gi",
+      "trimStrings": [],
+      "placement": [
+        2
+      ],
+      "disabled": false,
+      "markdownOnly": true,
+      "promptOnly": false,
+      "runOnEdit": true,
+      "substituteRegex": 0,
+      "minDepth": null,
+      "maxDepth": 6,
+      "source": "src/regexes/BG3检定选项栏.html"
+    },
+    {
+      "id": "b63c4ec0-2024-4d20-b630-000000000002",
+      "scriptName": "[不发送]旧BG3检定选项清理",
+      "findRegex": "/<dnd-check>[\\s\\S]*?<\\/dnd-check>/gi",
+      "trimStrings": [],
+      "placement": [
+        2
+      ],
+      "disabled": false,
+      "markdownOnly": false,
+      "promptOnly": true,
+      "runOnEdit": false,
+      "substituteRegex": 0,
+      "minDepth": 1,
+      "maxDepth": null,
+      "source": "src/regexes/[不发送]旧BG3检定选项清理.txt"
     }
   ]
 }

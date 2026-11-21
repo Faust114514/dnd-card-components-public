@@ -70,8 +70,8 @@ check(insideLeft(correctedRooms.units[0]) && pos(correctedRooms,'B')==='85,15','
 const foreign = core.compileBattleTimeline([delta(['@start','A|room:left|pos:85,15'])],{...roomCtx, officialMap:null, isOverworld:true});
 check(pos(foreign,'A')==='85,15','outdoor encounter coordinates stay independent of the official room grid');
 const sync=context.createModuleRunnerSync(core,{SillyTavern:{getContext:()=>({chat:[{mes:legacy}]})}},()=>{});
-check(sync.normalizeState(null).sendMapImage===false&&sync.normalizeState({moduleId:'test'}).sendMapImage===false,'new and existing chats default to no map screenshots');
-check(sync.normalizeState({moduleId:'test',sendMapImage:true}).sendMapImage===true,'explicit screenshot preference survives normalization');
+check(sync.normalizeState(null).sendMapImage===true&&sync.normalizeState({moduleId:'test'}).sendMapImage===true,'chats without a saved preference default to map screenshots');
+check(sync.normalizeState({moduleId:'test',sendMapImage:false}).sendMapImage===false,'explicit screenshot preference survives normalization');
 check(!Object.hasOwn(sync.normalizeState(null),'battleProtocol'),'new chats have only the author map');
 check(!Object.hasOwn(sync.normalizeState({moduleId:'test',battleProtocol:'legacy'}),'battleProtocol'),'old saved mode cannot keep the retired map enabled');
 const cfg=JSON.parse(read('components.json')),latest=JSON.parse(read('latest.json'));

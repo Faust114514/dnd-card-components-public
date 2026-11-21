@@ -175,6 +175,123 @@ const normalizeAcMode = (value, fallback = 'auto') => {
 
 const getModifier = (score) => Math.floor((parseInt(score, 10) - 10) / 2);
 
+function parseNamedBonus(raw) {
+    if (raw === null || raw === undefined || raw === '' || raw === 0 || raw === '0') {
+        return { total: 0, parts: [] };
+    }
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+        return raw === 0 ? { total: 0, parts: [] } : { total: raw, parts: [`额外（${raw >= 0 ? '+' + raw : raw}）`] };
+    }
+    const str = String(raw).trim();
+    if (!str || str === '0') return { total: 0, parts: [] };
+    if (/^[+-]?\d+$/.test(str)) {
+        const v = Number(str) || 0;
+        return v === 0 ? { total: 0, parts: [] } : { total: v, parts: [`额外（${v >= 0 ? '+' + v : v}）`] };
+    }
+    const tokens = str.split(/[,，、;；]+/).map(s => s.trim()).filter(Boolean);
+    let total = 0;
+    const parts = [];
+    for (const tok of tokens) {
+        const m = tok.match(/^(.+?)\s*([+-]\d+)$/) || tok.match(/^(.+?)[（(]\s*([+-]?\d+)\s*[）)]$/) || tok.match(/^([+-]\d+)\s*(.+)$/);
+        if (m) {
+            const numFirst = /^[+-]\d+$/.test(m[1]);
+            const label = (numFirst ? m[2] : m[1]).trim() || '额外';
+            const val = Number(numFirst ? m[1] : m[2]) || 0;
+            if (val !== 0) {
+                total += val;
+                parts.push(`${label}（${val >= 0 ? '+' + val : val}）`);
+            }
+        } else if (/^[+-]?\d+$/.test(tok)) {
+            const val = Number(tok) || 0;
+            if (val !== 0) {
+                total += val;
+                parts.push(`额外（${val >= 0 ? '+' + val : val}）`);
+            }
+        }
+    }
+    return { total, parts };
+}
+
+function evalSafeAcArithmetic(expr) {
+    const tokens = String(expr || '').match(/\d+(?:\.\d+)?|min|max|[()+\-*,]/gi);
+    if (!tokens || !tokens.length) return NaN;
+    let pos = 0;
+    const peek = () => tokens[pos];
+    const consume = () => tokens[pos++];
+    function parseExpr() {
+        let v = parseTerm();
+        while (peek() === '+' || peek() === '-') {
+            const op = consume();
+            const r = parseTerm();
+            v = op === '+' ? v + r : v - r;
+        }
+        return v;
+    }
+    function parseTerm() {
+        let v = parseUnary();
+        while (peek() === '*') {
+            consume();
+            v *= parseUnary();
+        }
+        return v;
+    }
+    function parseUnary() {
+        if (peek() === '+') { consume(); return parseUnary(); }
+        if (peek() === '-') { consume(); return -parseUnary(); }
+        return parsePrimary();
+    }
+    function parsePrimary() {
+        const t = peek();
+        if (!t) return NaN;
+        if (t.toLowerCase() === 'min' || t.toLowerCase() === 'max') {
+            const fn = consume().toLowerCase();
+            if (consume() !== '(') return NaN;
+            const args = [parseExpr()];
+            while (peek() === ',') { consume(); args.push(parseExpr()); }
+            if (consume() !== ')') return NaN;
+            return fn === 'min' ? Math.min(...args) : Math.max(...args);
+        }
+        if (t === '(') {
+            consume();
+            const v = parseExpr();
+            if (consume() !== ')') return NaN;
+            return v;
+        }
+        consume();
+        return Number(t);
+    }
+    const res = parseExpr();
+    return (pos === tokens.length && Number.isFinite(res)) ? Math.round(res) : NaN;
+}
+
+function evaluateChineseAcFormula(formulaRaw, ctxVars) {
+    let f = String(formulaRaw || '').trim();
+    if (!f) return null;
+    f = f.replace(/（/g, '(').replace(/）/g, ')').replace(/，/g, ',').replace(/＋/g, '+').replace(/－/g, '-').replace(/×/g, '*');
+    f = f.replace(/(力量|敏捷|体质|智力|感知|魅力)(?:调整值)?\s*\(\s*(?:上限|最大|最多)\s*(\d+)\s*\)/g, (_, ab, cap) => {
+        const map = { '力量': ctxVars.str, '敏捷': ctxVars.dex, '体质': ctxVars.con, '智力': ctxVars.int, '感知': ctxVars.wis, '魅力': ctxVars.cha };
+        return String(Math.min(map[ab] ?? 0, Number(cap)));
+    });
+    const repl = [
+        [/力量调整值|力量|\bstr\b/gi, ctxVars.str],
+        [/敏捷调整值|敏捷|\bdex\b/gi, ctxVars.dex],
+        [/体质调整值|体质|\bcon\b/gi, ctxVars.con],
+        [/智力调整值|智力|\bint\b/gi, ctxVars.int],
+        [/感知调整值|感知|\bwis\b/gi, ctxVars.wis],
+        [/魅力调整值|魅力|\bcha\b/gi, ctxVars.cha],
+        [/熟练加值|熟练|\bpb\b|\bprof\b/gi, ctxVars.prof],
+        [/等级|\blevel\b/gi, ctxVars.level],
+        [/护甲基础|护甲|\barmor\b/gi, ctxVars.armorBase],
+        [/盾牌加值|盾牌|\bshield\b/gi, ctxVars.shieldBonus],
+    ];
+    for (const [re, val] of repl) {
+        f = f.replace(re, '(' + String(val) + ')');
+    }
+    const val = evalSafeAcArithmetic(f);
+    if (!Number.isFinite(val)) return null;
+    return { value: val, description: `自定义公式：${formulaRaw.trim()} = ${val}`, usingArmor: ctxVars.hasArmor };
+}
+
 function normalizeEffects(rawEffects = []) {
     return normalizeDndEffects(rawEffects);
 }
@@ -346,7 +463,12 @@ function fromSchema(raw) {
     proficiencyBonus:normalizeNumber(raw.熟练加值,2),
     maxHp:normalizeNumber(raw.生命值?.最大,1),currentHp:normalizeNumber(raw.生命值?.当前,0),
     speed:normalizeNumber(raw.速度?.步行,0),
-    acMode:raw.护甲模式 || 'auto',overrides:{ac:raw.基础AC覆盖,initiative:Number.isFinite(initiativeOverride)?initiativeOverride:null},
+    acMode:raw.护甲模式 || 'auto',acFormula:normalizeString(raw.护甲公式 ?? raw.acFormula ?? '',''),
+    extraBonuses:{
+      ac:normalizeString((object(raw.额外加值)?raw.额外加值:{}).AC ?? (object(raw.额外加值)?raw.额外加值:{}).ac ?? '',''),
+      initiative:normalizeString((object(raw.额外加值)?raw.额外加值:{}).先攻 ?? (object(raw.额外加值)?raw.额外加值:{}).initiative ?? '','')
+    },
+    overrides:{ac:raw.基础AC覆盖,initiative:Number.isFinite(initiativeOverride)?initiativeOverride:null},
     initiativeBonus:normalizeNumber(initiativeExtra,0),
     useUnarmoredDefense:raw.无甲防御!==false,temporaryEffects:normalizeEffects(raw.临时效果)
   };
@@ -578,6 +700,19 @@ function calculateACDetails(mode = (characterData.acMode || 'auto')) {
         return { value: best.value, description: best.description, usingArmor: false };
     }
 
+    if (mode === 'auto' && characterData.acFormula && String(characterData.acFormula).trim()) {
+        const strMod = getModifier(applyNumericEffects(characterData.stats.str, ['stat.str']));
+        const intMod = getModifier(applyNumericEffects(characterData.stats.int, ['stat.int']));
+        const chaMod = getModifier(applyNumericEffects(characterData.stats.cha, ['stat.cha']));
+        const evaluated = evaluateChineseAcFormula(characterData.acFormula, {
+            str: strMod, dex: dexMod, con: conMod, int: intMod, wis: wisMod, cha: chaMod,
+            prof: normalizeNumber(characterData.proficiencyBonus, Math.floor(((Number(characterData.level) || 1) - 1) / 4) + 2),
+            level: Number(characterData.level) || 1,
+            armorBase: armorBase ?? 10, shieldBonus, hasArmor: Boolean(baseArmor)
+        });
+        if (evaluated) return evaluated;
+    }
+
     if (baseArmor) {
         return {
             value: armorAc + shieldBonus + defenseBonus,
@@ -594,6 +729,29 @@ function calculateACDetails(mode = (characterData.acMode || 'auto')) {
     }
 
     const autoOptions = buildUnarmoredOptions();
+    const chaModAuto = getModifier(applyNumericEffects(characterData.stats.cha, ['stat.cha']));
+    const chaPartAuto = formatAbilityPart('魅力', chaModAuto);
+    if (hasFeature('龙族韧性') || hasFeature('Draconic Resilience')) {
+        autoOptions.push({
+            value: 10 + dexMod + chaModAuto + shieldBonus,
+            description: buildSpecialArmorDescription('龙族韧性', ['10', dexPart, chaPartAuto, shieldPart(true)]),
+            allowShield: true
+        });
+    }
+    if (!shield && (hasFeature('优雅无甲') || ((characterData.class || '').includes('诗人') && hasFeature('舞蹈学院')))) {
+        autoOptions.push({
+            value: 10 + dexMod + chaModAuto,
+            description: buildSpecialArmorDescription('舞蹈学院无甲', ['10', dexPart, chaPartAuto]),
+            allowShield: false
+        });
+    }
+    if (/龟人|Tortle/i.test(characterData.race || '') || hasFeature('天生护甲：龟壳')) {
+        autoOptions.push({
+            value: 17 + shieldBonus,
+            description: buildSpecialArmorDescription('龟人自然护甲', ['17', shieldPart(true)]),
+            allowShield: true
+        });
+    }
     const bestAuto = autoOptions.reduce((acc, cur) => cur.value > acc.value ? cur : acc, autoOptions[0]);
     return { value: bestAuto.value, description: bestAuto.description, usingArmor: false };
 }
@@ -916,12 +1074,14 @@ function calculateInitiativeDetails() {
     parts.splice(0,parts.length,`手动基础先攻 ${signed(base)}`);
   }
   const trace=[];
-  const total=applyNumericEffects(base,['initiative.bonus'],{},trace);
+  const ebInit=parseNamedBonus(characterData.extraBonuses?.initiative);
+  const total=applyNumericEffects(base,['initiative.bonus'],{},trace)+ebInit.total;
   for(const step of trace){
     const name=step.entry.source.sourceType==='temporary'?step.entry.effect.name:step.entry.source.sourceName;
     const operation={add:signed(step.value),multiply:`×${step.value}`,override:`设为${step.value}`,upgrade:`至少${step.value}`,downgrade:`至多${step.value}`}[step.mode];
     parts.push(`${name} ${operation}`);
   }
+  for(const p of ebInit.parts) parts.push(p);
   return {base,total,description:parts.join('；')+` → 先攻 ${signed(total)}`+(notes.length?'\n'+[...new Set(notes)].join('\n'):'')};
 }
 
@@ -932,8 +1092,10 @@ function calculateInitiativeDetails() {
   const base=mode==='custom'?{value:characterData.overrides.ac,description:`手动基础AC：${characterData.overrides.ac}`} : calculateACDetails(mode);
   if (detailsOnly) return base;
   const trace=[];
-  const total=Math.floor(applyNumericEffects(base.value,['ac.bonus'],{},trace));
-  return {base:base.value,total,description:armorEffectDescription(base.description,trace)};
+  const ebAc=parseNamedBonus(characterData.extraBonuses?.ac);
+  const total=Math.floor(applyNumericEffects(base.value,['ac.bonus'],{},trace))+ebAc.total;
+  const desc=armorEffectDescription(base.description,trace)+(ebAc.parts.length?' + '+ebAc.parts.join(' + '):'');
+  return {base:base.value,total,description:desc};
 }
 
 function syncCharacter(raw) {
@@ -959,7 +1121,7 @@ function syncRoot(root) {
   for (const c of Object.values(root?.角色列表 || {})) if (c && typeof c==='object' && !Array.isArray(c)) syncCharacter(c);
   return root;
 }
-return {fromSchema,syncCharacter,syncRoot,initiative:character=>evaluate(character,false,undefined,true),calculate:character=>evaluate(character),details:(character,mode)=>evaluate(character,true,mode)};
+return {fromSchema,syncCharacter,syncRoot,parseNamedBonus,evaluateChineseAcFormula,initiative:character=>evaluate(character,false,undefined,true),calculate:character=>evaluate(character),details:(character,mode)=>evaluate(character,true,mode)};
 })();
 
 const MvuLite = (() => {
@@ -1224,6 +1386,7 @@ const MvuLite = (() => {
     const records=new Map();
     const key=name=>String(name).replace(/[\sA-Za-z]/g,'').trim();
     const add=(name,source='')=>{if(!name)return;const k=key(name);if(!k)return;const old=records.get(k);if(!old)records.set(k,{name,source});else if(!old.source&&source)old.source=source;};
+    for(const wm of list(c.熟练配置?.武器精通)) add(wm, '');
     for(const [name,value] of entries(c.特性?.职业)) {
       const match=name.match(/^武器精通\s*[:：]\s*(.+)$/);
       if(match)add(match[1],value?.来源||'');
@@ -3900,6 +4063,272 @@ select:not([multiple]):not([size]),.dnd-choice-search input{height:44px;line-hei
 .creator-biography label span{color:var(--gold)}
 @media(max-width:800px){.biography-facts{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:480px){.biography-prose{grid-template-columns:minmax(0,1fr)}.biography-facts{gap:12px}.creator-biography{margin-top:20px}}
+</style>
+<style id="dnd-fvtt-shared-theme">
+:root { --fvtt-crimson: #741827; --fvtt-gold: #d4af6a; }
+body { background: #13151b !important; color: #f3ede2 !important; }
+.fvtt-inline-ico { vertical-align: middle; margin-right: 7px; }
+</style>
+<script>
+(() => {
+  if (window.__fvttSharedDecoratorMounted) return;
+  window.__fvttSharedDecoratorMounted = true;
+  const getVault = () => {
+    try { return window.top?.__dndAssetVault || window.parent?.__dndAssetVault || window.__dndAssetVault || null; }
+    catch (_) { return window.__dndAssetVault || null; }
+  };
+  const decorate = () => {
+    if (typeof document === 'undefined' || typeof document.querySelectorAll !== 'function') return;
+    const v = getVault();
+    if (!v?.getIconHtml) return;
+    const targets = document.querySelectorAll('[data-class-name], [data-species-name], [data-bg-name], .class-card h3, .class-card .card-title, .race-card h3, .bg-card h3, .option-card h4, .option-title, .spell-card-title, .weapon-name, .feat-name, .feature-name');
+    targets.forEach((el) => {
+      if (el.dataset.fvttIcoDone) return;
+      const txt = (el.textContent || '').trim();
+      if (!txt || txt.length > 48) return;
+      const cat = el.dataset.className ? 'class' : (el.dataset.speciesName ? 'species' : (el.dataset.bgName ? 'background' : 'feature'));
+      const html = v.getIconHtml(txt, cat, 26);
+      if (html) {
+        el.dataset.fvttIcoDone = '1';
+        el.insertAdjacentHTML('afterbegin', html.replace('class="fvtt-ico"', 'class="fvtt-ico fvtt-inline-ico"'));
+      }
+    });
+  };
+  const mo = typeof MutationObserver === 'function' ? new MutationObserver(() => decorate()) : null;
+  const start = () => {
+    decorate();
+    if (mo && document?.body) mo.observe(document.body, { childList: true, subtree: true });
+  };
+  if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') document.addEventListener?.('DOMContentLoaded', start, { once: true });
+    else start();
+  }
+})();
+</script>
+<style id="dnd-creator-modern-ui-css">
+/* ===== Modern BG3 x FVTT 2024 Character Creator Theme ===== */
+:root {
+  --bg: #111319;
+  --panel: #181b23;
+  --card: #1e222d;
+  --border: rgba(255,255,255,0.09);
+  --gold: #d4af6a;
+  --crimson: #741827;
+  --green: #69db7c;
+  --red: #ff7b7b;
+  --text: #f3ede2;
+  --ink: #f3ede2;
+  --muted: #9ea6b5;
+}
+.spell-card, .spell-card.selected, .spell-card .spell-name, .spell-card .spell-card-desc, .spell-card .spell-card-meta {
+  color: #f3ede2 !important;
+}
+.spell-card.selected {
+  background: linear-gradient(135deg, rgba(116,24,39,0.34), rgba(28,31,42,0.95)) !important;
+  border-color: #e5be78 !important;
+}
+body {
+  background: radial-gradient(ellipse at 50% 0%, rgba(116,24,39,0.22), transparent 55%), #111319 !important;
+  color: #f3ede2 !important;
+  font-family: 'Noto Sans SC', 'Microsoft YaHei', system-ui, sans-serif !important;
+}
+.ai-helper-panel {
+  background: linear-gradient(135deg, rgba(116,24,39,0.22), rgba(24,27,35,0.92)) !important;
+  border: 1px solid rgba(212,175,106,0.34) !important;
+  border-radius: 11px !important;
+  padding: 10px 14px !important;
+  margin: 0 0 12px !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35) !important;
+  box-sizing: border-box;
+}
+.ai-helper-header { margin-bottom: 7px !important; }
+.ai-helper-title { font-size: 13.5px !important; color: #ffe4a8 !important; }
+.ai-helper-input {
+  background: #101218 !important;
+  border: 1px solid rgba(212,175,106,0.32) !important;
+  color: #f5efe3 !important;
+  border-radius: 8px !important;
+  padding: 7px 11px !important;
+  font-size: 12.5px !important;
+  min-width: 0 !important;
+  box-sizing: border-box;
+}
+.ai-helper-btn {
+  border-radius: 8px !important;
+  font-size: 12px !important;
+  padding: 6px 11px !important;
+  border: 1px solid rgba(212,175,106,0.32) !important;
+  background: rgba(255,255,255,0.05) !important;
+  color: #f0e4cc !important;
+  box-sizing: border-box;
+}
+.ai-helper-btn.primary {
+  background: linear-gradient(135deg, #c9943d, #8c601e) !important;
+  border-color: #f0c36d !important;
+  color: #fff9ec !important;
+}
+.ai-helper-btn:hover { background: rgba(212,175,106,0.18) !important; }
+
+/* Two-Column Workbench (adapts cleanly beside .dnd-step-nav) */
+.dnd-creator-workbench, .dnd-creator-workbench *, .dnd-picker-grid, .dnd-pick-card {
+  box-sizing: border-box;
+}
+.dnd-creator-workbench {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 276px;
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+@media (max-width: 1120px) {
+  .dnd-creator-workbench { grid-template-columns: minmax(0, 1fr); }
+  .dnd-creator-aside { position: static !important; }
+}
+@media (max-width: 760px) {
+  .dnd-creator-aside { display: none !important; }
+  .dnd-picker-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 6px !important; }
+  .dnd-pick-card { min-height: 42px !important; padding: 6px 8px !important; }
+  .ai-helper-actions { display: grid !important; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; gap: 6px !important; width: 100%; }
+  .ai-helper-btn { width: 100%; justify-content: center; min-height: 38px; }
+}
+.dnd-creator-main { min-width: 0; }
+.dnd-creator-aside {
+  position: sticky;
+  top: 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(212,175,106,0.34);
+  background: linear-gradient(180deg, #1b1e28 0%, #14161e 100%);
+  box-shadow: 0 14px 36px rgba(0,0,0,0.55);
+  overflow: hidden;
+  min-width: 0;
+}
+.dnd-prev-hd {
+  padding: 12px 14px;
+  background: linear-gradient(90deg, #741827 0%, #3a1019 100%);
+  border-bottom: 1px solid rgba(212,175,106,0.35);
+}
+.dnd-prev-name { font-size: 16px; font-weight: 700; color: #fff4df; line-height: 1.3; word-break: break-word; }
+.dnd-prev-sub { font-size: 11.5px; color: #e6d4b3; margin-top: 2px; }
+.dnd-prev-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.dnd-prev-entities { display: flex; flex-direction: column; gap: 7px; }
+.dnd-prev-entity {
+  display: flex; align-items: center; gap: 9px;
+  padding: 6px 8px; border-radius: 8px;
+  background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.07);
+}
+.dnd-prev-entity small { display: block; font-size: 10px; color: #9ea6b5; }
+.dnd-prev-entity b { font-size: 12.5px; color: #f5efe3; }
+.dnd-prev-vitals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.dnd-prev-vital {
+  text-align: center; padding: 6px 4px; border-radius: 8px;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+}
+.dnd-prev-vital small { display: block; font-size: 10px; color: #9ea6b5; }
+.dnd-prev-vital b { font-size: 14px; color: #ffe4a8; font-family: Georgia, serif; }
+.dnd-prev-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.dnd-prev-stat {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 8px; border-radius: 6px;
+  background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.07);
+  font-size: 11.5px;
+}
+.dnd-prev-stat b { color: #ffe2a0; }
+.dnd-prev-badges { display: flex; flex-wrap: wrap; gap: 5px; }
+.dnd-prev-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 999px; font-size: 11px;
+  background: rgba(132,28,44,0.34); border: 1px solid rgba(226,98,116,0.52); color: #ffeaee;
+}
+.dnd-prev-badge.heroic {
+  background: rgba(212,175,106,0.20); border-color: rgba(234,185,99,0.55); color: #ffe6a8;
+}
+.dnd-prev-cta {
+  width: 100%; padding: 10px 14px; border-radius: 9px;
+  background: linear-gradient(135deg, #c93b4b, #871a29);
+  border: 1px solid #eb7a88; color: #fff8ee;
+  font-size: 13.5px; font-weight: 700; cursor: pointer;
+  box-shadow: 0 6px 18px rgba(135,26,41,0.45);
+}
+.dnd-prev-cta:hover { filter: brightness(1.1); }
+
+/* FVTT Crimson Section Headers */
+.section {
+  background: #181b23 !important;
+  border: 1px solid rgba(255,255,255,0.09) !important;
+  border-radius: 11px !important;
+  margin-bottom: 14px !important;
+  overflow: hidden;
+  padding: 0 !important;
+}
+.section > h2 {
+  position: relative !important;
+  margin: 0 !important;
+  padding: 9px 14px 9px 34px !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  color: #fff4e3 !important;
+  background: linear-gradient(90deg, #741827 0%, #4b101b 65%, #23131b 100%) !important;
+  border-bottom: 1px solid rgba(212,175,106,0.38) !important;
+}
+.section > h2::before {
+  content: "" !important;
+  position: absolute !important;
+  left: 14px !important;
+  top: 50% !important;
+  width: 7px !important;
+  height: 7px !important;
+  margin-top: -5px !important;
+  border-right: 2px solid #f4deb0 !important;
+  border-bottom: 2px solid #f4deb0 !important;
+  transform: rotate(45deg) !important;
+  transition: transform 0.22s ease !important;
+}
+.section > h2.collapsed::before {
+  transform: rotate(-45deg) !important;
+  margin-top: -3px !important;
+}
+.section > .section-content {
+  padding: 14px !important;
+}
+
+/* Visual FVTT Icon Picker Grids (Species / Class / Background) */
+.dnd-picker-block { margin-top: 12px; min-width: 0; }
+.dnd-picker-label {
+  font-size: 12px; font-weight: 700; color: #e8d3a7;
+  margin-bottom: 7px; display: flex; align-items: center; justify-content: space-between;
+}
+.dnd-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(116px, 1fr));
+  gap: 7px;
+  min-width: 0;
+}
+.dnd-pick-card {
+  display: flex; align-items: center; gap: 7px;
+  padding: 6px 8px; border-radius: 8px;
+  background: #202430; border: 1px solid rgba(255,255,255,0.09);
+  color: #eee8dc; font-size: 12px; font-weight: 600;
+  cursor: pointer; text-align: left; transition: all 0.14s;
+  min-width: 0; max-width: 100%; overflow: hidden;
+}
+.dnd-pick-card:hover {
+  background: #282d3c; border-color: rgba(212,175,106,0.45); transform: translateY(-1px);
+}
+.dnd-pick-card.active {
+  background: linear-gradient(135deg, rgba(116,24,39,0.55), rgba(38,26,30,0.92));
+  border-color: #e5be78; color: #fff3d6;
+  box-shadow: 0 0 12px rgba(212,175,106,0.22);
+}
+.dnd-pick-card span.pick-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* Clean form inputs */
+input:not([type="checkbox"]):not([type="radio"]), select, textarea {
+  background: #101218 !important;
+  color: #f5efe3 !important;
+  border: 1px solid rgba(212,175,106,0.32) !important;
+  border-radius: 7px !important;
+}
+.field label { color: #d6cebe !important; font-size: 12px !important; font-weight: 600 !important; }
 </style>
 </head>
 <body class="creator-awaiting-basics">
@@ -9141,7 +9570,9 @@ function updateProgress(validation) {
         elements.progressSteps.innerHTML = visibleSteps.map(step => {
             const v = validation[step.key];
             const statusClass = v.complete ? 'completed' : 'incomplete';
-            const icon = v.complete ? 'OK' : (v.errors.length > 0 ? '!' : '-');
+            const icon = v.complete
+                ? '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--green)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><circle cx="12" cy="12" r="9.5" opacity="0.35"/><path d="M8.5 12.5l2.5 2.5 4.8-5.5"/></svg>'
+                : (v.errors.length > 0 ? '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="var(--red)" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><circle cx="12" cy="12" r="9.5" opacity="0.4"/><line x1="12" y1="8" x2="12" y2="12.5"/><circle cx="12" cy="16.2" r="0.9" fill="var(--red)"/></svg>' : '-');
 
             return `
                 <div class="progress-step ${statusClass}">
@@ -9376,7 +9807,7 @@ function renderSummary() {
     elements.summaryBox.innerHTML = `
         <p>
             <strong>${ebEscape(state.name)}</strong>，一位 ${ebEscape(state.gender)} ${speciesText} ${state.class}，曾是一名 ${backgroundName}。<br>
-            <strong>生命值:</strong> ${hp} |
+            <strong>生命值:</strong> ${hp} |${/^人类|Human/i.test(String(state.species || '')) ? ' <strong>英雄激励:</strong> 初始已就绪（人类·足智多谋） |' : ''}
             <strong>护甲等级:</strong> ${ac} | <strong>金币:</strong> ${goldLeft}/${budget} GP | <strong>移速:</strong> ${species.speed}尺 | <strong>熟练加值:</strong> +2<br>
             <strong>属性:</strong> 
             力 ${finalAttrs['力量']}(${Math.floor((finalAttrs['力量']-10)/2)}), 
@@ -9927,21 +10358,26 @@ ${bgList}
             setStatus('🧹 已清空已填的姓名、属性加点、背景加值、技能、专长、法术、装备、档案与个性，已恢复空白状态！', 'ok');
             return;
         }
+        const apiHub = window.top?.__dndApiHub || window.parent?.__dndApiHub || window.__dndApiHub;
+        const hubCfg = apiHub?.getModuleConfig?.('creator');
+        const useHub = Boolean(apiHub?.callAi && hubCfg && hubCfg.mode !== 'st_default');
         const genRaw = resolveGenerateRawFn();
-        if (!genRaw) {
-            setStatus('❌ 未检测到 SillyTavern generateRaw 接口（请在酒馆聊天界面中使用 AI 帮忙模式）。', 'error');
+        if (!useHub && !genRaw) {
+            setStatus('❌ 未检测到 SillyTavern generateRaw 或统一 API 接口（请在酒馆聊天界面中使用 AI 帮忙模式）。', 'error');
             return;
         }
         btns.forEach(b => { b.disabled = true; });
         setStatus(mode === 'persona' ? '⏳ 正在让 AI 编写全部外貌档案与个性传记...' : '⏳ 正在让 AI 构筑 1 级 Build 与角色设定...');
         try {
             const ordered_prompts = buildAiAssistPrompt(mode);
-            const raw = await genRaw({
-                should_stream: false,
-                should_silence: true,
-                max_chat_history: 0,
-                ordered_prompts
-            });
+            const raw = useHub
+                ? await apiHub.callAi({ moduleKey: 'creator', messages: ordered_prompts, temperature: 0.75, should_silence: true })
+                : await genRaw({
+                    should_stream: false,
+                    should_silence: true,
+                    max_chat_history: 0,
+                    ordered_prompts
+                });
             const data = extractAiJsonObject(raw);
             if ((mode === 'all' || mode === 'build') && data.build) {
                 applyAiBuild(data.build);
@@ -11929,7 +12365,7 @@ function buildMvuCharacterSheet() {
         种族: displaySpecies,
         背景: backgroundName,
         阵营: state.biography.alignment,
-        英雄激励: false,
+        英雄激励: /^人类|Human/i.test(String(state.species || '')),
         外貌: {
             性别: state.gender || '',
             年龄: state.biography.age,
@@ -13948,6 +14384,461 @@ const dndChoiceSearch = (() => {
 })();
 
 document.addEventListener('DOMContentLoaded', init);
+</script>
+<script id="dnd-creator-random-name-v2">
+(() => {
+  if (window.__dndCreatorRandomNameV2Mounted) return;
+  window.__dndCreatorRandomNameV2Mounted = true;
+
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+  const HUMAN_ETHNICITIES = [
+    {
+      label: '卡林珊',
+      male: [['阿塞伊尔','Aseir'],['巴尔代德','Bardeid'],['哈塞伊德','Haseid'],['梅赫门','Mehmen'],['拉希德','Rashid'],['扎谢尔','Zasheir']],
+      female: [['阿塔拉','Atala'],['塞迪尔','Ceidil'],['哈玛','Hama'],['贾斯玛尔','Jasmal'],['梅莉尔','Meilil'],['塞拉','Seira'],['桑德拉','Sundrah']],
+      surnames: [['巴沙','Basha'],['达斯塔尼','Dastani'],['哈立德','Khalid'],['莫斯塔纳','Mostana'],['帕沙尔','Pashar'],['扎利','Zali']]
+    },
+    {
+      label: '琼达斯',
+      male: [['达文','Darvin'],['多恩','Dorn'],['埃文杜尔','Evendur'],['戈斯塔格','Gorstag'],['海姆','Helm'],['马拉克','Malark'],['莫恩','Morn'],['兰德尔','Randal'],['斯特德','Stedd']],
+      female: [['阿文妮','Arveene'],['埃斯维尔','Esvele'],['杰赛尔','Jhessail'],['凯莉','Kerri'],['卢琳','Lureene'],['米莉','Miri'],['罗温','Rowan'],['珊德里','Shandri'],['特塞尔','Tessele']],
+      surnames: [['安布尔克朗','Amblecrown'],['巴克曼','Buckman'],['邓德拉贡','Dundragon'],['伊文伍德','Evenwood'],['灰堡','Graycastle'],['高鹿','Tallstag']]
+    },
+    {
+      label: '达马拉',
+      male: [['波尔','Bor'],['福德尔','Fodel'],['格拉尔','Glar'],['格里戈尔','Grigor'],['伊甘','Igan'],['伊沃尔','Ivor'],['科塞夫','Kosef'],['米瓦尔','Mival'],['帕维尔','Pavel'],['塞里文','Seriven']],
+      female: [['阿莱斯拉','Alethra'],['卡拉','Kara'],['卡特宁','Katernin'],['玛拉','Mara'],['娜塔莉','Natali'],['奥尔玛','Olma'],['塔娜','Tana'],['佐拉','Zora']],
+      surnames: [['贝尔斯克','Bersk'],['切尔诺温','Chernovin'],['多茨克','Dotsk'],['库列诺夫','Kulenov'],['马尔斯克','Marsk'],['涅姆科夫','Nemkov'],['斯塔拉格','Starag']]
+    },
+    {
+      label: '伊路斯坎',
+      male: [['安德','Ander'],['布拉斯','Blath'],['布兰','Bran'],['弗拉斯','Frath'],['格斯','Geth'],['兰德','Lander'],['卢斯','Luth'],['马尔瑟','Malcer'],['斯托尔','Stor'],['托姆','Torm']],
+      female: [['阿玛弗蕾','Amafrey'],['贝莎','Betha'],['塞弗蕾','Cefrey'],['凯斯拉','Kethra'],['玛拉','Mara'],['奥尔加','Olga'],['西尔薇','Silvey'],['韦斯特拉','Westra']],
+      surnames: [['亮木','Brightwood'],['海尔德','Helder'],['角鸦','Hornraven'],['拉克曼','Lackman'],['风暴之风','Stormwind'],['风河','Windrivver']]
+    },
+    {
+      label: '木兰',
+      male: [['奥斯','Aoth'],['巴雷里斯','Bareris'],['埃普特-基','Ehput-Ki'],['凯索斯','Kethoth'],['穆梅德','Mumed'],['奥姆','Orm'],['陶兰','Tauran']],
+      female: [['阿里齐玛','Arizima'],['查赫扎德','Chahezad'],['奈菲斯','Nephis'],['努拉拉','Nulara'],['穆里西','Murithi'],['塞弗里斯','Sefris'],['萨扎尔-德','Thazar-de'],['乌伊莎','Uisha']],
+      surnames: [['安卡拉布','Ankhalab'],['安斯库尔德','Anskuld'],['费齐姆','Fezim'],['纳森德姆','Nathandem'],['塞普雷特','Sepret'],['乌斯拉克特','Uuthrakt']]
+    },
+    {
+      label: '拉西曼',
+      male: [['博里维克','Borivik'],['福尔加','Faurgar'],['詹达尔','Jandar'],['卡尼萨尔','Kanithar'],['马迪斯拉克','Madislak'],['拉尔梅维克','Ralmevik'],['绍马尔','Shaumar'],['弗拉迪斯拉克','Vladislak']],
+      female: [['菲瓦拉','Fyevarra'],['胡尔玛拉','Hulmarra'],['伊米斯','Immith'],['伊姆泽尔','Imzel'],['纳瓦拉','Navarra'],['谢瓦拉','Shevarra'],['塔米斯','Tammith'],['尤尔德拉','Yuldra']],
+      surnames: [['切尔戈巴','Chergoba'],['迪尔尼娜','Dyernina'],['伊尔塔齐亚拉','Iltazyara'],['穆尔涅萨拉','Murnyethara'],['斯塔亚诺加','Stayanoga'],['乌尔莫基娜','Ulmokina']]
+    },
+    {
+      label: '寿',
+      surnameFirst: true,
+      male: [['安','An'],['陈','Chen'],['驰','Chi'],['辉','Fai'],['江','Jiang'],['俊','Jun'],['连','Lian'],['龙','Long'],['孟','Meng'],['山','Shan'],['文','Wen']],
+      female: [['白','Bai'],['昭','Chao'],['佳','Jia'],['蕾','Lei'],['梅','Mei'],['巧','Qiao'],['水','Shui'],['泰','Tai']],
+      surnames: [['钱','Chien'],['黄','Huang'],['高','Kao'],['孔','Kung'],['劳','Lao'],['凌','Ling'],['梅','Mei'],['沈','Shin'],['谭','Tan'],['万','Wan']]
+    },
+    {
+      label: '图拉米',
+      male: [['安东','Anton'],['迪耶罗','Diero'],['马孔','Marcon'],['皮耶罗','Pieron'],['里马尔多','Rimardo'],['罗梅罗','Romero'],['萨拉查','Salazar'],['温贝罗','Umbero']],
+      female: [['巴拉玛','Balama'],['多娜','Dona'],['法伊拉','Faila'],['贾拉娜','Jalana'],['路易莎','Luisa'],['玛尔塔','Marta'],['夸拉','Quara'],['塞莉丝','Selise'],['旺达','Vonda']],
+      surnames: [['阿戈斯托','Agosto'],['阿斯托里奥','Astorio'],['卡拉布拉','Calabra'],['多米内','Domine'],['法洛内','Falone'],['马里瓦尔迪','Marivaldi'],['皮萨卡尔','Pisacar'],['拉蒙多','Ramondo']]
+    }
+  ];
+
+  const PHB_RACE_TABLES = {
+    '精灵': {
+      male: [['阿德兰','Adran'],['艾兰','Aelar'],['艾瑞安','Aramil'],['阿拉尼斯','Arannis'],['奥斯特','Aust'],['贝里安','Berrian'],['卡里克','Carric'],['埃纳利斯','Enialis'],['埃尔丹','Erdan'],['埃雷万','Erevan'],['加林丹','Galinndan'],['哈达莱','Hadarai'],['赫伊安','Heian'],['希莫','Himo'],['伊梅拉尔','Immeral'],['伊维利奥斯','Ivellios'],['劳西安','Laucian'],['明达蒂斯','Mindartis'],['帕埃利亚斯','Paelias'],['佩伦','Peren'],['夸里昂','Quarion'],['里亚登','Riardon'],['罗伦','Rolen'],['索维里斯','Soveliss'],['塔米奥','Thamior'],['萨里沃尔','Tharivol'],['瓦里斯','Varis']],
+      female: [['阿德莉','Adrie'],['艾拉瑞娅','Althaea'],['阿纳斯特里亚','Anastrianna'],['安德拉斯特','Andraste'],['安提努娅','Antinua'],['贝斯琳娜','Bethrynna'],['比雷尔','Birel'],['凯莉','Caelynn'],['德鲁西莉亚','Drusilia'],['恩娜','Enna'],['费洛西阿尔','Felosial'],['伊莱妮亚','Ielenia'],['杰伦内斯','Jelenneth'],['凯莱斯','Keyleth'],['莱珊娜','Leshanna'],['利亚','Lia'],['梅里埃尔','Meriele'],['米尔莉','Mialee'],['娜伊瓦拉','Naivara'],['奎伦娜','Quelenna'],['奎拉塞','Quillathe'],['萨里尔','Sariel'],['莎娜伊拉','Shanairra'],['莎瓦','Shava'],['西拉奎','Silaqui'],['塞拉斯塔','Theirastra'],['蒂亚','Thia'],['瓦达尼亚','Vadania'],['瓦兰希','Valanthe'],['夏娜','Xanaphia']],
+      family: [['宝花','Amakiir'],['星花','Amastacia'],['月语','Galanodel'],['钻露','Holimion'],['珍蕊','Ilphelkiir'],['银叶','Liadon'],['橡踵','Meliamne'],['夜风','Naïlo'],['月溪','Siannodel'],['金瓣','Xiloscient']]
+    },
+    '矮人': {
+      male: [['阿德里克','Adrik'],['阿尔贝里希','Alberich'],['巴林','Baern'],['巴伦德','Barendd'],['布罗托尔','Brottor'],['布鲁诺','Bruenor'],['达因','Dain'],['达拉克','Darrak'],['德尔格','Delg'],['埃伯克','Eberk'],['艾因基尔','Einkil'],['法格里姆','Fargrim'],['弗林特','Flint'],['加尔丹','Gardain'],['哈伯克','Harbek'],['基尔德拉克','Kildrak'],['莫尔格兰','Morgran'],['奥里克','Orsik'],['奥斯卡','Oskar'],['朗加尔','Rangrim'],['鲁里克','Rurik'],['塔克林','Taklinn'],['索拉丁','Thoradin'],['索林','Thorin'],['托达克','Tordek'],['特劳邦','Traubon'],['特拉沃克','Travok'],['乌尔夫加','Ulfgar'],['维特','Veit'],['冯达尔','Vondal']],
+      female: [['安柏','Amber'],['阿廷','Artin'],['奥希尔德','Audhild'],['巴尔迪斯','Bardryn'],['达格纳尔','Dagnal'],['迪萨','Diesa'],['艾尔德斯','Eldeth'],['法尔克伦','Falkrunn'],['芬妮伦','Finellen'],['贡洛达','Gunnloda'],['古尔迪斯','Gurdis'],['海尔佳','Helja'],['赫琳','Hlin'],['凯瑟拉','Kathra'],['克里斯蒂德','Kristryd'],['伊尔德','Ilde'],['利芙特拉萨','Liftrasa'],['马尔德雷德','Mardred'],['里斯温','Riswynn'],['桑妮尔','Sannl'],['托尔贝拉','Torbera'],['托尔佳','Torgga'],['维斯特拉','Vistra']],
+      clan: [['巴尔德克','Balderk'],['战锤','Battlehammer'],['壮砧','Brawnanvil'],['丹基尔','Dankil'],['火炉','Fireforge'],['霜须','Frostbeard'],['戈伦','Gorunn'],['霍尔德赫克','Holderhek'],['铁拳','Ironfist'],['洛德尔','Loderr'],['卢特格尔','Lutgehr'],['鲁姆纳海姆','Rumnaheim'],['斯特拉凯伦','Strakeln'],['托伦','Torunn'],['昂加特','Ungart']]
+    },
+    '半身人': {
+      male: [['奥尔顿','Alton'],['安德','Ander'],['凯德','Cade'],['科林','Corrin'],['艾尔登','Eldon'],['埃里希','Errich'],['芬南','Finnan'],['加勒特','Garret'],['林德尔','Lindal'],['莱尔','Lyle'],['梅里克','Merric'],['米洛','Milo'],['奥斯本','Osborn'],['佩林','Perrin'],['里德','Reed'],['罗斯科','Roscoe'],['韦尔比','Wellby']],
+      female: [['安德里','Andry'],['布里','Bree'],['卡莉','Callie'],['科拉','Cora'],['尤菲米娅','Euphemia'],['吉莉安','Jillian'],['基斯里','Kithri'],['拉维尼亚','Lavinia'],['莉达','Lidda'],['梅拉','Merla'],['内达','Nedda'],['帕埃拉','Paela'],['波蒂亚','Portia'],['塞拉菲娜','Seraphina'],['莎娜','Shaena'],['特里姆','Trym'],['瓦尼','Vani'],['瓦娜','Verna']],
+      family: [['聚棘','Brushgather'],['好桶','Goodbarrel'],['绿瓶','Greenbottle'],['高丘','High-hill'],['翻丘','Hilltopple'],['草架','Leagallow'],['茶叶','Tealeaf'],['荆棘','Thorngage'],['掷石','Tosscobble'],['枝下','Underbough']]
+    },
+    '龙裔': {
+      clanFirst: true,
+      male: [['阿扬','Arjhan'],['巴拉萨尔','Balasar'],['巴拉尔','Bharash'],['多纳尔','Donaar'],['格什','Ghesh'],['赫斯坎','Heskan'],['克里夫','Kriv'],['梅德拉什','Medrash'],['梅亨','Mehen'],['纳达尔','Nadarr'],['潘杰德','Pandjed'],['帕特林','Patrin'],['罗加尔','Rhogar'],['沙马什','Shamash'],['谢丁','Shedinn'],['塔尔洪','Tarhun'],['托林','Torinn']],
+      female: [['阿克拉','Akra'],['比里','Biri'],['达尔','Daar'],['法里德','Farideh'],['哈兰','Harann'],['哈维拉','Havilar'],['杰里','Jheri'],['科拉','Kava'],['科林','Korinn'],['米什安','Mishann'],['娜拉','Nala'],['佩拉','Perra'],['莱安','Raiann'],['索拉','Sora'],['苏里娜','Surina'],['萨瓦','Thava'],['乌阿吉特','Uadjit']],
+      clan: [['克莱辛西阿洛','Clethtinthiallor'],['达登德里安','Daardendrian'],['德尔米雷夫','Delmirev'],['德拉赫丹迪翁','Drachedandion'],['芬肯卡布拉顿','Fenkenkabradon'],['凯佩什克莫利克','Kepeshkmolik'],['克尔希隆','Kerrhylon'],['金巴图尔','Kimbatuul'],['林克萨卡森达洛','Linxakasendalor'],['米亚斯坦','Myastan'],['内莫尼斯','Nemmonis'],['诺里修斯','Norixius'],['奥芬什塔拉吉尔','Ophinshtalajiir'],['谢斯滕德利亚斯','Shestendeliath'],['图努罗斯','Turnuroth'],['亚杰里特','Yarjerit']]
+    },
+    '侏儒': {
+      male: [['阿尔斯顿','Alston'],['阿尔文','Alvyn'],['博丁','Boddynock'],['布罗克','Brocc'],['伯格尔','Burgell'],['迪姆布尔','Dimble'],['埃尔登','Eldon'],['埃尔基','Erky'],['方金','Fonkin'],['弗鲁格','Frug'],['格博','Gerbo'],['金布尔','Gimble'],['格利姆','Glim'],['杰贝多','Jebeddo'],['凯伦','Kellen'],['纳姆富德尔','Namfoodle'],['奥林','Orryn'],['罗昂达尔','Roondar'],['西博','Seebo'],['辛德里','Sindri'],['沃林','Warryn'],['雷恩','Wrenn'],['祖克','Zook']],
+      female: [['宾普诺汀','Bimpnottin'],['布里娜','Breena'],['卡拉米普','Caramip'],['卡林','Carlin'],['多娜拉','Donella'],['杜瓦米尔','Duvamil'],['艾拉','Ella'],['埃利乔贝尔','Ellyjobell'],['埃利威克','Ellywick'],['利利','Lilli'],['卢普莫汀','Loopmottin'],['洛里拉','Lorilla'],['马尔德纳布','Mardnab'],['尼莎','Nissa'],['尼克斯','Nyx'],['奥达','Oda'],['奥拉','Orla'],['罗温','Roywyn'],['沙米尔','Shamil'],['塔娜','Tana'],['韦沃克特','Waywocket'],['扎娜','Zanna']],
+      nicknames: [['晃酒','Aleslosh'],['灰炉','Ashhearth'],['獾','Badger'],['斗篷','Cloak'],['双锁','Doublelock'],['偷糊','Filchbatter'],['轻手','Fnipper'],['灵巧','Nim'],['单鞋','Oneshoe'],['闪石','Sparklegem'],['绊鸭','Stumbleduck']],
+      clan: [['贝伦','Beren'],['达尔格尔','Daergel'],['福尔科','Folkor'],['加里克','Garrick'],['穆尔尼格','Murnig'],['纳克尔','Nackle'],['宁格尔','Ningel'],['劳尔诺','Raulnor'],['谢彭','Scheppen'],['廷伯斯','Timbers'],['图伦','Turen']]
+    },
+    '兽人': {
+      male: [['登奇','Dench'],['冯','Feng'],['盖尔','Gell'],['亨克','Henk'],['霍尔格','Holg'],['伊姆什','Imsh'],['凯斯','Keth'],['克鲁斯克','Krusk'],['穆伦','Mhurren'],['鲁什','Ront'],['尚普','Shump'],['托克','Thokk']],
+      female: [['巴吉','Baggi'],['艾门','Emen'],['恩贡','Engong'],['坎西夫','Kansif'],['迈耶夫','Myev'],['尼加','Neega'],['奥瓦克','Ovak'],['奥温卡','Ownka'],['舒塔','Shautha'],['苏莎','Sutha'],['沃拉','Vola'],['沃伦','Volen'],['耶维尔达','Yevelda']]
+    },
+    '提夫林': {
+      male: [['阿克梅诺斯','Akmenos'],['阿姆农','Amnon'],['巴拉卡斯','Barakas'],['达马科斯','Damakos'],['埃克蒙','Ekemon'],['伊阿多斯','Iados'],['凯里昂','Kairon'],['琉西斯','Leucis'],['梅莱赫','Melech'],['莫代','Mordai'],['莫索斯','Morthos'],['佩莱奥斯','Pelaios'],['斯卡莫斯','Skamos'],['特拉克斯','Therai']],
+      female: [['阿克塔','Akta'],['安娜基斯','Anakis'],['布莱瑟斯','Bryseis'],['克里艾拉','Criella'],['达迈亚','Damaia'],['埃娅','Ea'],['卡莉斯塔','Kallista'],['勒莱萨','Lerissa'],['马卡里亚','Makaria'],['妮梅亚','Nemeia'],['奥里安娜','Orianna'],['菲莱娅','Phelaia'],['里埃塔','Rieta']],
+      virtues: [['艺术','Art'],['腐朽','Carrion'],['圣歌','Chant'],['信条','Creed'],['绝望','Despair'],['卓越','Excellence'],['恐惧','Fear'],['荣耀','Glory'],['希望','Hope'],['理想','Ideal'],['乐章','Music'],['虚无','Nowhere'],['坦诚','Open'],['诗篇','Poetry'],['追寻','Quest'],['随性','Random'],['敬畏','Reverence'],['哀伤','Sorrow'],['无畏','Temerity'],['苦痛','Torment'],['倦怠','Weary']]
+    },
+    '歌利亚': {
+      birth: [['奥坎','Aukan'],['埃格拉斯','Eglath'],['盖-阿尔','Gae-Al'],['高拉克','Gauthak'],['伊利坎','Ilikan'],['基奥西','Keothi'],['库奥里','Kuori'],['洛-卡格','Lo-Kag'],['曼内奥','Manneo'],['马维斯','Maveith'],['纳拉','Nalla'],['奥里洛','Orilo'],['帕武','Paavu'],['佩萨尼','Pethani'],['萨尔-瓦','Thalai'],['索萨姆','Thotham'],['乌萨尔','Uthal'],['沃妮娅','Vaunea'],['维马克','Vimak']],
+      nicknames: [['屠熊者','Bearkiller'],['唤晓者','Dawncaller'],['无畏者','Fearless'],['寻石者','Flintfinder'],['雕角者','Horncarver'],['锐目','Keeneye'],['独猎','Lonehunter'],['跃涧','Longleaper'],['碎根','Rootsmasher'],['观天','Skywatcher'],['稳手','Steadyhand'],['织线','Threadtwister'],['再孤','Twice-Orphaned'],['曲肢','Twistedlimb'],['绘言','Wordpainter']],
+      clan: [['阿纳卡拉赛','Anakalathai'],['埃拉尼西诺','Elanithino'],['加萨卡纳西','Gathakanathi'],['卡拉吉亚诺','Kalagiano'],['卡索-奥拉维','Katho-Olavi'],['科莱-吉莱安娜','Kolae-Gileana'],['奥戈拉卡努','Ogolakanu'],['图利亚加','Thuliaga'],['图努卡拉西','Thunukalathi'],['瓦梅-拉加','Vaimei-Laga']]
+    }
+  };
+
+  function getStUserName() {
+    const wins = [window, window.parent, window.top].filter(Boolean);
+    for (const w of wins) {
+      try {
+        const ctx = w.SillyTavern?.getContext?.();
+        const sub = ctx?.substituteParams?.('{{user}}');
+        if (sub && String(sub).trim() && String(sub).trim() !== '{{user}}') return String(sub).trim();
+        if (ctx?.name1 && String(ctx.name1).trim() && String(ctx.name1).trim() !== '{{user}}') return String(ctx.name1).trim();
+      } catch (_) {}
+    }
+    return '';
+  }
+
+  function pickRandomPhbName() {
+    const speciesSel = document.getElementById('char-species');
+    const genderSel = document.getElementById('char-gender');
+    const spRaw = String((typeof state !== 'undefined' && state?.species) || speciesSel?.value || '人类');
+    const isFemale = /女/.test(String(genderSel?.value || ''));
+
+    if (/人类|Human|阿斯莫|Aasimar/i.test(spRaw)) {
+      const eth = pick(HUMAN_ETHNICITIES);
+      const given = pick(isFemale ? eth.female : eth.male);
+      const sur = pick(eth.surnames);
+      if (eth.surnameFirst) return sur[0] + given[0] + ' (' + sur[1] + ' ' + given[1] + ')';
+      return given[0] + '·' + sur[0] + ' (' + given[1] + ' ' + sur[1] + ')';
+    }
+    if (/歌利亚|Goliath/i.test(spRaw)) {
+      const g = PHB_RACE_TABLES['歌利亚'];
+      const b = pick(g.birth), nk = pick(g.nicknames), cl = pick(g.clan);
+      return b[0] + '“' + nk[0] + '”' + cl[0] + ' (' + b[1] + ' "' + nk[1] + '" ' + cl[1] + ')';
+    }
+    if (/提夫林|Tiefling/i.test(spRaw)) {
+      const t = PHB_RACE_TABLES['提夫林'];
+      if (Math.random() < 0.45) {
+        const v = pick(t.virtues);
+        return v[0] + ' (' + v[1] + ')';
+      }
+      const g = pick(isFemale ? t.female : t.male);
+      return g[0] + ' (' + g[1] + ')';
+    }
+    if (/侏儒|Gnome/i.test(spRaw)) {
+      const gn = PHB_RACE_TABLES['侏儒'];
+      const g = pick(isFemale ? gn.female : gn.male);
+      const nk = pick(gn.nicknames);
+      const cl = pick(gn.clan);
+      return g[0] + '“' + nk[0] + '”' + cl[0] + ' (' + g[1] + ' "' + nk[1] + '" ' + cl[1] + ')';
+    }
+    if (/龙裔|Dragonborn/i.test(spRaw)) {
+      const dr = PHB_RACE_TABLES['龙裔'];
+      const cl = pick(dr.clan);
+      const g = pick(isFemale ? dr.female : dr.male);
+      return cl[0] + '·' + g[0] + ' (' + cl[1] + ' ' + g[1] + ')';
+    }
+    const key = Object.keys(PHB_RACE_TABLES).find((k) => spRaw.includes(k));
+    if (key) {
+      const tbl = PHB_RACE_TABLES[key];
+      const g = pick(isFemale ? tbl.female : tbl.male);
+      const fam = tbl.family ? pick(tbl.family) : (tbl.clan ? pick(tbl.clan) : null);
+      if (fam) return g[0] + '·' + fam[0] + ' (' + g[1] + ' ' + fam[1] + ')';
+      return g[0] + ' (' + g[1] + ')';
+    }
+    const eth = HUMAN_ETHNICITIES[1];
+    const given = pick(isFemale ? eth.female : eth.male);
+    const sur = pick(eth.surnames);
+    return given[0] + '·' + sur[0] + ' (' + given[1] + ' ' + sur[1] + ')';
+  }
+
+  function initNameField() {
+    if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return;
+    const inp = document.getElementById('char-name');
+    if (!inp || inp.dataset.dndNameEnhancedV2) return;
+    inp.dataset.dndNameEnhancedV2 = '1';
+
+    if (!inp.value || inp.value === '{{user}}') {
+      const stUser = getStUserName();
+      if (stUser) {
+        inp.value = stUser;
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+        inp.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }
+
+    let btn = document.getElementById('char-random-name-btn');
+    if (!btn) {
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'position:relative;display:flex;align-items:center;width:100%;min-width:0;box-sizing:border-box;';
+      inp.parentNode.insertBefore(wrap, inp);
+      inp.style.width = '100%';
+      inp.style.minWidth = '0';
+      inp.style.boxSizing = 'border-box';
+      inp.style.paddingRight = '38px';
+      wrap.appendChild(inp);
+
+      btn = document.createElement('button');
+      btn.type = 'button';
+      btn.id = 'char-random-name-btn';
+      btn.title = '随机姓名（PHB 官方名表）';
+      btn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 21 7 21 17 12 22 3 17 3 7 12 2"/><polyline points="3.3 7 12 12 20.7 7"/><line x1="12" y1="22" x2="12" y2="12"/></svg>';
+      btn.style.cssText = 'position:absolute;right:5px;top:50%;transform:translateY(-50%);width:28px;height:28px;min-width:28px;padding:0;margin:0;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;border:1px solid rgba(212,175,106,0.42);background:rgba(116,24,39,0.75);color:#ffe8b8;cursor:pointer;transition:all .15s;';
+      wrap.appendChild(btn);
+    }
+    btn.onclick = () => {
+      inp.value = pickRandomPhbName();
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+      inp.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+  }
+
+  if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') document.addEventListener?.('DOMContentLoaded', initNameField, { once: true });
+    else initNameField();
+  }
+})();
+</script>
+<script id="dnd-creator-modern-ui-v1">
+(() => {
+  if (window.__dndCreatorModernUiMounted) return;
+  window.__dndCreatorModernUiMounted = true;
+
+  const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const getVault = () => {
+    try { return window.top?.__dndAssetVault || window.parent?.__dndAssetVault || window.__dndAssetVault || null; }
+    catch (_) { return window.__dndAssetVault || null; }
+  };
+  const iconHtml = (name, cat, size = 28, lv = null) => {
+    const v = getVault();
+    return v?.getIconHtml ? v.getIconHtml(name, cat, size, lv) : '';
+  };
+
+  function buildIconPickerForSelect(selectId, title, cat) {
+    const sel = document.getElementById(selectId);
+    if (!sel || sel.dataset.dndPickerBound) return;
+    sel.dataset.dndPickerBound = '1';
+
+    const hostContainer = sel.closest('.section-content');
+    if (!hostContainer) return;
+
+    // Keep searchable comboboxes (.field) visible & interactive! Render FVTT visual quick-grid underneath.
+    const block = document.createElement('div');
+    block.className = 'dnd-picker-block';
+    block.dataset.pickerFor = selectId;
+    block.innerHTML = '<div class="dnd-picker-label"><span>' + esc(title) + '快捷图鉴</span></div><div class="dnd-picker-grid"></div>';
+    const grid = block.querySelector('.dnd-picker-grid');
+
+    const renderCards = () => {
+      const curVal = sel.value;
+      const opts = [...sel.options].filter((o) => o.value && !o.disabled);
+      grid.innerHTML = opts.map((o) => {
+        const label = (o.textContent || o.value).replace(/\s*\([^)]*\)/g, '').trim();
+        const active = o.value === curVal ? ' active' : '';
+        return '<button type="button" class="dnd-pick-card' + active + '" data-pick-val="' + esc(o.value) + '">' +
+          iconHtml(o.value, cat, 26) +
+          '<span class="pick-txt" title="' + esc(label) + '">' + esc(label) + '</span></button>';
+      }).join('');
+      grid.querySelectorAll('.dnd-pick-card').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          sel.value = btn.dataset.pickVal;
+          if (sel.dndSearch?.input) {
+            sel.dndSearch.input.value = (sel.selectedOptions?.[0]?.textContent || sel.value || '').trim();
+          }
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+          sel.dispatchEvent(new Event('input', { bubbles: true }));
+          renderCards();
+          updateStickyPreview();
+        });
+      });
+    };
+
+    sel.addEventListener('change', () => { renderCards(); updateStickyPreview(); });
+    if (typeof MutationObserver === 'function') {
+      new MutationObserver(() => { renderCards(); updateStickyPreview(); }).observe(sel, { childList: true });
+    }
+    const infoBoxes = hostContainer.querySelector('#info-boxes');
+    if (infoBoxes) hostContainer.insertBefore(block, infoBoxes);
+    else hostContainer.appendChild(block);
+    renderCards();
+    setTimeout(() => { renderCards(); updateStickyPreview(); }, 180);
+  }
+
+  function buildWorkbenchAndPreview() {
+    const firstSec = document.querySelector('.creator-page > .section');
+    const container = firstSec?.parentElement;
+    if (!container || document.querySelector('.dnd-creator-workbench')) return;
+
+    const wb = document.createElement('div');
+    wb.className = 'dnd-creator-workbench';
+    const main = document.createElement('div');
+    main.className = 'dnd-creator-main';
+    const aside = document.createElement('aside');
+    aside.className = 'dnd-creator-aside';
+    aside.id = 'dnd-creator-sticky-preview';
+
+    const sections = [...container.querySelectorAll(':scope > .section, :scope > .actions, :scope > .save-area, :scope > #save-character, :scope > #validation-messages, :scope > #status-msg')];
+    const insertPoint = sections[0] || firstSec;
+    if (!insertPoint) return;
+    container.insertBefore(wb, insertPoint);
+    wb.appendChild(main);
+    wb.appendChild(aside);
+    sections.forEach((el) => main.appendChild(el));
+
+    aside.innerHTML = `
+      <div class="dnd-prev-hd">
+        <div class="dnd-prev-name" data-prev-name>新冒险者</div>
+        <div class="dnd-prev-sub" data-prev-sub>Lv.1 待定</div>
+      </div>
+      <div class="dnd-prev-body">
+        <div class="dnd-prev-entities" data-prev-entities></div>
+        <div class="dnd-prev-vitals" data-prev-vitals></div>
+        <div class="dnd-prev-stats" data-prev-stats></div>
+        <div class="dnd-prev-badges" data-prev-badges></div>
+        <button type="button" class="dnd-prev-cta" data-prev-save>✨ 保存并创建角色</button>
+      </div>
+    `;
+    aside.querySelector('[data-prev-save]')?.addEventListener('click', () => {
+      document.getElementById('save-character')?.click();
+    });
+  }
+
+  function updateStickyPreview() {
+    const aside = document.getElementById('dnd-creator-sticky-preview');
+    if (!aside) return;
+
+    const st = typeof state !== 'undefined' ? state : window.state;
+    const name = document.getElementById('char-name')?.value?.trim() || st?.name || '新冒险者';
+    const gender = document.getElementById('char-gender')?.value || st?.gender || '';
+    const sp = st?.species || document.getElementById('char-species')?.value || '';
+    const cls = st?.class || document.getElementById('char-class')?.value || '';
+    const bg = st?.background || document.getElementById('char-background')?.value || '';
+
+    aside.querySelector('[data-prev-name]').textContent = name;
+    aside.querySelector('[data-prev-sub]').textContent = [gender, 'Lv.1', cls || '职业待选'].filter(Boolean).join(' · ');
+
+    aside.querySelector('[data-prev-entities]').innerHTML = [
+      { label: '职业', val: cls || '—', cat: 'class' },
+      { label: '物种', val: sp || '—', cat: 'species' },
+      { label: '背景', val: bg || '—', cat: 'background' },
+    ].map((e) => '<div class="dnd-prev-entity">' + (e.val !== '—' ? iconHtml(e.val, e.cat, 30) : '') + '<div><small>' + esc(e.label) + '</small><b>' + esc(e.val) + '</b></div></div>').join('');
+
+    const attrs = ['力量','敏捷','体质','智力','感知','魅力'];
+    const dynBg = (typeof getDynamicBackground === 'function' && bg) ? getDynamicBackground() : null;
+    const finalScores = {};
+    attrs.forEach((a) => {
+      const base = Number(st?.attributes?.[a]) || 10;
+      const bonus = (typeof getBgBonusValue === 'function' && dynBg) ? (Number(getBgBonusValue(a, dynBg)) || 0) : 0;
+      finalScores[a] = base + bonus;
+    });
+    const mod = (v) => Math.floor((v - 10) / 2);
+    const fmt = (m) => (m >= 0 ? ('+' + m) : String(m));
+    const clsInfo = (typeof CLASSES !== 'undefined' && cls && CLASSES[cls]) ? CLASSES[cls] : null;
+    const spInfo = (typeof SPECIES !== 'undefined' && sp && SPECIES[sp]) ? SPECIES[sp] : null;
+    const hitDie = clsInfo?.hit_die || (/野蛮人/.test(cls) ? 12 : (/战士|圣武士|游侠/.test(cls) ? 10 : (/法师|术士/.test(cls) ? 6 : 8)));
+    const dwarfBonus = sp === '矮人' ? 1 : 0;
+    const toughBonus = (typeof getToughHpBonus === 'function' && dynBg) ? (Number(getToughHpBonus(1, dynBg)) || 0) : 0;
+    const hasAlert = /警觉|警戒|Alert/i.test(String(dynBg?.featDesc || '')) || /警觉|警戒|Alert/i.test(String(st?.humanFeat || ''));
+    const pb = 2;
+    const estHp = cls ? Math.max(1, hitDie + mod(finalScores['体质']) + dwarfBonus + toughBonus) : '—';
+    const estAc = 10 + mod(finalScores['敏捷']);
+    const estInit = fmt(mod(finalScores['敏捷']) + (hasAlert ? pb : 0));
+    const estSpeed = sp === '自定义' ? (st?.customSpecies?.speed || 30) : (spInfo?.speed || (st?.lineage === '木精灵' ? 35 : 30));
+
+    aside.querySelector('[data-prev-vitals]').innerHTML =
+      '<div class="dnd-prev-vital"><small>生命</small><b>' + esc(estHp) + '</b></div>' +
+      '<div class="dnd-prev-vital"><small>基础AC</small><b>' + esc(estAc) + '</b></div>' +
+      '<div class="dnd-prev-vital"><small>先攻</small><b>' + esc(estInit) + '</b></div>' +
+      '<div class="dnd-prev-vital"><small>速度</small><b>' + esc(estSpeed) + '</b></div>';
+
+    aside.querySelector('[data-prev-stats]').innerHTML = attrs.map((a) =>
+      '<div class="dnd-prev-stat"><span>' + esc(a) + '</span><b>' + finalScores[a] + ' (' + fmt(mod(finalScores[a])) + ')</b></div>'
+    ).join('');
+
+    const badges = [];
+    if (/^人类|Human/i.test(sp)) {
+      badges.push('<span class="dnd-prev-badge heroic">★ 人类：起始英雄激励</span>');
+    }
+    const wms = Array.isArray(st?.weaponMasteries) ? st.weaponMasteries : [];
+    wms.forEach((w) => badges.push('<span class="dnd-prev-badge">★ ' + esc(w) + '</span>'));
+    const wisBonus = Math.max(1, mod(finalScores['感知']));
+    if (cls === '牧师' && st?.divineOrder === '奇术使') {
+      badges.push('<span class="dnd-prev-badge">奇术使：奥秘/宗教 +' + wisBonus + ' · 戏法+1</span>');
+    }
+    if (cls === '德鲁伊' && st?.primalOrder === '术师') {
+      badges.push('<span class="dnd-prev-badge">术师：奥秘/自然 +' + wisBonus + ' · 戏法+1</span>');
+    }
+    if (hasAlert) {
+      badges.push('<span class="dnd-prev-badge">警觉：先攻 +' + pb + '</span>');
+    }
+    aside.querySelector('[data-prev-badges]').innerHTML = badges.join('');
+
+    const saveBtn = document.getElementById('save-character');
+    const prevSave = aside.querySelector('[data-prev-save]');
+    if (prevSave && saveBtn) prevSave.disabled = Boolean(saveBtn.disabled);
+  }
+
+  function decorateDynamicChoices() {
+    const injectIco = (el, ico) => {
+      if (!el || !ico || (el.dataset.dndModernIco && el.querySelector('.fvtt-ico'))) return;
+      el.dataset.dndModernIco = '1';
+      el.insertAdjacentHTML('afterbegin', ico.replace('style="', 'style="vertical-align:middle;margin-right:7px;'));
+    };
+
+    document.querySelectorAll('.style-card, .fighting-style-card, .option-card, .choice-card, .feat-card, .order-card, .invocation-card, .weapon-item, .weapon-card, .weapon-compact-card, .equip-card, .shop-item, .equipment-option, .spell-card, .spell-item').forEach((card) => {
+      if (card.dataset.dndModernIco && card.querySelector('.fvtt-ico')) return;
+      const titleEl = card.querySelector('.spell-name, .order-name, .weapon-compact-name, h3, h4, .title, .name, .style-name, .item-name, strong, b, label') || card;
+      const txt = (titleEl.textContent || '').replace(/\s+/g, ' ').replace(/已选|\b[CR]\b/g, '').trim();
+      if (!txt || txt.length > 80) return;
+      const isSpell = Boolean(card.classList.contains('spell-card') || card.classList.contains('spell-item') || card.closest('[id^="spell-grid-"], [data-step="spells"]'));
+      const isWeapon = Boolean(card.classList.contains('weapon-compact-card') || card.closest('.weapon-item, .weapon-card, [id*="weapon"]'));
+      const isEquip = Boolean(card.closest('.equip-card, .shop-item, .equipment-option, [id*="equipment"]'));
+      const cat = isSpell ? 'spell' : (isWeapon ? 'weapon' : (isEquip ? (/甲|盾/.test(txt) ? 'armor' : 'magic') : 'feature'));
+      const lvMatch = card.closest('[id^="spell-grid-"]')?.id?.match(/(\d+)$/);
+      const ico = iconHtml(txt, cat, 24, lvMatch ? Number(lvMatch[1]) : 1);
+      if (ico) {
+        card.dataset.dndModernIco = '1';
+        injectIco(titleEl, ico);
+      }
+    });
+  }
+
+  function boot() {
+    if (typeof document === 'undefined' || typeof document.querySelector !== 'function' || typeof document.querySelectorAll !== 'function') return;
+    buildWorkbenchAndPreview();
+    buildIconPickerForSelect('char-species', '物种', 'species');
+    buildIconPickerForSelect('char-class', '职业', 'class');
+    buildIconPickerForSelect('char-background', '背景', 'background');
+    updateStickyPreview();
+    decorateDynamicChoices();
+
+    document.addEventListener?.('change', () => {
+      updateStickyPreview();
+      decorateDynamicChoices();
+    });
+    document.addEventListener?.('input', (e) => {
+      if (e.target?.id === 'char-name') updateStickyPreview();
+    });
+    document.addEventListener?.('dnd-asset-vault-updated', () => {
+      updateStickyPreview();
+      decorateDynamicChoices();
+    });
+    const mo = typeof MutationObserver === 'function' ? new MutationObserver(() => {
+      updateStickyPreview();
+      decorateDynamicChoices();
+    }) : null;
+    const main = document.querySelector('.dnd-creator-main');
+    if (mo && main) mo.observe(main, { childList: true, subtree: true });
+  }
+
+  if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') document.addEventListener?.('DOMContentLoaded', boot, { once: true });
+    else boot();
+  }
+})();
 </script>
 </body>
 </html>

@@ -1,10 +1,12 @@
 {
   "format": 1,
-  "version": "vf.0.6.19",
+  "version": "vf.0.6.20",
   "minimum_card_version": "vf.0.3.0",
   "notes": [
-    "修复满级领取传奇恩惠时，施法属性调整值提高后，档案中的法术攻击和豁免 DC 仍停在原值的问题。",
-    "0.6.x 从冒险设置在线安装后刷新。旧档如已有漏算，可在档案的法术页手动校正一次。"
+    "整合原作者 v1.8 核心更新：BG3 3D 检定台与 <dnd-check> 选项栏、阵营分池骰子序列、可选盲骰仲裁（默认关）、统一 API 设置中心与底部工具折叠菜单。",
+    "升级模组地图（怪物圆形棋子图集、自动/手动墙壁校准工具栏、实时坐标锚点、叠放选单、设置浮窗与三段式世界书注入），「把截图发给AI」改为默认开启（可按聊天关闭）。",
+    "升级本地资源库（1402 枚 FVTT 图标图集与不全书译名对齐速查库）、创建页双栏预览与随机起名、状态栏曜石暗红主题（可切亮色）、中文护甲公式、记名额外加值、左侧临时效应栏与特性熟练矩阵，完整保留全部自制/扩展职业与规则。",
+    "0.6.x 从冒险设置在线安装刷新后，再点一次「检查更新 → 安装并刷新页面」即可自动补齐新增检定组件与世界书规则；配套预设升级为 v1.9。"
   ],
   "components": [
     {
@@ -246,5 +248,119 @@
   "worldbook_path": "src/worldbook/updates.json",
   "removed_post_history_instruction": "变量解析约束：思考区内不得复述任何完整的思考、分析或变量更新标签，包括反引号包裹的示例；格式说明使用普通文字。真正的思考区必须完整闭合后，才在回复末尾输出唯一一组变量更新与 JSONPatch 标签。不得生成迁移备份、法术备份或界面默认值；stat_data 是唯一跑团数据源。",
   "worldbook_additions_path": "src/worldbook/长途旅行规则.json",
-  "worldbook_advancement_path": "src/worldbook/升级模式.json"
+  "worldbook_advancement_path": "src/worldbook/升级模式.json",
+  "v18_components": [
+    {
+      "kind": "script",
+      "id": "a1b2c3d4-7072-4772-8002-202400000002",
+      "name": "D&D 统一API设置",
+      "path": "src/scripts/统一API设置.js",
+      "template": {
+        "type": "script",
+        "enabled": true,
+        "name": "D&D 统一API设置",
+        "id": "a1b2c3d4-7072-4772-8002-202400000002",
+        "info": "统一管理创建面板、自定义DM、状态栏AI助手、战术副脑与模组地图的API连接（支持酒馆默认、酒馆预设与自定义API）。",
+        "button": {
+          "enabled": false,
+          "buttons": []
+        },
+        "data": {},
+        "export_with": {
+          "data": false,
+          "button": false
+        }
+      }
+    },
+    {
+      "kind": "script",
+      "id": "a1b2c3d4-7072-4772-8003-202400000003",
+      "name": "D&D 盲骰仲裁",
+      "path": "src/scripts/盲骰仲裁.js",
+      "template": {
+        "type": "script",
+        "enabled": true,
+        "name": "D&D 盲骰仲裁",
+        "id": "a1b2c3d4-7072-4772-8003-202400000003",
+        "info": "可选两段式盲骰仲裁：先在无骰子透视下定DC，再由前端CSPRNG真随机掷骰锁定结果，彻底杜绝挑骰与垫骰。",
+        "button": {
+          "enabled": false,
+          "buttons": []
+        },
+        "data": {},
+        "export_with": {
+          "data": false,
+          "button": false
+        }
+      }
+    },
+    {
+      "kind": "script",
+      "id": "a1b2c3d4-7072-4772-8004-202400000004",
+      "name": "D&D BG3检定台",
+      "path": "src/scripts/BG3检定台.js",
+      "template": {
+        "type": "script",
+        "enabled": true,
+        "name": "D&D BG3检定台",
+        "id": "a1b2c3d4-7072-4772-8004-202400000004",
+        "info": "BG3 风格 3D 检定台与全队 D&D 2024 Buff 自动识别引擎（神导术、诗人激励、战士战术思维、战斗大师战技、野蛮人原初学识、装备规则标签、协助、英雄激励等）。",
+        "button": {
+          "enabled": false,
+          "buttons": []
+        },
+        "data": {},
+        "export_with": {
+          "data": false,
+          "button": false
+        }
+      }
+    },
+    {
+      "kind": "regex",
+      "id": "b63c4ec0-2024-4d20-b630-000000000001",
+      "name": "BG3检定选项栏",
+      "path": "src/regexes/BG3检定选项栏.html",
+      "template": {
+        "id": "b63c4ec0-2024-4d20-b630-000000000001",
+        "scriptName": "BG3检定选项栏",
+        "findRegex": "/<dnd-check>([\\s\\S]*?)<\\/dnd-check>/gi",
+        "trimStrings": [],
+        "placement": [
+          2
+        ],
+        "disabled": false,
+        "markdownOnly": true,
+        "promptOnly": false,
+        "runOnEdit": true,
+        "substituteRegex": 0,
+        "minDepth": null,
+        "maxDepth": 6
+      }
+    },
+    {
+      "kind": "regex",
+      "id": "b63c4ec0-2024-4d20-b630-000000000002",
+      "name": "[不发送]旧BG3检定选项清理",
+      "path": "src/regexes/[不发送]旧BG3检定选项清理.txt",
+      "empty": true,
+      "template": {
+        "id": "b63c4ec0-2024-4d20-b630-000000000002",
+        "scriptName": "[不发送]旧BG3检定选项清理",
+        "findRegex": "/<dnd-check>[\\s\\S]*?<\\/dnd-check>/gi",
+        "trimStrings": [],
+        "placement": [
+          2
+        ],
+        "disabled": false,
+        "markdownOnly": false,
+        "promptOnly": true,
+        "runOnEdit": false,
+        "substituteRegex": 0,
+        "minDepth": 1,
+        "maxDepth": null
+      }
+    }
+  ],
+  "worldbook_v18_path": "src/worldbook/检定与交涉规则.json"
 }

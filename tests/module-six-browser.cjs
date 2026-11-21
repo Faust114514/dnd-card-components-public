@@ -24,7 +24,7 @@ window.entries=JSON.parse(localStorage.getItem('fixture-book')||'null')||[{uid:1
 window.preset={prompts:[{id:'dnd-cot-module-v01',enabled:false}]};
 const listeners=new Map();window.events={on:(n,f)=>{if(!listeners.has(n))listeners.set(n,new Set());listeners.get(n).add(f)},removeListener:(n,f)=>listeners.get(n)?.delete(f)};
 window.emit=async(n,...args)=>{for(const f of listeners.get(n)||[])await f(...args);};
-window.context={characterId:0,groupId:null,chatId:'fixture',chat:JSON.parse(localStorage.getItem('fixture-chat')||'[]'),mainApi:'openai',eventSource:events,event_types:{CHAT_CHANGED:'chat',MESSAGE_RECEIVED:'message',MESSAGE_EDITED:'edited',MESSAGE_DELETED:'deleted',MESSAGE_SWIPED:'swiped',GENERATION_ENDED:'end',WORLDINFO_ENTRIES_LOADED:'world',WORLDINFO_UPDATED:'book'},getCurrentChatId:()=>context.chatId};
+window.context={characterId:0,groupId:null,chatId:'fixture',chat:JSON.parse(localStorage.getItem('fixture-chat')||'[]'),mainApi:'openai',eventSource:events,event_types:{CHAT_CHANGED:'chat',MESSAGE_RECEIVED:'message',MESSAGE_EDITED:'edited',MESSAGE_DELETED:'deleted',MESSAGE_SWIPED:'swiped',GENERATION_ENDED:'end',CHAT_COMPLETION_PROMPT_READY:'completion',WORLDINFO_ENTRIES_LOADED:'world',WORLDINFO_UPDATED:'book'},getCurrentChatId:()=>context.chatId};
 window.SillyTavern={getContext:()=>context};
 window.TavernHelper={
  generateRaw:async args=>{aiRequests.push(args);window.lastAiRequest=args;if(window.failAi)throw Error('fixture image rejected');if(window.holdAi)await new Promise(r=>window.releaseAi=r);if(!window.aiReply)throw Error('No mocked AI reply');return window.aiReply;},
@@ -101,13 +101,21 @@ async function shot(name){const r=await send('Page.captureScreenshot',{format:'p
   await run('failPreset=true');await click('[data-feature="module"] [data-value="on"]');await wait('document.querySelector(".dnc-status").textContent.includes("未完成")');
   await check('!__dndModuleRunner.getState().enabled&&!vars.dnd_module_state.enabled&&!entries.find(e=>e.uid===12).enabled','preset save failure rolls map state back');
   await click('[data-feature="module"] [data-value="on"]');await wait('__dndModuleRunner.getState().enabled&&preset.prompts[0].enabled');
-  await check('aiRequests.some(r=>r.ordered_prompts[0].content.includes("初始站位"))&&aiRequests.every(r=>!Object.hasOwn(r,"image"))','automatic initial placement sends no images by default');
+  await check('aiRequests.some(r=>r.ordered_prompts[0].content.includes("初始站位"))&&aiRequests.some(r=>r.image?.length)','automatic initial placement can send the map image by default');
   await send('Page.reload');await wait('!!window.__dndModuleRunner&&window.__dndModuleRunner.getState().currentRoomId==='+JSON.stringify(room));
   await check('vars.dnd_module_state.currentMapId==="1ab"&&vars.dnd_module_state.clearedRooms.length>0','page reload restores saved module and exploration progress');
   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await click('[data-dnd-module-btn="1"]');await sleep(250);await shot('模组地图-手机');
   await check('document.querySelector(".dmr-window").getBoundingClientRect().right<=innerWidth+1','module window fits 390px viewport');
-  // Default-off image preference, the actual correction button, and request failures.
-  await check('__dndModuleRunner.getState().sendMapImage===false&&document.querySelector("[data-action=toggle-ai-image]").getAttribute("aria-pressed")==="false"','existing chat defaults to text-only correction');
+  await run('window.turnImageFixture = () => ({chat:[{role:"system",content:"官方模组运行导航与原版地城引擎"},{role:"user",content:"继续"}]});window.turnPayload=turnImageFixture();emit("completion",turnPayload)');
+  await wait('Array.isArray(turnPayload.chat[1].content)');
+  await run('emit("completion",turnPayload)');
+  await check('turnPayload.chat[1].content.filter(p=>p.type==="image_url").length===1','normal enabled module turn gets the current map exactly once');
+  // Explicit opt-out and the actual correction button.
+  await check('__dndModuleRunner.getState().sendMapImage===true','new chat defaults to map screenshots');
+  await click('[data-action="toggle-ai-image"]');
+  await check('__dndModuleRunner.getState().sendMapImage===false&&document.querySelector("[data-action=toggle-ai-image]").getAttribute("aria-pressed")==="false"','explicitly disabled chat requests text-only correction');
+  await run('window.offTurn=turnImageFixture();emit("completion",offTurn)');
+  await check('offTurn.chat[1].content==="继续"','explicit opt-out also blocks ordinary-turn attachments');
   await check('(()=>{const r=document.querySelector("[data-action=toggle-ai-image]").getBoundingClientRect();return r.left>=0&&r.right<=innerWidth})()','image toggle is reachable at 390px');
   await run(`context.chat=[{mes:'<thinking><content>推演假正文</content></thinking><content>截图校准测试正文</content><UpdateVariable>后台字段</UpdateVariable>',is_user:false}];aiReply=JSON.stringify({currentRoomId:${JSON.stringify(room)},battleActive:false,units:[{id:'校准测试队员',att:0,init:17,hp:'7/20',pos:[10,10]}]})`);
   await click('[data-action="ai-correct"]');
@@ -192,6 +200,12 @@ async function shot(name){const r=await send('Page.captureScreenshot',{format:'p
    await click('[data-action="battle-reload"]');
    await check(`JSON.stringify(__dndModuleRunner.getBattleState().units.map(({id,pos,init,hp})=>({id,pos,init,hp})))===${JSON.stringify(expected)}`,'reload button restores actual chat positions, initiative and HP without duplicate damage');
    await check('vars.dnd_module_state.battleOverride===null&&vars.stat_data.保留==="原游戏数据"','reload removes only map override and preserves character variables');
+   await run('window.beforeCorrection=context.chat[1].mes;context.chat[1].swipe_id=0;context.chat[1].swipes=[beforeCorrection,"另一个候选"];context.saveChat=async()=>{};aiReply=JSON.stringify({battleActive:true,units:__dndModuleRunner.getBattleState().units.map(u=>({...u,hp:u.hp.cur+"/"+u.hp.max,pos:u.id==="敌人"?[65,35]:u.pos}))})');
+   await click('[data-action="ai-correct"]');
+   await wait('context.chat[1].mes.includes("<battle-delta dnd-correction>")');
+   await check('context.chat[1].mes.startsWith(beforeCorrection)&&context.chat[1].swipes[0]===context.chat[1].mes&&context.chat[1].swipes[1]==="另一个候选"','correction preserves original delta and inactive swipe');
+   await click('[data-action="battle-reload"]');
+   await check('__dndModuleRunner.getBattleState().units.some(u=>u.id==="敌人"&&u.hp.cur===33&&u.pos.join(",")==="65,35")','reread replays corrected original-map positions without applying damage twice');
    // Capture a manual result, then rewrite the same message floor: chat length is unchanged.
    await click('[data-action="battle-end-keep"]');
    await run(`context.chat[1]={mes:'<battle-delta>敌人|hp:-7|move:60,25</battle-delta>'};emit('message',1)`);
